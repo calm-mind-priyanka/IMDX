@@ -360,34 +360,27 @@ else:
             ),
         ]
     )
-else:
-    btn.append(
-        [
-            InlineKeyboardButton(
-                f"{math.ceil(int(offset) / int(MAX_BTN)) + 1} / {math.ceil(total / int(MAX_BTN))}",
-                callback_data="pages"
-            ),
-            InlineKeyboardButton(
-                "NEXT »", callback_data=f"next_{req}_{key}_{n_offset}"
-            ),
-        ]
+
+# Now continue with link handling
+if settings["link"]:
+    links = ""
+    for file_num, file in enumerate(files, start=offset + 1):
+        links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{query.message.chat.id}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
+    await query.message.edit_text(
+        cap + links + js_ads,
+        disable_web_page_preview=True,
+        parse_mode=enums.ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(btn),
     )
-    if settings["link"]:
-        links = ""
-        for file_num, file in enumerate(files, start=offset + 1):
-            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{query.message.chat.id}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
-        await query.message.edit_text(
-            cap + links + js_ads,
-            disable_web_page_preview=True,
-            parse_mode=enums.ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup(btn),
-        )
-        return
-    try:
-        await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
-    except MessageNotModified:
-        pass
-    await query.answer()
+    return
+
+# Otherwise update just the buttons
+try:
+    await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
+except MessageNotModified:
+    pass
+
+await query.answer()
 
 
 @Client.on_callback_query(filters.regex(r"^seasons#"))
