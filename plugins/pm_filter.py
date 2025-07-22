@@ -695,13 +695,13 @@ btn.insert(
     ]
 )
 
-    if n_offset == "":
-        btn.append(
-            [InlineKeyboardButton(text="🚸 ɴᴏ ᴍᴏʀᴇ ᴘᴀɢᴇs 🚸", callback_data="buttons")]
-        )
-    elif n_offset == 0:
-        btn.append(
-            [
+if n_offset == "":
+    btn.append(
+        [InlineKeyboardButton(text="🚸 ɴᴏ ᴍᴏʀᴇ ᴘᴀɢᴇs 🚸", callback_data="buttons")]
+    )
+elif n_offset == 0:
+    btn.append(
+        [
                 InlineKeyboardButton(
                     "⋞ ʙᴀᴄᴋ",
                     callback_data=f"years_search#{year}#{key}#{offset- int(MAX_BTN)}#{orginal_offset}#{req}",
