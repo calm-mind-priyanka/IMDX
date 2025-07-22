@@ -332,6 +332,7 @@ elif offset == 0:
 else:
     off_set = offset - int(MAX_BTN)
 
+# Pagination Buttons
 if offset > 0:
     btn.append(
         [
