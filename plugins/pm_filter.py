@@ -325,18 +325,31 @@ btn.insert(
     ]
 ) 
 
-    if 0 < offset <= int(MAX_BTN):
-        off_set = 0
-    elif offset == 0:
-        off_set = None
-    else:
-        off_set = offset - int(MAX_BTN)
-    if offset > 0:
-       btn.append(
+if 0 < offset <= int(MAX_BTN):
+    off_set = 0
+elif offset == 0:
+    off_set = None
+else:
+    off_set = offset - int(MAX_BTN)
+
+if offset > 0:
+    btn.append(
         [
             InlineKeyboardButton(
                 "« BACK", callback_data=f"next_{req}_{key}_{off_set}"
             ),
+            InlineKeyboardButton(
+                f"{math.ceil(int(offset) / int(MAX_BTN)) + 1} / {math.ceil(total / int(MAX_BTN))}",
+                callback_data="pages"
+            ),
+            InlineKeyboardButton(
+                "NEXT »", callback_data=f"next_{req}_{key}_{n_offset}"
+            ),
+        ]
+    )
+else:
+    btn.append(
+        [
             InlineKeyboardButton(
                 f"{math.ceil(int(offset) / int(MAX_BTN)) + 1} / {math.ceil(total / int(MAX_BTN))}",
                 callback_data="pages"
