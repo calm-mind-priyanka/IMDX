@@ -331,46 +331,33 @@ btn.insert(
         off_set = None
     else:
         off_set = offset - int(MAX_BTN)
-    if n_offset == 0:
-
-        btn.append(
-            [
-                InlineKeyboardButton(
-                    "⋞ ʙᴀᴄᴋ", callback_data=f"next_{req}_{key}_{off_set}"
-                ),
-                InlineKeyboardButton(
-                    f"ᴘᴀɢᴇ {math.ceil(int(offset) / int(MAX_BTN)) + 1} / {math.ceil(total / int(MAX_BTN))}",
-                    callback_data="pages",
-                ),
-            ]
-        )
-    elif off_set is None:
-        btn.append(
-            [
-                InlineKeyboardButton(
-                    f"{math.ceil(int(offset) / int(MAX_BTN)) + 1} / {math.ceil(total / int(MAX_BTN))}",
-                    callback_data="pages",
-                ),
-                InlineKeyboardButton(
-                    "ɴᴇxᴛ ⋟", callback_data=f"next_{req}_{key}_{n_offset}"
-                ),
-            ]
-        )
-    else:
-        btn.append(
-            [
-                InlineKeyboardButton(
-                    "⋞ ʙᴀᴄᴋ", callback_data=f"next_{req}_{key}_{off_set}"
-                ),
-                InlineKeyboardButton(
-                    f"{math.ceil(int(offset) / int(MAX_BTN)) + 1} / {math.ceil(total / int(MAX_BTN))}",
-                    callback_data="pages",
-                ),
-                InlineKeyboardButton(
-                    "ɴᴇxᴛ ⋟", callback_data=f"next_{req}_{key}_{n_offset}"
-                ),
-            ],
-        )
+    if offset > 0:
+    btn.append(
+        [
+            InlineKeyboardButton(
+                "« BACK", callback_data=f"next_{req}_{key}_{off_set}"
+            ),
+            InlineKeyboardButton(
+                f"{math.ceil(int(offset) / int(MAX_BTN)) + 1} / {math.ceil(total / int(MAX_BTN))}",
+                callback_data="pages"
+            ),
+            InlineKeyboardButton(
+                "NEXT »", callback_data=f"next_{req}_{key}_{n_offset}"
+            ),
+        ]
+    )
+else:
+    btn.append(
+        [
+            InlineKeyboardButton(
+                f"{math.ceil(int(offset) / int(MAX_BTN)) + 1} / {math.ceil(total / int(MAX_BTN))}",
+                callback_data="pages"
+            ),
+            InlineKeyboardButton(
+                "NEXT »", callback_data=f"next_{req}_{key}_{n_offset}"
+            ),
+        ]
+    )
     if settings["link"]:
         links = ""
         for file_num, file in enumerate(files, start=offset + 1):
