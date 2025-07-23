@@ -699,49 +699,52 @@ if n_offset == "":
     btn.append(
         [InlineKeyboardButton(text="🚸 ɴᴏ ᴍᴏʀᴇ ᴘᴀɢᴇs 🚸", callback_data="buttons")]
     )
+
 elif n_offset == 0:
     btn.append(
         [
-                InlineKeyboardButton(
-                    "⋞ ʙᴀᴄᴋ",
-                    callback_data=f"years_search#{year}#{key}#{offset- int(MAX_BTN)}#{orginal_offset}#{req}",
-                ),
-                InlineKeyboardButton(
-                    f"{math.ceil(offset / int(MAX_BTN)) + 1}/{math.ceil(total / int(MAX_BTN))}",
-                    callback_data="pages",
-                ),
-            ]
-        )
-    elif offset == 0:
-        btn.append(
-            [
-                InlineKeyboardButton(
-                    f"{math.ceil(offset / int(MAX_BTN)) + 1}/{math.ceil(total / int(MAX_BTN))}",
-                    callback_data="pages",
-                ),
-                InlineKeyboardButton(
-                    "ɴᴇxᴛ ⋟",
-                    callback_data=f"years_search#{year}#{key}#{n_offset}#{orginal_offset}#{req}",
-                ),
-            ]
-        )
-    else:
-        btn.append(
-            [
-                InlineKeyboardButton(
-                    "⋞ ʙᴀᴄᴋ",
-                    callback_data=f"years_search#{year}#{key}#{offset- int(MAX_BTN)}#{orginal_offset}#{req}",
-                ),
-                InlineKeyboardButton(
-                    f"{math.ceil(offset / int(MAX_BTN)) + 1}/{math.ceil(total / int(MAX_BTN))}",
-                    callback_data="pages",
-                ),
-                InlineKeyboardButton(
-                    "ɴᴇxᴛ ⋟",
-                    callback_data=f"years_search#{year}#{key}#{n_offset}#{orginal_offset}#{req}",
-                ),
-            ]
-        )
+            InlineKeyboardButton(
+                "⋞ ʙᴀᴄᴋ",
+                callback_data=f"years_search#{year}#{key}#{offset - int(MAX_BTN)}#{orginal_offset}#{req}",
+            ),
+            InlineKeyboardButton(
+                f"{math.ceil(offset / int(MAX_BTN)) + 1}/{math.ceil(total / int(MAX_BTN))}",
+                callback_data="pages",
+            ),
+        ]
+    )
+
+elif offset == 0:
+    btn.append(
+        [
+            InlineKeyboardButton(
+                f"{math.ceil(offset / int(MAX_BTN)) + 1}/{math.ceil(total / int(MAX_BTN))}",
+                callback_data="pages",
+            ),
+            InlineKeyboardButton(
+                "ɴᴇxᴛ ⋟",
+                callback_data=f"years_search#{year}#{key}#{n_offset}#{orginal_offset}#{req}",
+            ),
+        ]
+    )
+
+else:
+    btn.append(
+        [
+            InlineKeyboardButton(
+                "⋞ ʙᴀᴄᴋ",
+                callback_data=f"years_search#{year}#{key}#{offset - int(MAX_BTN)}#{orginal_offset}#{req}",
+            ),
+            InlineKeyboardButton(
+                f"{math.ceil(offset / int(MAX_BTN)) + 1}/{math.ceil(total / int(MAX_BTN))}",
+                callback_data="pages",
+            ),
+            InlineKeyboardButton(
+                "ɴᴇxᴛ ⋟",
+                callback_data=f"years_search#{year}#{key}#{n_offset}#{orginal_offset}#{req}",
+            ),
+        ]
+    )
 
     btn.append(
         [
