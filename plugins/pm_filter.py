@@ -875,11 +875,11 @@ btn.insert(
         InlineKeyboardButton("ꜱᴇᴀꜱᴏɴ", callback_data=f"seasons#{key}#{offset}#{req}")
     ]
 )
-    if n_offset == "":
+if n_offset == "":
         btn.append(
             [InlineKeyboardButton(text="🚸 ɴᴏ ᴍᴏʀᴇ ᴘᴀɢᴇs 🚸", callback_data="buttons")]
         )
-    elif n_offset == 0:
+elif n_offset == 0:
         btn.append(
             [
                 InlineKeyboardButton(
@@ -892,7 +892,7 @@ btn.insert(
                 ),
             ]
         )
-    elif offset == 0:
+elif offset == 0:
         btn.append(
             [
                 InlineKeyboardButton(
@@ -905,7 +905,7 @@ btn.insert(
                 ),
             ]
         )
-    else:
+else:
         btn.append(
             [
                 InlineKeyboardButton(
