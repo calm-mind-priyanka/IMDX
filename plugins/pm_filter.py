@@ -260,6 +260,7 @@ async def next_page(bot, query):
         offset = int(offset)
     except:
         offset = 0
+
     search = BUTTONS.get(key)
     cap = CAP.get(key)
     if not search:
@@ -267,13 +268,16 @@ async def next_page(bot, query):
             script.OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True
         )
         return
+
     files, n_offset, total = await get_search_results(search, offset=offset)
     try:
         n_offset = int(n_offset)
     except:
         n_offset = 0
+
     if not files:
         return
+
     temp.FILES_ID[key] = files
     ads, ads_name, _ = await mdb.get_advirtisment()
     ads_text = ""
@@ -285,9 +289,11 @@ async def next_page(bot, query):
         if ads_text
         else ""
     )
+
     settings = await get_settings(query.message.chat.id)
     reqnxt = query.from_user.id if query.from_user else 0
     temp.CHAT[query.from_user.id] = query.message.chat.id
+
     links = ""
     if settings["link"]:
         btn = []
@@ -303,28 +309,33 @@ async def next_page(bot, query):
             ]
             for file in files
         ]
+
+    # Insert bottom buttons
     btn.insert(
         0,
         [
-            InlineKeyboardButton(
-                "📥 sᴇɴᴅ ᴀʟʟ ғɪʟᴇs 📥", callback_data=f"send_all#{key}"
-            ),
-        ],
+            InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇ", callback_data=f"languages#{key}#{offset}#{req}"),
+            InlineKeyboardButton("ǫᴜᴀʟɪᴛʏ", callback_data=f"qualities#{key}#{offset}#{req}"),
+        ]
     )
     btn.insert(
         1,
         [
-            InlineKeyboardButton(
-                "ǫᴜᴀʟɪᴛʏ ", callback_data=f"qualities#{key}#{offset}#{req}"
-            ),
-            InlineKeyboardButton(
-                "ꜱᴇᴀꜱᴏɴ", callback_data=f"seasons#{key}#{offset}#{req}"
-            ),
-            InlineKeyboardButton(
-                "ʟᴀɴɢᴜᴀɢᴇ ", callback_data=f"languages#{key}#{offset}#{req}"
-            ),
-        ],
+            InlineKeyboardButton("ꜱᴇᴀꜱᴏɴ", callback_data=f"seasons#{key}#{offset}#{req}")
+        ]
     )
+    btn.insert(
+        2,
+        [
+            InlineKeyboardButton("📥 sᴇɴᴅ ᴀʟʟ ғɪʟᴇs 📥", callback_data=f"send_all#{key}")
+        ]
+    )
+
+    await query.edit_message_caption(
+        caption=f"{cap or search}{js_ads}{links}",
+        reply_markup=InlineKeyboardMarkup(btn),
+    )
+
 
     if 0 < offset <= int(MAX_BTN):
         off_set = 0
