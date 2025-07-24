@@ -2218,16 +2218,8 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
         ]
     if offset != "":
     if total_results >= MAX_BTN:
-    btn.insert(
+        btn.insert(
             0,
-            [
-                InlineKeyboardButton(
-                    "📥 sᴇɴᴅ ᴀʟʟ ғɪʟᴇs 📥", callback_data=f"send_all#{key}"
-                ),
-            ],
-        )
-    btn.insert(
-            1,
             [
                 InlineKeyboardButton(
                     "ʟᴀɴɢᴜᴀɢᴇ", callback_data=f"languages#{key}#{offset}#{req}"
@@ -2237,25 +2229,25 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
                 ),
             ],
         )
-    btn.insert(
-            2,
+        btn.insert(
+            1,
             [
                 InlineKeyboardButton(
                     "ꜱᴇᴀꜱᴏɴ", callback_data=f"seasons#{key}#{offset}#{req}"
-                ),
+                )
+            ],
+        )
+        btn.insert(
+            2,
+            [
+                InlineKeyboardButton(
+                    "📥 sᴇɴᴅ ᴀʟʟ ғɪʟᴇs 📥", callback_data=f"send_all#{key}"
+                )
             ],
         )
     else:
-    btn.insert(
+        btn.insert(
             0,
-            [
-                InlineKeyboardButton(
-                    "📥 sᴇɴᴅ ᴀʟʟ ғɪʟᴇs 📥", callback_data=f"send_all#{key}"
-                ),
-            ],
-        )
-    btn.insert(
-            1,
             [
                 InlineKeyboardButton(
                     "ʟᴀɴɢᴜᴀɢᴇ", callback_data=f"languages#{key}#{offset}#{req}"
@@ -2265,12 +2257,20 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
                 ),
             ],
         )
-    btn.insert(
-            2,
+        btn.insert(
+            1,
             [
                 InlineKeyboardButton(
                     "ꜱᴇᴀꜱᴏɴ", callback_data=f"seasons#{key}#{offset}#{req}"
-                ),
+                )
+            ],
+        )
+        btn.insert(
+            2,
+            [
+                InlineKeyboardButton(
+                    "📥 sᴇɴᴅ ᴀʟʟ ғɪʟᴇs 📥", callback_data=f"send_all#{key}"
+                )
             ],
         )
     btn.insert(
