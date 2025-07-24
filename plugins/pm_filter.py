@@ -2218,53 +2218,109 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
         ]
     if offset != "":
         if total_results >= MAX_BTN:
-            btn.insert(
-                0,
-                [
-                    InlineKeyboardButton(
-                        "📥 sᴇɴᴅ ᴀʟʟ ғɪʟᴇs 📥", callback_data=f"send_all#{key}"
-                    ),
-                ],
-            )
-            btn.insert(
-                1,
-                [
-                    InlineKeyboardButton(
-                        "ǫᴜᴀʟɪᴛʏ ", callback_data=f"qualities#{key}#{offset}#{req}"
-                    ),
-                    InlineKeyboardButton(
-                        "ꜱᴇᴀꜱᴏɴ", callback_data=f"seasons#{key}#{offset}#{req}"
-                    ),
-                    InlineKeyboardButton(
-                        "ʟᴀɴɢᴜᴀɢᴇ ", callback_data=f"languages#{key}#{offset}#{req}"
-                    ),
-                ],
-            )
-        else:
-            btn.insert(
-                0,
-                [
-                    InlineKeyboardButton(
-                        "📥 sᴇɴᴅ ᴀʟʟ ғɪʟᴇs 📥", callback_data=f"send_all#{key}"
-                    ),
-                    InlineKeyboardButton(
-                        "ʟᴀɴɢᴜᴀɢᴇ", callback_data=f"languages#{key}#{offset}#{req}"
-                    ),
-                ],
-            )
-            btn.insert(
-                1, [InlineKeyboardButton("🚸 ɴᴏ ᴍᴏʀᴇ ᴘᴀɢᴇs 🚸", user_id=ADMINS[0])]
-            )
-    else:
-        btn.insert(
+    btn.insert(
             0,
             [
                 InlineKeyboardButton(
-                    "📥 sᴇɴᴅ ᴀʟʟ ғɪʟᴇs 📥", callback_data=f"send_all#{key}"
+                    "ʟᴀɴɢᴜᴀɢᴇ", 
+                    callback_data=f"languages#{key}#{offset}#{req}"
+                ),
+                InlineKeyboardButton(
+                    "ǫᴜᴀʟɪᴛʏ", 
+                    callback_data=f"qualities#{key}#{offset}#{req}"
                 ),
             ],
         )
-
+        # Second row: SEASON button
+    btn.insert(
+            1,
+            [
+                InlineKeyboardButton(
+                    "ꜱᴇᴀꜱᴏɴ", 
+                    callback_data=f"seasons#{key}#{offset}#{req}"
+                ),
+            ],
+        )
+        # Third row: SEND ALL button
+    btn.insert(
+            2,
+            [
+                InlineKeyboardButton(
+                    "📥 sᴇɴᴅ ᴀʟʟ ғɪʟᴇs 📥", 
+                    callback_data=f"send_all#{key}"
+                ),
+            ],
+        )
+    else:
+        # For fewer results
+    btn.insert(
+            0,
+            [
+                InlineKeyboardButton(
+                    "ʟᴀɴɢᴜᴀɢᴇ", 
+                    callback_data=f"languages#{key}#{offset}#{req}"
+                ),
+                InlineKeyboardButton(
+                    "ǫᴜᴀʟɪᴛʏ", 
+                    callback_data=f"qualities#{key}#{offset}#{req}"
+                ),
+            ],
+        )
+    btn.insert(
+            1,
+            [
+                InlineKeyboardButton(
+                    "ꜱᴇᴀꜱᴏɴ", 
+                    callback_data=f"seasons#{key}#{offset}#{req}"
+                ),
+            ],
+        )
+    btn.insert(
+            2,
+            [
+                InlineKeyboardButton(
+                    "📥 sᴇɴᴅ ᴀʟʟ ғɪʟᴇs 📥", 
+                    callback_data=f"send_all#{key}"
+                ),
+                InlineKeyboardButton(
+                    "🚸 ɴᴏ ᴍᴏʀᴇ ᴘᴀɢᴇs 🚸", 
+                    user_id=ADMINS[0]
+                ),
+            ],
+        )
+else:
+    # Single page results
+    btn.insert(
+        0,
+        [
+            InlineKeyboardButton(
+                "ʟᴀɴɢᴜᴀɢᴇ", 
+                callback_data=f"languages#{key}#{offset}#{req}"
+            ),
+            InlineKeyboardButton(
+                "ǫᴜᴀʟɪᴛʏ", 
+                callback_data=f"qualities#{key}#{offset}#{req}"
+            ),
+        ],
+    )
+    btn.insert(
+        1,
+        [
+            InlineKeyboardButton(
+                "ꜱᴇᴀꜱᴏɴ", 
+                callback_data=f"seasons#{key}#{offset}#{req}"
+            ),
+        ],
+    )
+    btn.insert(
+        2,
+        [
+            InlineKeyboardButton(
+                "📥 sᴇɴᴅ ᴀʟʟ ғɪʟᴇs 📥", 
+                callback_data=f"send_all#{key}"
+            ),
+        ],
+    )
         btn.insert(1, [InlineKeyboardButton("🚸 ɴᴏ ᴍᴏʀᴇ ᴘᴀɢᴇs 🚸", user_id=ADMINS[0])])
 
     if spoll:
