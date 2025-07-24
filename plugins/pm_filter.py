@@ -304,27 +304,32 @@ async def next_page(bot, query):
             for file in files
         ]
     btn.insert(
-        0,
-        [
-            InlineKeyboardButton(
-                "📥 sᴇɴᴅ ᴀʟʟ ғɪʟᴇs 📥", callback_data=f"send_all#{key}"
-            ),
-        ],
-    )
-    btn.insert(
-        1,
-        [
-            InlineKeyboardButton(
-                "ǫᴜᴀʟɪᴛʏ ", callback_data=f"qualities#{key}#{offset}#{req}"
-            ),
-            InlineKeyboardButton(
-                "ꜱᴇᴀꜱᴏɴ", callback_data=f"seasons#{key}#{offset}#{req}"
-            ),
-            InlineKeyboardButton(
-                "ʟᴀɴɢᴜᴀɢᴇ ", callback_data=f"languages#{key}#{offset}#{req}"
-            ),
-        ],
-    )
+            0,
+            [
+                InlineKeyboardButton(
+                    "📥 sᴇɴᴅ ᴀʟʟ ғɪʟᴇs 📥", callback_data=f"send_all#{key}"
+                ),
+            ],
+        )
+        btn.insert(
+            1,
+            [
+                InlineKeyboardButton(
+                    "ʟᴀɴɢᴜᴀɢᴇ", callback_data=f"languages#{key}#{offset}#{req}"
+                ),
+                InlineKeyboardButton(
+                    "ǫᴜᴀʟɪᴛʏ", callback_data=f"qualities#{key}#{offset}#{req}"
+                ),
+            ],
+        )
+        btn.insert(
+            2,
+            [
+                InlineKeyboardButton(
+                    "ꜱᴇᴀꜱᴏɴ", callback_data=f"seasons#{key}#{offset}#{req}"
+                ),
+            ],
+        )
 
     if 0 < offset <= int(MAX_BTN):
         off_set = 0
