@@ -311,7 +311,7 @@ async def next_page(bot, query):
                 ),
             ],
         )
-        btn.insert(
+    btn.insert(
             1,
             [
                 InlineKeyboardButton(
@@ -322,7 +322,7 @@ async def next_page(bot, query):
                 ),
             ],
         )
-        btn.insert(
+    btn.insert(
             2,
             [
                 InlineKeyboardButton(
