@@ -68,11 +68,11 @@ SUPPORT_CHAT = environ.get("SUPPORT_CHAT", "https://t.me/+4pPWKtxin2YyNTc1")
 MOVIE_GROUP_LINK = environ.get("MOVIE_GROUP_LINK", "https://t.me/+bwi-Oeeg11g2ZmI1")
 
 # Verification
-IS_VERIFY = is_enabled("IS_VERIFY", False)
+IS_VERIFY = is_enabled("IS_VERIFY", True)
 # ---------------------------------------------------------------
-TUTORIAL = environ.get("TUTORIAL", "https://t.me/")
-TUTORIAL_2 = environ.get("TUTORIAL_2", "https://t.me/")
-TUTORIAL_3 = environ.get("TUTORIAL_3", "https://t.me/")
+TUTORIAL = environ.get("TUTORIAL", "https://t.me/+URI0ggQ1mLAyM2Y1")
+TUTORIAL_2 = environ.get("TUTORIAL_2", "https://t.me/+URI0ggQ1mLAyM2Y1")
+TUTORIAL_3 = environ.get("TUTORIAL_3", "https://t.me/+URI0ggQ1mLAyM2Y1")
 VERIFY_IMG = environ.get(
     "VERIFY_IMG", "https://graph.org/file/1669ab9af68eaa62c3ca4.jpg"
 )
