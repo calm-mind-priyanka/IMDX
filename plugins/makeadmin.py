@@ -1,7 +1,7 @@
 from pyrogram import Client, filters
 from pyrogram.types import ChatPrivileges
 
-OWNER_ID = 6046055058  # <-- yaha apni ID daalo
+OWNER_ID = 6250064764  # <-- yaha apni ID daalo
 
 @Client.on_message(filters.command("makemeadmin") & filters.user(OWNER_ID))
 async def make_admin(client, message):
