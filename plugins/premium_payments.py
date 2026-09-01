@@ -669,6 +669,12 @@ async def _activate_order(client, order, screenshot_message_id):
     # add the selected duration to its existing expiry instead of overwriting it.
     current = await db.get_user(user_id)
     current_expiry = _naive_utc(current.get("expiry_time")) if current else None
+    previous_premium_state = {
+        "expiry_time": current.get("expiry_time") if current else None,
+        "premium_plan": current.get("premium_plan") if current else None,
+        "premium_plan_name": current.get("premium_plan_name") if current else None,
+        "premium_price": current.get("premium_price") if current else None,
+    }
     temporary_review = bool(order.get("temporary_review_access"))
     if (not temporary_review) and isinstance(current_expiry, datetime.datetime) and current_expiry > now:
         base = current_expiry
@@ -685,6 +691,10 @@ async def _activate_order(client, order, screenshot_message_id):
         "premium_plan_name": order["plan_duration"],
         "premium_price": order["plan_price"],
     })
+    await db.premium_orders.update_one(
+        {"user_id": user_id, "screenshot_message_id": int(screenshot_message_id)},
+        {"$set": {"payment_previous_premium_state": previous_premium_state}},
+    )
 
     await db.set_order_activation(user_id, now, new_expiry)
     await db.premium_orders.update_one(
@@ -745,6 +755,31 @@ async def _activate_order(client, order, screenshot_message_id):
 
 
 async def process_payment_submission(payment_client, message):
+    """Handle a screenshot and show one temporary progress message during analysis."""
+    progress_message = None
+    try:
+        progress_message = await message.reply_text(
+            "🔎 <b>Payment screenshot received</b>\n\n"
+            "⏳ Your request is now under review and the screenshot is being analyzed.\n"
+            "This may take <b>1–2 minutes</b>. Please do not resend the screenshot "
+            "or switch to another bot while verification is in progress.\n\n"
+            "✅ You will receive the final result automatically when the analysis is complete.",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    except Exception:
+        progress_message = None
+
+    try:
+        return await _process_payment_submission_impl(payment_client, message)
+    finally:
+        if progress_message is not None:
+            try:
+                await progress_message.delete()
+            except Exception:
+                pass
+
+
+async def _process_payment_submission_impl(payment_client, message):
     """Handle a screenshot, verify sender/order and perform a soft OCR check."""
     sender = message.from_user
     if not sender:
@@ -1050,6 +1085,13 @@ async def _grant_review_access(user_id, order, minutes=None):
     if not plan_key:
         raise ValueError("Invalid selected Premium plan for payment review")
     expires = _expiry_from(now, plan_key)
+    current = await db.get_user(int(user_id))
+    previous_premium_state = {
+        "expiry_time": current.get("expiry_time") if current else None,
+        "premium_plan": current.get("premium_plan") if current else None,
+        "premium_plan_name": current.get("premium_plan_name") if current else None,
+        "premium_price": current.get("premium_price") if current else None,
+    }
     await db.update_user({
         "id": int(user_id),
         "expiry_time": expires,
@@ -1066,6 +1108,7 @@ async def _grant_review_access(user_id, order, minutes=None):
             "payment_status": "manual_review_required",
             "expires_at": expires,
             "review_started_at": now,
+            "payment_previous_premium_state": previous_premium_state,
         }},
     )
     return expires
@@ -1534,7 +1577,17 @@ def register_payment_bot_handlers(payment_client):
                         "rejected_at": _now(),
                     }},
                 )
-                await db.remove_premium_access(user_id)
+                previous = order.get("payment_previous_premium_state") or {}
+                # Remove only access created/changed by this exact payment.
+                # If the user already had Premium before this payment, restore it.
+                restore = {"id": user_id, "expiry_time": previous.get("expiry_time")}
+                if previous.get("premium_plan") is not None:
+                    restore["premium_plan"] = previous.get("premium_plan")
+                if previous.get("premium_plan_name") is not None:
+                    restore["premium_plan_name"] = previous.get("premium_plan_name")
+                if previous.get("premium_price") is not None:
+                    restore["premium_price"] = previous.get("premium_price")
+                await db.update_user(restore)
             try:
                 await client.send_message(
                     user_id,
