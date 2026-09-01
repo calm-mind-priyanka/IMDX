@@ -1,6 +1,7 @@
 import datetime
 import pytz
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import ReturnDocument
 
 # from info import SETTINGS, IS_PM_SEARCH, IS_SEND_MOVIE_UPDATE, PREMIUM_POINT,REF_PREMIUM,IS_VERIFY, SHORTENER_WEBSITE3, SHORTENER_API3, THREE_VERIFY_GAP, LINK_MODE, FILE_CAPTION, TUTORIAL, DATABASE_NAME, DATABASE_URI, IMDB, IMDB_TEMPLATE, PROTECT_CONTENT, AUTO_DELETE, SPELL_CHECK, AUTO_FILTER, LOG_VR_CHANNEL, SHORTENER_WEBSITE, SHORTENER_API, SHORTENER_WEBSITE2, SHORTENER_API2, TWO_VERIFY_GAP
 # from utils import get_seconds
@@ -23,6 +24,8 @@ class Database:
         self.jisshu_ads_link = mydb.jisshu_ads_link
         self.movies_update_channel = mydb.movies_update_channel
         self.botcol = mydb.botcol
+        self.premium_orders = mydb.premium_orders
+        self.payment_submissions = mydb.payment_submissions
 
     default = {
         "spell_check": SPELL_CHECK,
@@ -43,10 +46,17 @@ class Database:
         "fsub_id": AUTH_CHANNEL,
         "link": LINK_MODE,
         "is_verify": IS_VERIFY,
+        "file_mode": False,
+        "file_mode_type": "verify",
         "verify_time": TWO_VERIFY_GAP,
         "shortner_three": SHORTENER_WEBSITE3,
         "api_three": SHORTENER_API3,
         "third_verify_time": THREE_VERIFY_GAP,
+        # Settings added by the master settings layer; old groups fall back to these values.
+        "max_results": MAX_BTN,
+        "delete_time": DELETE_TIME,
+        "request_channel": REQUEST_CHANNEL,
+        "fsub_channels": [AUTH_CHANNEL],
     }
 
     def new_user(self, id, name):
@@ -327,7 +337,11 @@ class Database:
                 return False
             elif (
                 isinstance(expiry_time, datetime.datetime)
-                and datetime.datetime.now() <= expiry_time
+                and (
+                    (datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) <= expiry_time)
+                    if expiry_time.tzinfo is None
+                    else datetime.datetime.now(datetime.timezone.utc) <= expiry_time
+                )
             ):
                 return True
             else:
@@ -392,6 +406,239 @@ class Database:
         expiry_time = datetime.datetime.now() + datetime.timedelta(seconds=seconds)
         user_data = {"id": user_id, "expiry_time": expiry_time, "has_free_trial": True}
         await self.users.update_one({"id": user_id}, {"$set": user_data}, upsert=True)
+
+
+    # ------------------------------------------------------------------
+    # Premium payment / subscription helpers
+    # ------------------------------------------------------------------
+    async def ensure_premium_indexes(self):
+        await self.premium_orders.create_index("user_id", unique=True)
+        await self.premium_orders.create_index([
+            ("payment_status", 1), ("premium_status", 1), ("expires_at", 1)
+        ])
+        await self.payment_submissions.create_index(
+            [("payment_chat_id", 1), ("payment_bot_message_id", 1)],
+            unique=True,
+        )
+        await self.payment_submissions.create_index("user_id")
+        await self.payment_submissions.create_index("file_sha256")
+
+    async def create_or_update_premium_order(self, user_id, username, plan,
+                                             plan_duration, plan_price):
+        """Create the user's current pending order.
+        Telegram user_id is the stable key; username is informational only.
+        """
+        now = datetime.datetime.utcnow()
+        document = {
+            "user_id": int(user_id),
+            "username": username or "",
+            "selected_plan": plan,
+            "plan_duration": plan_duration,
+            "plan_price": plan_price,
+            "order_created_at": now,
+            "screenshot_message_id": None,
+            "screenshot_received_at": None,
+            "payment_status": "waiting_for_payment",
+            "premium_status": "inactive",
+            "activated_at": None,
+            "expires_at": None,
+            "reminder_sent": False,
+            "manually_verified": False,
+            "manually_verified_at": None,
+        }
+        # A user has one current pending order. Selecting another plan replaces
+        # the old pending selection, which prevents an old price/duration being
+        # activated by a later screenshot.
+        await self.premium_orders.update_one(
+            {"user_id": int(user_id)},
+            {"$set": document},
+            upsert=True,
+        )
+        return await self.premium_orders.find_one({"user_id": int(user_id)})
+
+    async def get_pending_premium_order(self, user_id):
+        return await self.premium_orders.find_one({
+            "user_id": int(user_id),
+            "payment_status": "waiting_for_payment",
+        })
+
+    async def record_payment_submission(self, data):
+        """Always retain a screenshot submission, including unmatched ones."""
+        return await self.payment_submissions.insert_one(data)
+
+
+    async def update_payment_submission(self, user_id, message_id, data):
+        return await self.payment_submissions.update_one(
+            {"user_id": int(user_id), "payment_bot_message_id": int(message_id)},
+            {"$set": data},
+        )
+
+    async def claim_payment_review(self, user_id, message_id, decision):
+        """Atomically claim one exact screenshot review. Independent of order status."""
+        now = datetime.datetime.utcnow()
+        return await self.payment_submissions.update_one(
+            {
+                "user_id": int(user_id),
+                "payment_bot_message_id": int(message_id),
+                "review_status": {"$in": ["pending", "manual_review_required"]},
+            },
+            {"$set": {
+                "review_status": decision,
+                "reviewed_at": now,
+            }},
+        )
+
+    async def get_payment_submission(self, user_id, message_id):
+        return await self.payment_submissions.find_one({
+            "user_id": int(user_id),
+            "payment_bot_message_id": int(message_id),
+        })
+
+    async def find_duplicate_payment_submission(self, file_sha256, perceptual_hash, user_id, message_id):
+        if file_sha256:
+            row = await self.payment_submissions.find_one({
+                "file_sha256": file_sha256,
+                "$or": [{"user_id": {"$ne": int(user_id)}}, {"payment_bot_message_id": {"$ne": int(message_id)}}],
+            })
+            if row:
+                return row
+        if not perceptual_hash:
+            return None
+        # Compare a recent bounded set so near-identical crops/resizes can be flagged
+        # without scanning an unbounded collection. Flag for manual review, never auto-reject.
+        cursor = self.payment_submissions.find({"perceptual_hash": {"$exists": True}}).sort("received_at", -1).limit(300)
+        async for row in cursor:
+            other = row.get("perceptual_hash")
+            if not other or row.get("user_id") == int(user_id) and row.get("payment_bot_message_id") == int(message_id):
+                continue
+            try:
+                distance = sum(a != b for a, b in zip(bin(int(perceptual_hash, 16))[2:].zfill(1024), bin(int(other, 16))[2:].zfill(1024)))
+                if distance <= 2:
+                    return row
+            except Exception:
+                continue
+        return None
+
+    async def update_order_payment_review(self, user_id, message_id, check):
+        return await self.premium_orders.update_one(
+            {"user_id": int(user_id), "payment_status": "waiting_for_payment"},
+            {"$set": {
+                "screenshot_message_id": int(message_id),
+                "screenshot_received_at": datetime.datetime.utcnow(),
+                "payment_status": "manual_review_required",
+                "premium_status": "inactive",
+                "ocr_amount_found": check.get("amount_found"),
+                "ocr_amount_match": check.get("amount_match"),
+                "ocr_transaction_at": check.get("transaction_at"),
+                "ocr_time_match": check.get("time_match"),
+            }},
+        )
+
+    async def attach_screenshot_to_order(self, user_id, message_id, received_at):
+        return await self.premium_orders.update_one(
+            {"user_id": int(user_id), "payment_status": "waiting_for_payment"},
+            {"$set": {
+                "screenshot_message_id": int(message_id),
+                "screenshot_received_at": received_at,
+                "payment_status": "pending_manual_verification",
+            }},
+        )
+
+    async def activate_premium_order(self, user_id, message_id):
+        """Atomically claim the pending order before granting Premium."""
+        order = await self.premium_orders.find_one_and_update(
+            {"user_id": int(user_id), "payment_status": "waiting_for_payment"},
+            {"$set": {
+                "payment_status": "pending_manual_verification",
+                "premium_status": "active",
+                "screenshot_message_id": int(message_id),
+                "screenshot_received_at": datetime.datetime.utcnow(),
+            }},
+            return_document=ReturnDocument.AFTER,
+        )
+        return order
+
+    async def set_order_activation(self, user_id, activated_at, expires_at):
+        return await self.premium_orders.update_one(
+            {"user_id": int(user_id)},
+            {"$set": {
+                "premium_status": "active",
+                "activated_at": activated_at,
+                "expires_at": expires_at,
+                "reminder_sent": False,
+            }},
+        )
+
+    async def get_pending_manual_verifications(self):
+        return self.premium_orders.find({
+            "payment_status": {"$in": ["pending_manual_verification", "manual_review_required"]},
+            "premium_status": {"$in": ["active", "inactive"]},
+        })
+
+    async def get_premium_order(self, user_id):
+        return await self.premium_orders.find_one({"user_id": int(user_id)})
+
+    async def mark_payment_verified(self, user_id):
+        now = datetime.datetime.utcnow()
+        return await self.premium_orders.update_one(
+            {"user_id": int(user_id)},
+            {"$set": {
+                "payment_status": "manually_verified",
+                "manually_verified": True,
+                "manually_verified_at": now,
+            }},
+        )
+
+    async def approve_manual_payment(self, user_id, screenshot_message_id=None):
+        """Atomically approve only the exact screenshot currently awaiting manual review."""
+        now = datetime.datetime.utcnow()
+        query = {
+            "user_id": int(user_id),
+            "payment_status": {"$in": ["manual_review_required", "pending_manual_verification"]},
+        }
+        if screenshot_message_id is not None:
+            query["screenshot_message_id"] = int(screenshot_message_id)
+        return await self.premium_orders.update_one(
+            query,
+            {"$set": {
+                "payment_status": "manually_verified",
+                "manually_verified": True,
+                "manually_verified_at": now,
+            }},
+        )
+
+    async def reject_manual_payment(self, user_id, screenshot_message_id=None):
+        """Atomically reject only the exact screenshot currently awaiting manual review."""
+        query = {
+            "user_id": int(user_id),
+            "payment_status": {"$in": ["manual_review_required", "pending_manual_verification"]},
+        }
+        if screenshot_message_id is not None:
+            query["screenshot_message_id"] = int(screenshot_message_id)
+        return await self.premium_orders.update_one(
+            query,
+            {"$set": {
+                "payment_status": "manually_rejected",
+                "premium_status": "inactive",
+                "manually_verified": False,
+                "rejected_at": datetime.datetime.utcnow(),
+            }},
+        )
+
+    async def set_subscription_expired(self, user_id, expired_at=None):
+        return await self.premium_orders.update_one(
+            {"user_id": int(user_id)},
+            {"$set": {
+                "premium_status": "expired",
+                "expires_at": expired_at or datetime.datetime.utcnow(),
+            }},
+        )
+
+    async def mark_reminder_sent(self, user_id):
+        return await self.premium_orders.update_one(
+            {"user_id": int(user_id)},
+            {"$set": {"reminder_sent": True}},
+        )
 
     # JISSHU BOTS
     async def jisshu_set_ads_link(self, link):
