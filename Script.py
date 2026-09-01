@@ -4,7 +4,7 @@ class script(object):
     START_TXT = """ʜᴇʏ {}, {}
     
 ɪ ᴀᴍ ᴀ ᴘᴏᴡᴇʀꜰᴜʟ ᴀᴜᴛᴏꜰɪʟᴛᴇʀ ʙᴏᴛ. ʏᴏᴜ ᴄᴀɴ ᴜsᴇ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ ɪ ᴡɪʟʟ ɢɪᴠᴇ ᴍᴏᴠɪᴇs ᴏʀ sᴇʀɪᴇs ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ ᴀɴᴅ ᴘᴍ !! 😍
-<blockquote>🌿 ᴍᴀɪɴᴛᴀɪɴᴇᴅ ʙʏ : <a href="https://t.me/+DiOcxJnNQXdmNDdl">SANDY Bots &lt;/&gt;</a></blockquote>"""
+<blockquote>🌿 ᴍᴀɪɴᴛᴀɪɴᴇᴅ ʙʏ : <a href="https://t.me/+DiOcxJnNQXdmNDdl">sandy Bots &lt;/&gt;</a></blockquote>"""
 
     HELP_TXT = """<b>ᴄʟɪᴄᴋ ᴏɴ ᴛʜᴇ ʙᴜᴛᴛᴏɴꜱ ʙᴇʟᴏᴡ ᴛᴏ ɢᴇᴛ ᴅᴏᴄᴜᴍᴇɴᴛᴀᴛɪᴏɴ ᴀʙᴏᴜᴛ ꜱᴘᴇᴄɪꜰɪᴄ ᴍᴏᴅᴜʟᴇꜱ..</b>"""
 
@@ -30,10 +30,10 @@ class script(object):
 
 ᴀʟʟ ᴛʜᴇ ꜰɪʟᴇꜱ ɪɴ ᴛʜɪꜱ ʙᴏᴛ ᴀʀᴇ ꜰʀᴇᴇʟʏ ᴀᴠᴀɪʟᴀʙʟᴇ ᴏɴ ᴛʜᴇ ɪɴᴛᴇʀɴᴇᴛ ᴏʀ ᴘᴏꜱᴛᴇᴅ ʙʏ ꜱᴏᴍᴇʙᴏᴅʏ ᴇʟꜱᴇ. ᴊᴜꜱᴛ ꜰᴏʀ ᴇᴀꜱʏ ꜱᴇᴀʀᴄʜɪɴɢ ᴛʜɪꜱ ʙᴏᴛ ɪꜱ ɪɴᴅᴇxɪɴɢ ꜰɪʟᴇꜱ ᴡʜɪᴄʜ ᴀʀᴇ ᴀʟʀᴇᴀᴅʏ ᴜᴘʟᴏᴀᴅᴇᴅ ᴏɴ ᴛᴇʟᴇɢʀᴀᴍ. ᴡᴇ ʀᴇꜱᴘᴇᴄᴛ ᴀʟʟ ᴛʜᴇ ᴄᴏᴘʏʀɪɢʜᴛ ʟᴀᴡꜱ ᴀɴᴅ ᴡᴏʀᴋꜱ ɪɴ ᴄᴏᴍᴘʟɪᴀɴᴄᴇ ᴡɪᴛʜ ᴅᴍᴄᴀ ᴀɴᴅ ᴇᴜᴄᴅ. ɪꜰ ᴀɴʏᴛʜɪɴɢ ɪꜱ ᴀɢᴀɪɴꜱᴛ ʟᴀᴡ ᴘʟᴇᴀꜱᴇ ᴄᴏɴᴛᴀᴄᴛ ᴍᴇ ꜱᴏ ᴛʜᴀᴛ ɪᴛ ᴄᴀɴ ʙᴇ ʀᴇᴍᴏᴠᴇᴅ ᴀꜱᴀᴘ. ɪᴛ ɪꜱ ꜰᴏʀʙɪʙʙᴇɴ ᴛᴏ ᴅᴏᴡɴʟᴏᴀᴅ, ꜱᴛʀᴇᴀᴍ, ʀᴇᴘʀᴏᴅᴜᴄᴇ, ꜱʜᴀʀᴇ ᴏʀ ᴄᴏɴꜱᴜᴍᴇ ᴄᴏɴᴛᴇɴᴛ ᴡɪᴛʜᴏᴜᴛ ᴇxᴘʟɪᴄɪᴛ ᴘᴇʀᴍɪꜱꜱɪᴏɴ ꜰʀᴏᴍ ᴛʜᴇ ᴄᴏɴᴛᴇɴᴛ ᴄʀᴇᴀᴛᴏʀ ᴏʀ ʟᴇɢᴀʟ ᴄᴏᴘʏʀɪɢʜᴛ ʜᴏʟᴅᴇʀ. ɪꜰ ʏᴏᴜ ʙᴇʟɪᴇᴠᴇ ᴛʜɪꜱ ʙᴏᴛ ɪꜱ ᴠɪᴏʟᴀᴛɪɴɢ ʏᴏᴜʀ ɪɴᴛᴇʟʟᴇᴄᴛᴜᴀʟ ᴘʀᴏᴘᴇʀᴛʏ, ᴄᴏɴᴛᴀᴄᴛ ᴛʜᴇ ʀᴇꜱᴘᴇᴄᴛɪᴠᴇ ᴄʜᴀɴɴᴇʟꜱ ꜰᴏʀ ʀᴇᴍᴏᴠᴀʟ. ᴛʜᴇ ʙᴏᴛ ᴅᴏᴇꜱ ɴᴏᴛ ᴏᴡɴ ᴀɴʏ ᴏꜰ ᴛʜᴇꜱᴇ ᴄᴏɴᴛᴇɴᴛꜱ, ɪᴛ ᴏɴʟʏ ɪɴᴅᴇx ᴛʜᴇ ꜰɪʟᴇꜱ ꜰʀᴏᴍ ᴛᴇʟᴇɢʀᴀᴍ. 
 
-<blockquote>🌿 ᴍᴀɪɴᴛᴀɪɴᴇᴅ ʙʏ : <a href='https://t.me/+DiOcxJnNQXdmNDdl'>Jisshu Bots &lt;/&gt;</a></b></blockquote>"""
+<blockquote>🌿 ᴍᴀɪɴᴛᴀɪɴᴇᴅ ʙʏ : <a href='https://t.me/+DiOcxJnNQXdmNDdl'>sandy Bots &lt;/&gt;</a></b></blockquote>"""
 
     ABOUT_TEXT = """<blockquote><b>‣ ᴍʏ ɴᴀᴍᴇ : Jisshu filter bot
-‣ ᴄʀᴇᴀᴛᴏʀ : <a href='https://t.me/+DiOcxJnNQXdmNDdl'>SANDY Bots &lt;/&gt;</a>
+‣ ᴄʀᴇᴀᴛᴏʀ : <a href='https://t.me/+DiOcxJnNQXdmNDdl'>sandy Bots &lt;/&gt;</a>
 ‣ ʟɪʙʀᴀʀʏ : ᴘʏʀᴏɢʀᴀᴍ
 ‣ ʟᴀɴɢᴜᴀɢᴇ : ᴘʏᴛʜᴏɴ
 ‣ ᴅᴀᴛᴀ ʙᴀsᴇ : ᴍᴏɴɢᴏ ᴅʙ
@@ -118,6 +118,13 @@ User - {}"""
 """
 
     FILE_CAPTION = """<b>{file_name}</b>"""
+
+    FILE_MODE_CAPTION = """<b>👋 {greeting} {mention},
+
+📁 <b>{file_name}</b>
+📦 <b>sɪᴢᴇ:</b> {file_size}
+
+🔗 <b>ʏᴏᴜʀ ғɪʟᴇ ɪs ʀᴇᴀᴅʏ, ᴄʟɪᴄᴋ ᴛʜᴇ ʟɪɴᴋ ʙᴇʟᴏᴡ.</b></b>"""
 
     ALRT_TXT = """ᴡʜᴀᴛ ᴀʀᴇ ʏᴏᴜ sᴇᴀʀᴄʜɪɴɢ !?"""
 
@@ -223,6 +230,66 @@ User - {}"""
 
 ɴᴏᴡ ʏᴏᴜ ʜᴀᴠᴇ ᴜɴʟɪᴍɪᴛᴇᴅ ᴀᴄᴄᴇss ꜰᴏʀ ɴᴇxᴛ ꜰᴜʟʟ ᴅᴀʏ </b>"""
 
+
+    # SHORTLINK mode keeps the actual movie/file caption information, but uses
+    # a separate, more polished progress message. VERIFY mode remains unchanged.
+    SHORTLINK_VERIFICATION_TEXT = """<b>👋 ɢᴏᴏᴅ {1}, {0}!</b>
+
+╭━━━━━━━━━━━━━━━━━━╮
+│ 🎬 <b>ғɪʟᴇ ʀᴇᴀᴅʏ</b>
+╰━━━━━━━━━━━━━━━━━━╯
+
+📁 <b>{2}</b>
+📦 <b>sɪᴢᴇ:</b> {3}
+
+🔗 <b>ʏᴏᴜʀ ғɪʟᴇ ɪs ʀᴇᴀᴅʏ.</b>
+ᴄᴏᴍᴘʟᴇᴛᴇ ᴛʜᴇ sᴛᴇᴘ ʙᴇʟᴏᴡ ᴛᴏ ᴜɴʟᴏᴄᴋ ɪᴛ.
+
+╭──────────────────╮
+│ 🔐 <b>sʜᴏʀᴛʟɪɴᴋ ᴠᴇʀɪғɪᴄᴀᴛɪᴏɴ</b>
+│ 📊 <b>ᴘʀᴏɢʀᴇss:</b> 🟢 <b>1 / 3</b>
+╰──────────────────╯
+
+🔹 <b>sᴛᴇᴘ 1:</b> ᴄᴏᴍᴘʟᴇᴛᴇ ᴛʜᴇ ᴠᴇʀɪғɪᴄᴀᴛɪᴏɴ ʙᴇʟᴏᴡ.</b>"""
+
+    SHORTLINK_SECOND_VERIFICATION_TEXT = """<b>👋 ɢᴏᴏᴅ {1}, {0}!</b>
+
+╭━━━━━━━━━━━━━━━━━━╮
+│ 🎬 <b>ғɪʟᴇ ʀᴇᴀᴅʏ</b>
+╰━━━━━━━━━━━━━━━━━━╯
+
+📁 <b>{2}</b>
+📦 <b>sɪᴢᴇ:</b> {3}
+
+🔗 <b>ʏᴏᴜʀ ғɪʟᴇ ɪs ʀᴇᴀᴅʏ.</b>
+ᴏɴᴇ sᴛᴇᴘ ɪs ᴄᴏᴍᴘʟᴇᴛᴇᴅ — ᴄᴏɴᴛɪɴᴜᴇ ᴡɪᴛʜ ᴛʜᴇ ɴᴇxᴛ sᴛᴇᴘ.
+
+╭──────────────────╮
+│ 🔐 <b>sʜᴏʀᴛʟɪɴᴋ ᴠᴇʀɪғɪᴄᴀᴛɪᴏɴ</b>
+│ 📊 <b>ᴘʀᴏɢʀᴇss:</b> 🟡 <b>2 / 3</b>
+╰──────────────────╯
+
+🔹 <b>sᴛᴇᴘ 2:</b> ᴄᴏᴍᴘʟᴇᴛᴇ ᴛʜᴇ ɴᴇxᴛ ᴠᴇʀɪғɪᴄᴀᴛɪᴏɴ ᴛᴏ ᴄᴏɴᴛɪɴᴜᴇ.</b>"""
+
+    SHORTLINK_THIRD_VERIFICATION_TEXT = """<b>👋 ɢᴏᴏᴅ {1}, {0}!</b>
+
+╭━━━━━━━━━━━━━━━━━━╮
+│ 🎬 <b>ғɪʟᴇ ʀᴇᴀᴅʏ</b>
+╰━━━━━━━━━━━━━━━━━━╯
+
+📁 <b>{2}</b>
+📦 <b>sɪᴢᴇ:</b> {3}
+
+🔗 <b>ʏᴏᴜʀ ғɪʟᴇ ɪs ʀᴇᴀᴅʏ.</b>
+ᴛʜɪs ɪs ᴛʜᴇ ғɪɴᴀʟ sᴛᴇᴘ ᴛᴏ ᴜɴʟᴏᴄᴋ ʏᴏᴜʀ ғɪʟᴇ.
+
+╭──────────────────╮
+│ 🔐 <b>sʜᴏʀᴛʟɪɴᴋ ᴠᴇʀɪғɪᴄᴀᴛɪᴏɴ</b>
+│ 📊 <b>ᴘʀᴏɢʀᴇss:</b> 🔴 <b>3 / 3</b>
+╰──────────────────╯
+
+🔹 <b>sᴛᴇᴘ 3:</b> ᴄᴏᴍᴘʟᴇᴛᴇ ᴛʜᴇ ғɪɴᴀʟ ᴠᴇʀɪғɪᴄᴀᴛɪᴏɴ ᴛᴏ ᴜɴʟᴏᴄᴋ ᴛʜᴇ ғɪʟᴇ.</b>"""
+
     VERIFIED_LOG_TEXT = """<b><u>☄ є∂ιтн ᴜsᴇʀ ᴠᴇʀɪꜰɪᴇᴅ sᴜᴄᴄᴇssꜰᴜʟʟʏ ☄</u>
 
 ⚡️ ɴᴀᴍᴇ:- {} [ <code>{}</code> ] 
@@ -286,12 +353,6 @@ User - {}"""
     
 <blockquote>🎖️ᴀᴠᴀɪʟᴀʙʟᴇ ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴꜱ :</blockquote>
 
-❏ ₹023   ➠   01 WEEK  
-❏ ₹059   ➠   01 MONTH 🔥  
-❏ ₹149   ➠   03 MONTH   
-❏ ₹269   ➠   06 MONTH  
-❏ ₹499   ➠   12 MONTH 💰
-❏ ₹999   ➠   LIFE TIME + VIP SUPPORT
 
 🆔 ᴜᴘɪ ɪᴅ ➩ <code>lamasandeep821@okicici</code> [ᴛᴀᴘ ᴛᴏ ᴄᴏᴘʏ]
  
@@ -324,6 +385,12 @@ User - {}"""
 -------------User Premium------------
 ➩ /add_premium {user ID} {Times} - Add a premium user
 ➩ /remove_premium {user ID} - Remove a premium user
+➩ /pending - Pending screenshot payments
+➩ /premium {user ID} - Premium/payment details
+➩ /approve {user ID} - Mark payment manually verified
+➩ /remove {user ID} - Immediately remove Premium
+➩ /expire - Run expiry checker now
+➩ /renew {user ID} {plan} - Manually renew Premium
 ➩ /add_redeem - Generate a redeem code
 ➩ /premium_users - List all premium users
 ➩ /refresh - Refresh free trial for users
@@ -413,9 +480,9 @@ Aᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ᴀɴᴅ ᴍᴀᴋᴇ ᴍᴇ ᴀ�
 /movie_update_on - Movie Update on</blockquote></b>"""
 
     SOURCE_TXT = """<b>
-ꜱᴏᴜʀᴄᴇ ᴄᴏᴅᴇ ʜᴇʀᴇ ◉› :<blockquote><a href="https://t.me/Sandymaiwait">&lt;Click Here&gt;</a></blockquote>
+ꜱᴏᴜʀᴄᴇ ᴄᴏᴅᴇ ʜᴇʀᴇ ◉› :<blockquote><a href="@Sandymaiwait">&lt;Click Here&gt;</a></blockquote>
 
-ᴍᴀɪɴᴛᴀɪɴᴇᴅ ʙʏ : @Sandymaiwait
+ᴍᴀɪɴᴛᴀɪɴᴇᴅ ʙʏ : @jisshu_bots
 </b>"""
     GROUP_C_TEXT = """<b><blockquote>
  --------------Set Verify-------------
@@ -444,6 +511,4 @@ Aᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ᴀɴᴅ ᴍᴀᴋᴇ ᴍᴇ ᴀ�
 ʏᴏᴜ ᴄᴀɴ ᴄʜᴇᴄᴋ ʏᴏᴜʀ ᴀʟʟ ᴅᴇᴛᴀɪʟs 
 ʙʏ /details ᴄᴏᴍᴍᴀɴᴅ
 </blockquote>
-Iғ ʏᴏᴜ ʜᴀᴠᴇ ᴀɴʏ ᴅᴏᴜʙᴛs ᴘʟᴇᴀsᴇ <a href="@Sandymaiwait">ᴄᴏɴᴛᴀᴄᴛ</a> ᴍʏ <a href="@Sandymaiwait">SANDY ♡</a></b>"""
-
-
+Iғ ʏᴏᴜ ʜᴀᴠᴇ ᴀɴʏ ᴅᴏᴜʙᴛs ᴘʟᴇᴀsᴇ <a href="@Sandymaiwait">ᴄᴏɴᴛᴀᴄᴛ</a> ᴍʏ <a href="@Sandymaiwait">Z I Ƨ Ή Λ П ♡</a></b>"""
