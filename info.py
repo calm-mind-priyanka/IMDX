@@ -21,6 +21,29 @@ API_HASH = environ.get("API_HASH", "6dd2dc70434b2f577f76a2e993135662")
 BOT_TOKEN = environ.get("BOT_TOKEN", "")
 PORT = environ.get("PORT", "8082")
 
+
+# Premium payment bot (optional second Telegram bot used only for screenshots).
+PAYMENT_BOT_TOKEN = environ.get("PAYMENT_BOT_TOKEN", "")
+PAYMENT_BOT_USERNAME = environ.get("PAYMENT_BOT_USERNAME", "@Sandydeveloper_bot").lstrip("@")
+PAYMENT_ADMIN_IDS = [
+    int(admin) for admin in environ.get("PAYMENT_ADMIN_IDS", "6046055058").split()
+    if admin.lstrip("-").isdigit()
+]
+PAYMENT_OCR_ENABLED = is_enabled(environ.get("PAYMENT_OCR_ENABLED", "True"), True)
+PAYMENT_TIME_APPROVAL_ENABLED = is_enabled(environ.get("PAYMENT_TIME_APPROVAL_ENABLED", "False"), False)
+PAYMENT_MAX_DELAY_MINUTES = int(environ.get("PAYMENT_MAX_DELAY_MINUTES", "10"))
+PAYMENT_FUTURE_TOLERANCE_MINUTES = int(environ.get("PAYMENT_FUTURE_TOLERANCE_MINUTES", "15"))
+PAYMENT_OCR_PASS_TIMEOUT = max(3, int(environ.get("PAYMENT_OCR_PASS_TIMEOUT", "8")))
+PAYMENT_OCR_JOB_TIMEOUT_SECONDS = max(15, int(environ.get("PAYMENT_OCR_JOB_TIMEOUT_SECONDS", "45")))
+PREMIUM_PLANS = {
+    "week": {"name": "01 WEEK", "duration": "7 days", "days": 7, "price": "₹23"},
+    "month": {"name": "01 MONTH", "duration": "30 days", "days": 30, "price": "₹59"},
+    "3month": {"name": "03 MONTH", "duration": "90 days", "days": 90, "price": "₹149"},
+    "6month": {"name": "06 MONTH", "duration": "180 days", "days": 180, "price": "₹269"},
+    "year": {"name": "12 MONTH", "duration": "365 days", "days": 365, "price": "₹499"},
+    "lifetime": {"name": "LIFE TIME", "duration": "Lifetime", "days": None, "price": "₹999"},
+}
+
 # Owners
 ADMINS = [
     int(admin) if id_pattern.search(admin) else admin
@@ -88,6 +111,7 @@ SHORTENER_API3 = environ.get(
 SHORTENER_WEBSITE3 = environ.get("SHORTENER_WEBSITE3", "CPMShort.com")
 TWO_VERIFY_GAP = int(environ.get("TWO_VERIFY_GAP", "300"))
 THREE_VERIFY_GAP = int(environ.get("THREE_VERIFY_GAP", "300"))
+FILE_MODE_CAPTION = environ.get("FILE_MODE_CAPTION", script.FILE_MODE_CAPTION)
 
 # Language & Quality & Season & Year
 LANGUAGES = [
@@ -180,6 +204,12 @@ admin_cmds = [
     "/add_premium - Add A User To Premium",
     "/premium_users - View All Premium Users",
     "/remove_premium - Remove A User's Premium Status",
+    "/pending - View payments waiting for manual verification",
+    "/premium - View a user's Premium details",
+    "/approve - Mark a payment as manually verified",
+    "/remove - Immediately remove a user's Premium access",
+    "/expire - Run the Premium expiry checker",
+    "/renew - Manually renew a user's Premium plan",
     "/add_redeem - Generate A Redeem Code",
     "/refresh - Refresh Free Trail",
     "/set_muc - Set Movie Update Channel",
