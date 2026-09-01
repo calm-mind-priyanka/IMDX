@@ -48,12 +48,56 @@ movie_series_db = JsTopDB(DATABASE_URI)
 verification_ids = {}
 
 
+def _file_mode_greeting():
+    hour = dt.now(pytz.timezone("Asia/Kolkata")).hour
+    if 5 <= hour < 12:
+        return "ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ"
+    if 12 <= hour < 17:
+        return "ɢᴏᴏᴅ ᴀғᴛᴇʀɴᴏᴏɴ"
+    if 17 <= hour < 21:
+        return "ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ"
+    return "ɢᴏᴏᴅ ɴɪɢʜᴛ"
+
+
+def _file_mode_caption(settings, file, mention):
+    template = settings.get("file_mode_caption") or FILE_MODE_CAPTION
+    return template.format(
+        greeting=_file_mode_greeting(),
+        mention=mention or "ᴜsᴇʀ",
+        file_name=formate_file_name(file.file_name),
+        file_size=get_size(file.file_size),
+        file_caption=file.caption or "",
+    )
+
+
+def _file_mode_markup(settings, file_id):
+    tutorial = settings.get("tutorial", TUTORIAL)
+    mode = settings.get("file_mode_type", "verify")
+    if mode == "shortlink":
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("📎 ꜱʜᴏʀᴛʟɪɴᴋ", callback_data=f"stream#{file_id}")],
+            [InlineKeyboardButton("💎 ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ", callback_data="getpremium")],
+        ])
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📁 ꜰɪʟᴇ", callback_data=f"stream#{file_id}"),
+         InlineKeyboardButton("ʜᴏᴡ ᴛᴏ ᴠᴇʀɪғʏ ❓", url=tutorial)],
+        [InlineKeyboardButton("💎 ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ", callback_data="getpremium")],
+    ])
+
+
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client: Client, message):
     await message.react(emoji=random.choice(REACTIONS))
     m = message
     user_id = m.from_user.id
-    if len(m.command) == 2 and m.command[1].startswith("notcopy"):
+    if message.chat.type == enums.ChatType.PRIVATE and len(m.command) == 2 and m.command[1].startswith("settings_"):
+        from plugins.advanced_settings import show_group_list, show_group_settings
+        try:
+            grp_id = int(m.command[1].split("_", 1)[1])
+        except (TypeError, ValueError):
+            return await show_group_list(client, message)
+        return await show_group_settings(client, message, grp_id)
+    if len(m.command) == 2 and m.command[1].startswith(("notcopy_", "jisshu_")):
         _, userid, verify_id, file_id = m.command[1].split("_", 3)
         user_id = int(userid)
         grp_id = temp.CHAT.get(user_id, 0)
@@ -297,161 +341,189 @@ async def start(client: Client, message):
     except:
         pre, grp_id, file_id = "", 0, data
 
-    settings = await get_settings(int(data.split("_", 2)[1]))
-    if settings.get("fsub_id", AUTH_CHANNEL) == AUTH_REQ_CHANNEL:
-        if AUTH_REQ_CHANNEL and not await is_req_subscribed(client, message):
-            try:
-                invite_link = await client.create_chat_invite_link(
-                    int(AUTH_REQ_CHANNEL), creates_join_request=True
-                )
-            except ChatAdminRequired:
-                logger.error("Make sure Bot is admin in Forcesub channel")
-                return
-            btn = [
-                [InlineKeyboardButton("⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️", url=invite_link.invite_link)]
-            ]
-            if message.command[1] != "subscribe":
-                btn.append(
-                    [
-                        InlineKeyboardButton(
-                            "♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️",
-                            url=f"https://t.me/{temp.U_NAME}?start={message.command[1]}",
-                        )
-                    ]
-                )
-            await client.send_photo(
-                chat_id=message.from_user.id,
-                photo=FORCESUB_IMG,
-                caption=script.FORCESUB_TEXT,
-                reply_markup=InlineKeyboardMarkup(btn),
-                parse_mode=enums.ParseMode.HTML,
-            )
-            return
-    else:
-        id = settings.get("fsub_id", AUTH_CHANNEL)
-        channel = int(id)
-        btn = []
-        if channel != AUTH_CHANNEL and not await is_subscribed(
-            client, message.from_user.id, channel
-        ):
-            invite_link_custom = await client.create_chat_invite_link(channel)
-            btn.append(
-                [
-                    InlineKeyboardButton(
-                        "⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️", url=invite_link_custom.invite_link
-                    )
-                ]
-            )
-        if not await is_req_subscribed(client, message):
-            invite_link_default = await client.create_chat_invite_link(
-                int(AUTH_CHANNEL), creates_join_request=True
-            )
-            btn.append(
-                [
-                    InlineKeyboardButton(
-                        "⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️", url=invite_link_default.invite_link
-                    )
-                ]
-            )
-        if message.command[1] != "subscribe" and (
-            await is_req_subscribed(client, message) is False
-            or await is_subscribed(client, message.from_user.id, channel) is False
-        ):
-            btn.append(
-                [
-                    InlineKeyboardButton(
-                        "♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️",
-                        url=f"https://t.me/{temp.U_NAME}?start={message.command[1]}",
-                    )
-                ]
-            )
-        if btn:
-            await client.send_photo(
-                chat_id=message.from_user.id,
-                photo=FORCESUB_IMG,
-                caption=script.FORCESUB_TEXT,
-                reply_markup=InlineKeyboardMarkup(btn),
-                parse_mode=enums.ParseMode.HTML,
-            )
-            return
+    # filemode/allfilesmode are reached only after the user has completed the
+    # File Mode shortlink. They must bypass the verification gate and then be
+    # sent as normal files with the group's original caption/buttons.
+    file_mode_completed = pre in ("filemode", "allfilesmode")
 
+    # Premium users must bypass the access gates and reach the original file
+    # delivery path. This uses the same DB record as /add_premium.
     user_id = m.from_user.id
-    if not await db.has_premium_access(user_id):
+    premium_active = await db.has_premium_access(user_id)
+
+    # Premium is the first access decision. Do not require group settings,
+    # force-subscription, or verification before checking the real Premium
+    # record used by /add_premium.
+    settings = await get_settings(int(grp_id)) if int(grp_id) else {}
+    if not premium_active:
+        # Preserve the legacy fsub_id field while allowing the settings UI to manage
+        # multiple force-subscribe channels independently for each group.
+        fsub_channels = settings.get("fsub_channels") or [settings.get("fsub_id", AUTH_CHANNEL)]
+        try:
+            fsub_channels = [int(c) for c in fsub_channels]
+        except (TypeError, ValueError):
+            fsub_channels = [int(AUTH_CHANNEL)]
+
+        if AUTH_REQ_CHANNEL and int(AUTH_REQ_CHANNEL) in fsub_channels:
+            if not await is_req_subscribed(client, message):
+                try:
+                    invite_link = await client.create_chat_invite_link(
+                        int(AUTH_REQ_CHANNEL), creates_join_request=True
+                    )
+                except ChatAdminRequired:
+                    logger.error("Make sure Bot is admin in Forcesub channel")
+                    return
+                btn = [[InlineKeyboardButton("⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️", url=invite_link.invite_link)]]
+                if message.command[1] != "subscribe":
+                    btn.append([[InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", url=f"https://t.me/{temp.U_NAME}?start={message.command[1]}")]][0])
+                await client.send_photo(
+                    chat_id=message.from_user.id, photo=FORCESUB_IMG, caption=script.FORCESUB_TEXT,
+                    reply_markup=reply_markup, parse_mode=enums.ParseMode.HTML,
+                )
+                return
+        else:
+            btn = []
+            missing_custom = False
+            for channel in fsub_channels:
+                if channel == int(AUTH_CHANNEL):
+                    continue
+                try:
+                    subscribed = await is_subscribed(client, message.from_user.id, channel)
+                except Exception:
+                    subscribed = False
+                if not subscribed:
+                    missing_custom = True
+                    try:
+                        invite = await client.create_chat_invite_link(channel)
+                        btn.append([InlineKeyboardButton("⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️", url=invite.invite_link)])
+                    except Exception:
+                        pass
+
+            default_missing = not await is_req_subscribed(client, message)
+            if default_missing:
+                try:
+                    invite_link_default = await client.create_chat_invite_link(int(AUTH_CHANNEL), creates_join_request=True)
+                    btn.append([InlineKeyboardButton("⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️", url=invite_link_default.invite_link)])
+                except Exception:
+                    pass
+
+            if message.command[1] != "subscribe" and (missing_custom or default_missing):
+                btn.append([InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", url=f"https://t.me/{temp.U_NAME}?start={message.command[1]}")])
+            if btn:
+                await client.send_photo(
+                    chat_id=message.from_user.id, photo=FORCESUB_IMG, caption=script.FORCESUB_TEXT,
+                    reply_markup=reply_markup, parse_mode=enums.ParseMode.HTML,
+                )
+                return
+
+    if not premium_active:
         grp_id = int(grp_id)
         print(f"Group Id - {grp_id}")
         user_verified = await db.is_user_verified(user_id)
         settings = await get_settings(grp_id)
         print(f"Id Settings - {settings}")
-        is_second_shortener = await db.use_second_shortener(
-            user_id, settings.get("verify_time", TWO_VERIFY_GAP)
+        verification_enabled = bool(settings.get("is_verify", IS_VERIFY))
+
+        # File Mode VERIFY and SHORTLINK use the SAME verification state.
+        # The selected file mode must never reset the user's 1/3 -> 2/3 -> 3/3
+        # progress or bypass the existing verification-gap logic.
+
+        # IMPORTANT:
+        # Both VERIFY and SHORTLINK modes intentionally use this same
+        # verification block. The mode changes only the presentation; the
+        # user's verification state and the existing 1st/2nd/3rd gap logic
+        # remain shared.
+
+        # Secondary/third shortener states are ignored completely when the
+        # master Verification switch is OFF.
+        is_second_shortener = (
+            await db.use_second_shortener(user_id, settings.get("verify_time", TWO_VERIFY_GAP))
+            if verification_enabled else False
         )
-        is_third_shortener = await db.use_third_shortener(
-            user_id, settings.get("third_verify_time", THREE_VERIFY_GAP)
+        is_third_shortener = (
+            await db.use_third_shortener(user_id, settings.get("third_verify_time", THREE_VERIFY_GAP))
+            if verification_enabled else False
         )
-        if (
-            settings.get("is_verify", IS_VERIFY)
-            and not user_verified
-            or is_second_shortener
-            or is_third_shortener
-        ):
-            verify_id = "".join(
-                random.choices(string.ascii_uppercase + string.digits, k=7)
-            )
+
+        if (not file_mode_completed) and verification_enabled and ((not user_verified) or is_second_shortener or is_third_shortener):
+            verify_id = "".join(random.choices(string.ascii_uppercase + string.digits, k=7))
             await db.create_verify_id(user_id, verify_id)
             temp.CHAT[user_id] = grp_id
             if message.command[1].startswith("allfiles"):
                 verify = await get_shortlink(
                     f"https://telegram.me/{temp.U_NAME}?start=jisshu_{user_id}_{verify_id}_{file_id}",
-                    grp_id,
-                    is_second_shortener,
-                    is_third_shortener,
+                    grp_id, is_second_shortener, is_third_shortener,
                 )
             else:
                 verify = await get_shortlink(
                     f"https://telegram.me/{temp.U_NAME}?start=notcopy_{user_id}_{verify_id}_{file_id}",
-                    grp_id,
-                    is_second_shortener,
-                    is_third_shortener,
+                    grp_id, is_second_shortener, is_third_shortener,
                 )
             if is_third_shortener:
                 howtodownload = settings.get("tutorial_3", TUTORIAL_3)
             else:
-                howtodownload = (
-                    settings.get("tutorial_2", TUTORIAL_2)
-                    if is_second_shortener
-                    else settings.get("tutorial", TUTORIAL)
-                )
+                howtodownload = settings.get("tutorial_2", TUTORIAL_2) if is_second_shortener else settings.get("tutorial", TUTORIAL)
+            shortlink_mode = (
+                settings.get("file_mode", False)
+                and settings.get("file_mode_type", "verify") == "shortlink"
+            )
+            verify_button_text = "🔗 ɢᴇᴛ ꜱʜᴏʀᴛʟɪɴᴋ 🔗" if shortlink_mode else "✅ ᴠᴇʀɪꜰʏ ✅"
+            how_button_text = "ʜᴏᴡ ᴛᴏ ᴅᴏᴡɴʟᴏᴀᴅ ❓" if shortlink_mode else "ʜᴏᴡ ᴛᴏ ᴠᴇʀɪꜰʏ❓"
             buttons = [
-                [
-                    InlineKeyboardButton(text="✅ ᴠᴇʀɪꜰʏ ✅", url=verify),
-                    InlineKeyboardButton(text="ʜᴏᴡ ᴛᴏ ᴠᴇʀɪꜰʏ❓", url=howtodownload),
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="😁 ʙᴜʏ sᴜʙsᴄʀɪᴘᴛɪᴏɴ - ɴᴏ ɴᴇᴇᴅ ᴛᴏ ᴠᴇʀɪғʏ 😁",
-                        callback_data="getpremium",
-                    ),
-                ],
+                [InlineKeyboardButton(text=verify_button_text, url=verify), InlineKeyboardButton(text=how_button_text, url=howtodownload)],
+                [InlineKeyboardButton(text="😁 ʙᴜʏ sᴜʙsᴄʀɪᴘᴛɪᴏɴ - ɴᴏ ɴᴇᴇᴅ ᴛᴏ ᴠᴇʀɪғʏ 😁", callback_data="getpremium")],
             ]
             reply_markup = InlineKeyboardMarkup(buttons)
-            if await db.user_verified(user_id):
+            if shortlink_mode:
+                if await db.user_verified(user_id):
+                    msg = script.SHORTLINK_THIRD_VERIFICATION_TEXT
+                else:
+                    msg = (
+                        script.SHORTLINK_SECOND_VERIFICATION_TEXT
+                        if is_second_shortener
+                        else script.SHORTLINK_VERIFICATION_TEXT
+                    )
+            elif await db.user_verified(user_id):
                 msg = script.THIRDT_VERIFICATION_TEXT
             else:
-                msg = (
-                    script.SECOND_VERIFICATION_TEXT
-                    if is_second_shortener
-                    else script.VERIFICATION_TEXT
+                msg = script.SECOND_VERIFICATION_TEXT if is_second_shortener else script.VERIFICATION_TEXT
+            if shortlink_mode:
+                # Shortlink mode shows the same dynamic movie/file information
+                # as the File Mode caption, while keeping the Shortlink 1/3 →
+                # 2/3 → 3/3 progress section. VERIFY mode is unchanged.
+                shortlink_file = (await get_file_details(file_id) or [None])[0]
+                if shortlink_file:
+                    d = await m.reply_text(
+                        text=msg.format(
+                            message.from_user.mention,
+                            _file_mode_greeting(),
+                            formate_file_name(shortlink_file.file_name),
+                            get_size(shortlink_file.file_size),
+                        ),
+                        protect_content=True, reply_markup=reply_markup,
+                        parse_mode=enums.ParseMode.HTML,
+                    )
+                else:
+                    d = await m.reply_text(
+                        text=msg.format(message.from_user.mention, _file_mode_greeting(), "File", "N/A"),
+                        protect_content=True, reply_markup=reply_markup,
+                        parse_mode=enums.ParseMode.HTML,
+                    )
+            else:
+                d = await m.reply_text(
+                    text=msg.format(message.from_user.mention, get_status()),
+                    protect_content=True, reply_markup=reply_markup,
+                    parse_mode=enums.ParseMode.HTML,
                 )
-            d = await m.reply_text(
-                text=msg.format(message.from_user.mention, get_status()),
-                protect_content=True,
-                reply_markup=reply_markup,
-                parse_mode=enums.ParseMode.HTML,
-            )
             await asyncio.sleep(300)
             await d.delete()
             await m.delete()
             return
+
+    if pre == "filemode":
+        data = f"file_{grp_id}_{file_id}"
+    elif pre == "allfilesmode":
+        data = f"allfiles_{grp_id}_{file_id}"
 
     if data and data.startswith("allfiles"):
         _, grp_id, key = data.split("_", 2)
@@ -460,44 +532,51 @@ async def start(client: Client, message):
             await message.reply_text("<b>⚠️ ᴀʟʟ ꜰɪʟᴇs ɴᴏᴛ ꜰᴏᴜɴᴅ ⚠️</b>")
             return
         files_to_delete = []
+        delete_delay = None
+        auto_delete_enabled = False
         for file in files:
-            user_id = message.from_user.id
-            grp_id = temp.CHAT.get(user_id)
-            settings = await get_settings(grp_id)
+            # grp_id is encoded in allfiles_<grp_id>_<key>; do not depend on
+            # temp.CHAT for direct/Premium starts.
+            settings = await get_settings(int(grp_id))
+            auto_delete_enabled = bool(settings.get("auto_delete", False))
+            try:
+                delete_delay = max(1, int(settings.get("delete_time", FILE_AUTO_DEL_TIMER)))
+            except (TypeError, ValueError):
+                delete_delay = max(1, int(FILE_AUTO_DEL_TIMER))
+            # File Mode is only the access gate. Once the user reaches this
+            # delivery path, always restore the group's original caption and
+            # normal direct-file button.
             CAPTION = settings["caption"]
             f_caption = CAPTION.format(
                 file_name=formate_file_name(file.file_name),
                 file_size=get_size(file.file_size),
                 file_caption=file.caption,
             )
-            btn = [
-                [
-                    InlineKeyboardButton(
-                        "✛ ᴡᴀᴛᴄʜ & ᴅᴏᴡɴʟᴏᴀᴅ ✛", callback_data=f"stream#{file.file_id}"
-                    )
-                ]
-            ]
+            reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(
+                "✛ ᴡᴀᴛᴄʜ & ᴅᴏᴡɴʟᴏᴀᴅ ✛", callback_data=f"stream#{file.file_id}"
+            )]])
             toDel = await client.send_cached_media(
                 chat_id=message.from_user.id,
                 file_id=file.file_id,
                 caption=f_caption,
-                reply_markup=InlineKeyboardMarkup(btn),
+                protect_content=bool(settings.get("file_secure", PROTECT_CONTENT)),
+                reply_markup=reply_markup,
             )
             files_to_delete.append(toDel)
 
         delCap = "<i>ᴀʟʟ {} ꜰɪʟᴇꜱ ᴡɪʟʟ ʙᴇ ᴅᴇʟᴇᴛᴇᴅ ᴀꜰᴛᴇʀ {} ᴛᴏ ᴀᴠᴏɪᴅ ᴄᴏᴘʏʀɪɢʜᴛ ᴠɪᴏʟᴀᴛɪᴏɴs!</i>".format(
             len(files_to_delete),
             (
-                f"{FILE_AUTO_DEL_TIMER / 60} ᴍɪɴᴜᴛᴇs"
-                if FILE_AUTO_DEL_TIMER >= 60
+                f"{delete_delay / 60} ᴍɪɴᴜᴛᴇs"
+                if delete_delay >= 60
                 else f"{FILE_AUTO_DEL_TIMER} sᴇᴄᴏɴᴅs"
             ),
         )
         afterDelCap = "<i>ᴀʟʟ {} ꜰɪʟᴇꜱ ᴀʀᴇ ᴅᴇʟᴇᴛᴇᴅ ᴀꜰᴛᴇʀ {} ᴛᴏ ᴀᴠᴏɪᴅ ᴄᴏᴘʏʀɪɢʜᴛ ᴠɪᴏʟᴀᴛɪᴏɴs!</i>".format(
             len(files_to_delete),
             (
-                f"{FILE_AUTO_DEL_TIMER / 60} ᴍɪɴᴜᴛᴇs"
-                if FILE_AUTO_DEL_TIMER >= 60
+                f"{delete_delay / 60} ᴍɪɴᴜᴛᴇs"
+                if delete_delay >= 60
                 else f"{FILE_AUTO_DEL_TIMER} sᴇᴄᴏɴᴅs"
             ),
         )
@@ -522,41 +601,56 @@ async def start(client: Client, message):
         return await message.reply("<b>⚠️ ᴀʟʟ ꜰɪʟᴇs ɴᴏᴛ ꜰᴏᴜɴᴅ ⚠️</b>")
     files = files_[0]
     settings = await get_settings(grp_id)
+    auto_delete_enabled = bool(settings.get("auto_delete", False))
+    try:
+        delete_delay = max(1, int(settings.get("delete_time", FILE_AUTO_DEL_TIMER)))
+    except (TypeError, ValueError):
+        delete_delay = max(1, int(FILE_AUTO_DEL_TIMER))
+    # This is the final delivery stage, so File Mode must never be rendered
+    # again here. File Mode is only used before access is granted.
     CAPTION = settings["caption"]
     f_caption = CAPTION.format(
         file_name=formate_file_name(files.file_name),
         file_size=get_size(files.file_size),
         file_caption=files.caption,
     )
-    btn = [
-        [
-            InlineKeyboardButton(
-                "✛ ᴡᴀᴛᴄʜ & ᴅᴏᴡɴʟᴏᴀᴅ ✛", callback_data=f"stream#{file_id}"
-            )
-        ]
-    ]
+    reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(
+        "✛ ᴡᴀᴛᴄʜ & ᴅᴏᴡɴʟᴏᴀᴅ ✛", callback_data=f"stream#{file_id}"
+    )]])
     toDel = await client.send_cached_media(
         chat_id=message.from_user.id,
         file_id=file_id,
         caption=f_caption,
-        reply_markup=InlineKeyboardMarkup(btn),
+        protect_content=bool(settings.get("file_secure", PROTECT_CONTENT)),
+        reply_markup=reply_markup,
     )
     delCap = "<i>ʏᴏᴜʀ ꜰɪʟᴇ ᴡɪʟʟ ʙᴇ ᴅᴇʟᴇᴛᴇᴅ ᴀғᴛᴇʀ {} ᴛᴏ ᴀᴠᴏɪᴅ ᴄᴏᴘʏʀɪɢʜᴛ ᴠɪᴏʟᴀᴛɪᴏɴs!</i>".format(
-        f"{FILE_AUTO_DEL_TIMER / 60} ᴍɪɴᴜᴛᴇs"
-        if FILE_AUTO_DEL_TIMER >= 60
+        f"{delete_delay / 60} ᴍɪɴᴜᴛᴇs"
+        if delete_delay >= 60
         else f"{FILE_AUTO_DEL_TIMER} sᴇᴄᴏɴᴅs"
     )
     afterDelCap = (
         "<i>ʏᴏᴜʀ ꜰɪʟᴇ ɪs ᴅᴇʟᴇᴛᴇᴅ ᴀғᴛᴇʀ {} ᴛᴏ ᴀᴠᴏɪᴅ ᴄᴏᴘʏʀɪɢʜᴛ ᴠɪᴏʟᴀᴛɪᴏɴs!</i>".format(
-            f"{FILE_AUTO_DEL_TIMER / 60} ᴍɪɴᴜᴛᴇs"
-            if FILE_AUTO_DEL_TIMER >= 60
+            f"{delete_delay / 60} ᴍɪɴᴜᴛᴇs"
+            if delete_delay >= 60
             else f"{FILE_AUTO_DEL_TIMER} sᴇᴄᴏɴᴅs"
         )
     )
+    if not auto_delete_enabled:
+        return
     replyed = await message.reply(delCap, reply_to_message_id=toDel.id)
-    await asyncio.sleep(FILE_AUTO_DEL_TIMER)
-    await toDel.delete()
-    return await replyed.edit(afterDelCap)
+    async def _delete_file_after():
+        await asyncio.sleep(delete_delay)
+        try:
+            await toDel.delete()
+        except Exception:
+            pass
+        try:
+            await replyed.edit(afterDelCap)
+        except Exception:
+            pass
+    asyncio.create_task(_delete_file_after())
+    return
 
 
 @Client.on_message(filters.command("delete"))
@@ -628,7 +722,7 @@ async def delete_all_index(bot, message):
         return
     await message.reply_text(
         "<b>ᴛʜɪs ᴡɪʟʟ ᴅᴇʟᴇᴛᴇ ᴀʟʟ ɪɴᴅᴇxᴇᴅ ꜰɪʟᴇs.\nᴅᴏ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴄᴏɴᴛɪɴᴜᴇ??</b>",
-        reply_markup=InlineKeyboardMarkup(btn),
+        reply_markup=reply_markup,
     )
 
 
@@ -636,81 +730,28 @@ async def delete_all_index(bot, message):
 async def settings(client, message):
     user_id = message.from_user.id if message.from_user else None
     if not user_id:
-        return await message.reply(
-            "<b>💔 ʏᴏᴜ ᴀʀᴇ ᴀɴᴏɴʏᴍᴏᴜꜱ ᴀᴅᴍɪɴ ʏᴏᴜ ᴄᴀɴ'ᴛ ᴜꜱᴇ ᴛʜɪꜱ ᴄᴏᴍᴍᴀɴᴅ...</b>"
-        )
-    chat_type = message.chat.type
-    if chat_type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-        return await message.reply_text("<code>ᴜꜱᴇ ᴛʜɪꜱ ᴄᴏᴍᴍᴀɴᴅ ɪɴ ɢʀᴏᴜᴘ.</code>")
+        return await message.reply("<b>💔 ʏᴏᴜ ᴀʀᴇ ᴀɴᴏɴʏᴍᴏᴜs ᴀᴅᴍɪɴ ʏᴏᴜ ᴄᴀɴ'ᴛ ᴜsᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ...</b>")
+
+    if message.chat.type == enums.ChatType.PRIVATE:
+        from plugins.advanced_settings import show_group_list
+        return await show_group_list(client, message)
+
+    if message.chat.type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
+        return await message.reply_text("<code>ᴜsᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ɪɴ ɢʀᴏᴜᴘ ᴏʀ ᴘʀɪᴠᴀᴛᴇ.</code>")
+
     grp_id = message.chat.id
-    if not await is_check_admin(client, grp_id, message.from_user.id):
-        return await message.reply_text("<b>ʏᴏᴜ ᴀʀᴇ ɴᴏᴛ ᴀᴅᴍɪɴ ɪɴ ᴛʜɪꜱ ɢʀᴏᴜᴘ</b>")
-    settings = await get_settings(grp_id)
-    title = message.chat.title
-    if settings is not None:
-        buttons = [
-            [
-                InlineKeyboardButton(
-                    "ᴀᴜᴛᴏ ꜰɪʟᴛᴇʀ",
-                    callback_data=f'setgs#auto_filter#{settings["auto_filter"]}#{grp_id}',
-                ),
-                InlineKeyboardButton(
-                    "ᴏɴ ✓" if settings["auto_filter"] else "ᴏғғ ✗",
-                    callback_data=f'setgs#auto_filter#{settings["auto_filter"]}#{grp_id}',
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    "ɪᴍᴅʙ", callback_data=f'setgs#imdb#{settings["imdb"]}#{grp_id}'
-                ),
-                InlineKeyboardButton(
-                    "ᴏɴ ✓" if settings["imdb"] else "ᴏғғ ✗",
-                    callback_data=f'setgs#imdb#{settings["imdb"]}#{grp_id}',
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    "sᴘᴇʟʟ ᴄʜᴇᴄᴋ",
-                    callback_data=f'setgs#spell_check#{settings["spell_check"]}#{grp_id}',
-                ),
-                InlineKeyboardButton(
-                    "ᴏɴ ✓" if settings["spell_check"] else "ᴏғғ ✗",
-                    callback_data=f'setgs#spell_check#{settings["spell_check"]}#{grp_id}',
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    "ᴀᴜᴛᴏ ᴅᴇʟᴇᴛᴇ",
-                    callback_data=f'setgs#auto_delete#{settings["auto_delete"]}#{grp_id}',
-                ),
-                InlineKeyboardButton(
-                    (
-                        f"{get_readable_time(DELETE_TIME)}"
-                        if settings["auto_delete"]
-                        else "ᴏғғ ✗"
-                    ),
-                    callback_data=f'setgs#auto_delete#{settings["auto_delete"]}#{grp_id}',
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    "ʀᴇsᴜʟᴛ ᴍᴏᴅᴇ",
-                    callback_data=f'setgs#link#{settings["link"]}#{str(grp_id)}',
-                ),
-                InlineKeyboardButton(
-                    "⛓ ʟɪɴᴋ" if settings["link"] else "🧲 ʙᴜᴛᴛᴏɴ",
-                    callback_data=f'setgs#link#{settings["link"]}#{str(grp_id)}',
-                ),
-            ],
-            [InlineKeyboardButton("❌ ᴄʟᴏsᴇ ❌", callback_data="close_data")],
-        ]
-        await message.reply_text(
-            text=f"ᴄʜᴀɴɢᴇ ʏᴏᴜʀ sᴇᴛᴛɪɴɢs ꜰᴏʀ <b>'{title}'</b> ᴀs ʏᴏᴜʀ ᴡɪsʜ ✨",
-            reply_markup=InlineKeyboardMarkup(buttons),
-            parse_mode=enums.ParseMode.HTML,
-        )
-    else:
-        await message.reply_text("<b>ꜱᴏᴍᴇᴛʜɪɴɢ ᴡᴇɴᴛ ᴡʀᴏɴɢ</b>")
+    if not await is_check_admin(client, grp_id, user_id):
+        return await message.reply_text("<b>ʏᴏᴜ ᴀʀᴇ ɴᴏᴛ ᴀᴅᴍɪɴ ɪɴ ᴛʜɪs ɢʀᴏᴜᴘ</b>")
+
+    try:
+        pm_url = f"https://t.me/{temp.U_NAME}?start=settings_{grp_id}"
+    except Exception:
+        pm_url = f"https://t.me/{client.me.username}?start=settings_{grp_id}"
+    buttons = [[InlineKeyboardButton("⚠️ GO TO PRIVATE ⚠️", url=pm_url)]]
+    return await message.reply_text(
+        "⚠️ ᴘʟᴇᴀsᴇ ᴏᴘᴇɴ sᴇᴛᴛɪɴɢs ᴍᴇɴᴜ ɪɴ ᴘʀɪᴠᴀᴛᴇ!!",
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
 
 
 @Client.on_message(filters.command("set_template"))
@@ -784,8 +825,10 @@ async def send_request(bot, message):
             )
         ],
     ]
+    req_settings = await get_settings(message.chat.id) if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP] else {}
+    request_target = req_settings.get("request_channel", REQUEST_CHANNEL)
     sent_request = await bot.send_message(
-        REQUEST_CHANNEL,
+        request_target,
         script.REQUEST_TXT.format(
             message.from_user.mention, message.from_user.id, request
         ),
@@ -796,7 +839,7 @@ async def send_request(bot, message):
     ]
     await message.reply_text(
         "<b>✅ sᴜᴄᴄᴇꜱꜱғᴜʟʟʏ ʏᴏᴜʀ ʀᴇǫᴜᴇꜱᴛ ʜᴀꜱ ʙᴇᴇɴ ᴀᴅᴅᴇᴅ, ᴘʟᴇᴀꜱᴇ ᴡᴀɪᴛ ꜱᴏᴍᴇᴛɪᴍᴇ...</b>",
-        reply_markup=InlineKeyboardMarkup(btn),
+        reply_markup=reply_markup,
     )
 
 
@@ -870,7 +913,7 @@ async def deletemultiplefiles(bot, message):
     ]
     await message.reply_text(
         text=f"<b>ᴛᴏᴛᴀʟ ꜰɪʟᴇs ꜰᴏᴜɴᴅ - <code>{total}</code>\n\nᴅᴏ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴄᴏɴᴛɪɴᴜᴇ?\n\nɴᴏᴛᴇ:- ᴛʜɪs ᴄᴏᴜʟᴅ ʙᴇ ᴀ ᴅᴇsᴛʀᴜᴄᴛɪᴠᴇ ᴀᴄᴛɪᴏɴ!!</b>",
-        reply_markup=InlineKeyboardMarkup(btn),
+        reply_markup=reply_markup,
         parse_mode=enums.ParseMode.HTML,
     )
 
