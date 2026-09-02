@@ -4,6 +4,7 @@ from Script import script
 from info import ADMINS, LOG_CHANNEL
 from utils import get_seconds
 from database.users_chats_db import db
+from plugins.premium_payments import _premium_flow_text, _user_language
 from pyrogram import Client, filters
 from pyrogram.errors.exceptions.bad_request_400 import MessageTooLong
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -207,10 +208,12 @@ async def plan(client, message):
     users = message.from_user.mention
     btn = [
         [InlineKeyboardButton("🍁 𝗖𝗹𝗶𝗰𝗸 𝗔𝗹𝗹 𝗣𝗹𝗮𝗻𝘀 & 𝗣𝗿𝗶𝗰𝗲𝘀 🍁", callback_data="free")],
+        [InlineKeyboardButton("🌐 LANGUAGE", callback_data="paylang:menu")],
         [InlineKeyboardButton("❌ ᴄʟᴏꜱᴇ ❌", callback_data="close_data")],
     ]
+    lang = await _user_language(user_id, message.from_user)
     await message.reply_photo(
         photo="https://graph.org/file/55a5392f88ec5a4bd3379.jpg",
-        caption=script.PREPLANS_TXT.format(message.from_user.mention),
+        caption=_premium_flow_text(lang, "intro"),
         reply_markup=InlineKeyboardMarkup(btn),
     )
