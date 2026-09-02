@@ -2,6 +2,7 @@ import datetime
 import pytz
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 # from info import SETTINGS, IS_PM_SEARCH, IS_SEND_MOVIE_UPDATE, PREMIUM_POINT,REF_PREMIUM,IS_VERIFY, SHORTENER_WEBSITE3, SHORTENER_API3, THREE_VERIFY_GAP, LINK_MODE, FILE_CAPTION, TUTORIAL, DATABASE_NAME, DATABASE_URI, IMDB, IMDB_TEMPLATE, PROTECT_CONTENT, AUTO_DELETE, SPELL_CHECK, AUTO_FILTER, LOG_VR_CHANNEL, SHORTENER_WEBSITE, SHORTENER_API, SHORTENER_WEBSITE2, SHORTENER_API2, TWO_VERIFY_GAP
 # from utils import get_seconds
@@ -463,8 +464,18 @@ class Database:
         })
 
     async def record_payment_submission(self, data):
-        """Always retain a screenshot submission, including unmatched ones."""
-        return await self.payment_submissions.insert_one(data)
+        """Record one Telegram screenshot message exactly once.
+
+        The payment bot can occasionally dispatch the same update more than
+        once. The unique (chat_id, message_id) index is the source of truth,
+        so a repeated delivery is treated as an already-processed submission
+        instead of creating another user/admin warning.
+        """
+        try:
+            result = await self.payment_submissions.insert_one(data)
+            return True
+        except DuplicateKeyError:
+            return False
 
 
     async def update_payment_submission(self, user_id, message_id, data):
