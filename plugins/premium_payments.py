@@ -107,12 +107,14 @@ LANGUAGES = {
     "te": "🇮🇳 తెలుగు", "kn": "🇮🇳 ಕನ್ನಡ", "ml": "🇮🇳 മലയാളം",
     "bn": "🇮🇳 বাংলা", "mr": "🇮🇳 मराठी", "gu": "🇮🇳 ગુજરાતી",
     "pa": "🇮🇳 ਪੰਜਾਬੀ", "ur": "🇮🇳 اردو",
+    "as": "🇮🇳 অসমীয়া", "ne": "🇳🇵 नेपाली", "hinglish": "🇮🇳 Hinglish",
 }
 
 LANGUAGE_ALIASES = {
     "en": "en", "en-us": "en", "en-gb": "en",
     "hi": "hi", "ta": "ta", "te": "te", "kn": "kn", "ml": "ml",
     "bn": "bn", "mr": "mr", "gu": "gu", "pa": "pa", "ur": "ur",
+    "as": "as", "ne": "ne", "hinglish": "hinglish", "hi-latn": "hinglish",
 }
 
 I18N = {
@@ -210,6 +212,69 @@ I18N.update({
     },
 })
 
+# Full payment-flow translations for the additional languages.
+I18N.update({
+    "as": {
+        "progress_title": "🔎 <b>Payment screenshot পোৱা গৈছে</b>", "progress_body": "⏳ আপোনাৰ payment সুৰক্ষিতভাৱে পৰীক্ষা কৰা হৈছে। ইয়াত <b>1–2 মিনিট</b> লাগিব পাৰে। Screenshot পুনৰ নপঠিয়াব আৰু আন bot লৈ নাযাব।\n\n✅ পৰীক্ষা সম্পূৰ্ণ হ'লে ফলাফল স্বয়ংক্ৰিয়ভাৱে পাব।",
+        "no_order_title": "⚠️ <b>Premium Order পোৱা নগ'ল</b>", "no_order_body": "আপোনাৰ account-ৰ সৈতে কোনো active Premium Order পোৱা নগ'ল।\nপ্ৰথমে এটা Premium Plan বাছক, payment সম্পূৰ্ণ কৰক আৰু তাৰ পিছত screenshot পঠিয়াওক।\n\n🧹 এই notice 5 মিনিটৰ পিছত নিজে আঁতৰি যাব।",
+        "manual_title": "⚠️ <b>Premium সক্ৰিয় — Payment পৰীক্ষাধীন</b>", "manual_body": "আপোনাৰ payment screenshot auto-approve হোৱা নাই আৰু Admin manual review-লৈ পঠিওৱা হৈছে। আপোনাৰ বাছনি কৰা Premium Plan সাময়িকভাৱে active আছে। Payment ভুল বা misleading পোৱা গ'লে access আঁতৰাব পাৰে।",
+        "activated": "Premium ক্ৰয় কৰাৰ বাবে ধন্যবাদ!", "renewed": "Premium renew কৰাৰ বাবে ধন্যবাদ!", "approved": "আপোনাৰ payment নিশ্চিত কৰা হৈছে। Premium access active আছে।", "rejected": "এই payment-ৰ বাবে দিয়া Premium access আঁতৰোৱা হৈছে। ভুল বুলি ভাবিলে Admin-ৰ সৈতে যোগাযোগ কৰক।", "expired": "আপোনাৰ Premium access শেষ হৈছে।\n\n🔄 আগবঢ়িবলৈ নতুন Premium Plan ক্ৰয় কৰক।", "expiring": "সেৱা চলাই নিবলৈ আপোনাৰ Premium Plan renew কৰক।", "language_title": "🌐 <b>আপোনাৰ ভাষা বাছক</b>", "language_body": "সাধাৰণ bot messages-ৰ বাবে আপোনাৰ ভাষা বাছক। আপুনি পিছতো সলনি কৰিব পাৰে।", "language_saved": "🌐 ভাষা সফলভাৱে সলনি কৰা হৈছে।", "contact": "💬 ADMIN-ৰ সৈতে যোগাযোগ কৰক"
+    },
+    "ne": {
+        "progress_title": "🔎 <b>Payment screenshot प्राप्त भयो</b>", "progress_body": "⏳ तपाईंको payment सुरक्षित रूपमा जाँच भइरहेको छ। यसमा <b>1–2 मिनेट</b> लाग्न सक्छ। Screenshot फेरि नपठाउनुहोस् र अर्को bot मा नजानुहोस्।\n\n✅ जाँच पूरा भएपछि परिणाम आफैं प्राप्त हुनेछ।",
+        "no_order_title": "⚠️ <b>Premium Order भेटिएन</b>", "no_order_body": "तपाईंको account सँग जोडिएको active Premium Order भेटिएन।\nपहिले Premium Plan छान्नुहोस्, payment पूरा गर्नुहोस् र त्यसपछि screenshot पठाउनुहोस्।\n\n🧹 यो notice 5 मिनेटपछि आफैं हट्नेछ।",
+        "manual_title": "⚠️ <b>Premium सक्रिय — Payment Review मा</b>", "manual_body": "तपाईंको payment screenshot स्वतः approve हुन सकेन र Admin manual review का लागि पठाइएको छ। तपाईंले छानेको Premium Plan अस्थायी रूपमा active छ। Payment गलत वा misleading भए access हटाउन सकिन्छ।",
+        "activated": "Premium किन्नुभएकोमा धन्यवाद!", "renewed": "Premium renew गर्नुभएकोमा धन्यवाद!", "approved": "तपाईंको payment पुष्टि भयो। Premium access active छ।", "rejected": "यस payment का लागि दिइएको Premium access हटाइएको छ। गल्ती हो जस्तो लागेमा Admin लाई सम्पर्क गर्नुहोस्।", "expired": "तपाईंको Premium access सकिएको छ।\n\n🔄 जारी राख्न नयाँ Premium Plan किन्नुहोस्।", "expiring": "सेवा जारी राख्न आफ्नो Premium Plan renew गर्नुहोस्।", "language_title": "🌐 <b>आफ्नो भाषा छान्नुहोस्</b>", "language_body": "सामान्य bot messages का लागि आफ्नो भाषा छान्नुहोस्। तपाईं यसलाई पछि पनि बदल्न सक्नुहुन्छ।", "language_saved": "🌐 भाषा सफलतापूर्वक बदलियो।", "contact": "💬 ADMIN लाई सम्पर्क गर्नुहोस्"
+    },
+    "hinglish": {
+        "progress_title": "🔎 <b>Payment Screenshot Mil Gaya</b>", "progress_body": "⏳ Aapka payment securely check ho raha hai. Isme <b>1–2 minutes</b> lag sakte hain. Screenshot dobara mat bhejo aur kisi aur bot par mat jao.\n\n✅ Check complete hote hi final result automatically mil jayega.",
+        "no_order_title": "⚠️ <b>Premium Order Nahi Mila</b>", "no_order_body": "Aapke account se koi active Premium Order linked nahi mila.\nPehle Premium Plan choose karo, payment complete karo aur phir screenshot yahan bhejo.\n\n🧹 Ye notice 5 minutes baad automatically delete ho jayega.",
+        "manual_title": "⚠️ <b>Premium Activated — Payment Review Mein</b>", "manual_body": "Aapka payment screenshot automatically approve nahi ho saka aur Admin manual review ke liye bheja gaya hai. Aapka selected Premium Plan temporary active hai. Agar payment galat ya misleading mila, to access remove kiya ja sakta hai.",
+        "activated": "Premium purchase karne ke liye thank you!", "renewed": "Premium renew karne ke liye thank you!", "approved": "Aapka payment confirm ho gaya hai. Premium access active hai.", "rejected": "Is payment se diya gaya Premium access remove kar diya gaya hai. Agar aapko lagta hai ye mistake hai, Admin se contact karo.", "expired": "Aapka Premium access khatam ho gaya hai.\n\n🔄 Continue karne ke liye naya Premium Plan purchase karo.", "expiring": "Service continue karne ke liye apna Premium Plan renew karo.", "language_title": "🌐 <b>Apni Language Choose Karo</b>", "language_body": "Normal bot messages ke liye apni language choose karo. Aap ise kabhi bhi change kar sakte ho.", "language_saved": "🌐 Language successfully update ho gayi.", "contact": "💬 ADMIN Se Contact Karo"
+    },
+})
+
+# Clear language-control labels so users understand exactly what this button does.
+I18N.update({
+    "en": {"language_button": "🌐 CHOOSE / CHANGE LANGUAGE", "language_first_guide": "First, choose your language. After you choose it, all Premium and payment messages for your account will use that language."},
+    "hi": {"language_button": "🌐 भाषा चुनें / बदलें", "language_first_guide": "पहले अपनी भाषा चुनें। भाषा चुनने के बाद आपके सभी Premium और payment messages इसी भाषा में दिखेंगे।"},
+    "ta": {"language_button": "🌐 மொழியைத் தேர்வு / மாற்ற", "language_first_guide": "முதலில் உங்கள் மொழியைத் தேர்வு செய்யவும். அதன் பிறகு உங்கள் Premium மற்றும் payment messages அனைத்தும் அந்த மொழியில் காட்டப்படும்."},
+    "te": {"language_button": "🌐 భాషను ఎంచుకోండి / మార్చండి", "language_first_guide": "ముందుగా మీ భాషను ఎంచుకోండి. ఆ తర్వాత మీ Premium మరియు payment messages అన్నీ అదే భాషలో కనిపిస్తాయి."},
+    "kn": {"language_button": "🌐 ಭಾಷೆ ಆಯ್ಕೆ / ಬದಲಿಸಿ", "language_first_guide": "ಮೊದಲು ನಿಮ್ಮ ಭಾಷೆಯನ್ನು ಆಯ್ಕೆಮಾಡಿ. ನಂತರ ನಿಮ್ಮ ಎಲ್ಲಾ Premium ಮತ್ತು payment messages ಅದೇ ಭಾಷೆಯಲ್ಲಿ ಕಾಣಿಸುತ್ತವೆ."},
+    "ml": {"language_button": "🌐 ഭാഷ തിരഞ്ഞെടുക്കുക / മാറ്റുക", "language_first_guide": "ആദ്യം നിങ്ങളുടെ ഭാഷ തിരഞ്ഞെടുക്കുക. അതിന് ശേഷം നിങ്ങളുടെ എല്ലാ Premium, payment messages അതേ ഭാഷയിൽ കാണിക്കും."},
+    "bn": {"language_button": "🌐 ভাষা বাছুন / বদলান", "language_first_guide": "প্রথমে আপনার ভাষা বেছে নিন। এরপর আপনার সব Premium ও payment message সেই ভাষাতেই দেখানো হবে।"},
+    "mr": {"language_button": "🌐 भाषा निवडा / बदला", "language_first_guide": "आधी तुमची भाषा निवडा. त्यानंतर तुमचे सर्व Premium आणि payment messages त्याच भाषेत दिसतील."},
+    "gu": {"language_button": "🌐 ભાષા પસંદ / બદલો", "language_first_guide": "સૌપ્રથમ તમારી ભાષા પસંદ કરો. ત્યાર પછી તમારા બધા Premium અને payment messages એ જ ભાષામાં દેખાશે."},
+    "pa": {"language_button": "🌐 ਭਾਸ਼ਾ ਚੁਣੋ / ਬਦਲੋ", "language_first_guide": "ਪਹਿਲਾਂ ਆਪਣੀ ਭਾਸ਼ਾ ਚੁਣੋ। ਇਸ ਤੋਂ ਬਾਅਦ ਤੁਹਾਡੇ ਸਾਰੇ Premium ਅਤੇ payment messages ਉਸੇ ਭਾਸ਼ਾ ਵਿੱਚ ਦਿਖਣਗੇ।"},
+    "ur": {"language_button": "🌐 زبان منتخب / تبدیل کریں", "language_first_guide": "سب سے پہلے اپنی زبان منتخب کریں۔ اس کے بعد آپ کے تمام Premium اور payment messages اسی زبان میں دکھائے جائیں گے۔"},
+    "as": {"language_button": "🌐 ভাষা বাছক / সলনি কৰক", "language_first_guide": "প্ৰথমে আপোনাৰ ভাষা বাছক। তাৰ পিছত আপোনাৰ সকলো Premium আৰু payment message সেই ভাষাতেই দেখুওৱা হ'ব।"},
+    "ne": {"language_button": "🌐 भाषा छान्नुहोस् / बदल्नुहोस्", "language_first_guide": "पहिले आफ्नो भाषा छान्नुहोस्। त्यसपछि तपाईंका सबै Premium र payment messages यही भाषामा देखाइनेछन्।"},
+    "hinglish": {"language_button": "🌐 Language Choose / Change Karo", "language_first_guide": "Pehle apni language choose karo. Uske baad aapke saare Premium aur payment messages isi language mein dikhenge."},
+})
+
+# Complete user-facing payment result templates. These are used for every
+# selected language so headings/labels do not fall back to English.
+_RESULT_I18N = {
+    "en": {"activated_title":"Premium Activated Successfully!","renewed_title":"Premium Renewed Successfully!","plan":"Plan","duration":"Duration","added":"Added","activated_at":"Activated","expires":"Expires","new_expiry":"New Expiry","status":"Status: Active","thanks_purchase":"Thank you for purchasing Premium!","thanks_renew":"Thank you for renewing Premium!","rejected_title":"Payment Rejected","rejected_body":"The Premium access added for this payment has been removed. Please contact the admin if you think this is a mistake."},
+    "hi": {"activated_title":"Premium सफलतापूर्वक सक्रिय हुआ!","renewed_title":"Premium सफलतापूर्वक Renew हुआ!","plan":"प्लान","duration":"अवधि","added":"जोड़ा गया","activated_at":"सक्रिय किया गया","expires":"समाप्ति","new_expiry":"नई समाप्ति","status":"स्थिति: सक्रिय","thanks_purchase":"Premium खरीदने के लिए धन्यवाद!","thanks_renew":"Premium renew करने के लिए धन्यवाद!","rejected_title":"Payment अस्वीकार किया गया","rejected_body":"इस payment से दिया गया Premium access हटा दिया गया है। गलती लगने पर Admin से संपर्क करें।"},
+    "ta": {"activated_title":"Premium வெற்றிகரமாக செயல்படுத்தப்பட்டது!","renewed_title":"Premium வெற்றிகரமாக Renew செய்யப்பட்டது!","plan":"Plan","duration":"காலம்","added":"சேர்க்கப்பட்டது","activated_at":"செயல்படுத்தப்பட்டது","expires":"காலாவதி","new_expiry":"புதிய காலாவதி","status":"நிலை: Active","thanks_purchase":"Premium வாங்கியதற்கு நன்றி!","thanks_renew":"Premium renew செய்ததற்கு நன்றி!","rejected_title":"Payment நிராகரிக்கப்பட்டது","rejected_body":"இந்த payment மூலம் வழங்கப்பட்ட Premium access நீக்கப்பட்டது. தவறு என நினைத்தால் Admin-ஐ தொடர்புகொள்ளவும்."},
+    "te": {"activated_title":"Premium విజయవంతంగా యాక్టివేట్ అయింది!","renewed_title":"Premium విజయవంతంగా Renew అయింది!","plan":"Plan","duration":"వ్యవధి","added":"జోడించబడింది","activated_at":"యాక్టివేట్ చేసిన సమయం","expires":"గడువు","new_expiry":"కొత్త గడువు","status":"స్థితి: Active","thanks_purchase":"Premium కొనుగోలు చేసినందుకు ధన్యవాదాలు!","thanks_renew":"Premium renew చేసినందుకు ధన్యవాదాలు!","rejected_title":"Payment తిరస్కరించబడింది","rejected_body":"ఈ payment ద్వారా ఇచ్చిన Premium access తొలగించబడింది. ఇది పొరపాటు అనుకుంటే Admin‌ను సంప్రదించండి."},
+    "kn": {"activated_title":"Premium ಯಶಸ್ವಿಯಾಗಿ ಸಕ್ರಿಯಗೊಂಡಿದೆ!","renewed_title":"Premium ಯಶಸ್ವಿಯಾಗಿ Renew ಮಾಡಲಾಗಿದೆ!","plan":"Plan","duration":"ಅವಧಿ","added":"ಸೇರಿಸಲಾಗಿದೆ","activated_at":"ಸಕ್ರಿಯಗೊಳಿಸಿದ ಸಮಯ","expires":"ಅವಧಿ ಮುಗಿಯುವಿಕೆ","new_expiry":"ಹೊಸ ಅವಧಿ","status":"ಸ್ಥಿತಿ: Active","thanks_purchase":"Premium ಖರೀದಿಸಿದ್ದಕ್ಕಾಗಿ ಧನ್ಯವಾದಗಳು!","thanks_renew":"Premium renew ಮಾಡಿದ್ದಕ್ಕಾಗಿ ಧನ್ಯವಾದಗಳು!","rejected_title":"Payment ತಿರಸ್ಕರಿಸಲಾಗಿದೆ","rejected_body":"ಈ payment ಮೂಲಕ ನೀಡಿದ Premium access ತೆಗೆದುಹಾಕಲಾಗಿದೆ. ಇದು ತಪ್ಪು ಎಂದು ಭಾವಿಸಿದರೆ Admin ಅನ್ನು ಸಂಪರ್ಕಿಸಿ."},
+    "ml": {"activated_title":"Premium വിജയകരമായി സജീവമാക്കി!","renewed_title":"Premium വിജയകരമായി Renew ചെയ്തു!","plan":"Plan","duration":"കാലാവധി","added":"ചേർത്തത്","activated_at":"സജീവമാക്കിയ സമയം","expires":"കാലാവധി","new_expiry":"പുതിയ കാലാവധി","status":"സ്ഥിതി: Active","thanks_purchase":"Premium വാങ്ങിയതിന് നന്ദി!","thanks_renew":"Premium renew ചെയ്തതിന് നന്ദി!","rejected_title":"Payment നിരസിച്ചു","rejected_body":"ഈ payment വഴി നൽകിയ Premium access നീക്കം ചെയ്തു. തെറ്റാണെന്ന് തോന്നുന്നുവെങ്കിൽ Admin-നെ ബന്ധപ്പെടുക."},
+    "bn": {"activated_title":"Premium সফলভাবে সক্রিয় হয়েছে!","renewed_title":"Premium সফলভাবে Renew হয়েছে!","plan":"প্ল্যান","duration":"সময়কাল","added":"যোগ হয়েছে","activated_at":"সক্রিয় হয়েছে","expires":"মেয়াদ শেষ","new_expiry":"নতুন মেয়াদ শেষ","status":"স্ট্যাটাস: সক্রিয়","thanks_purchase":"Premium কেনার জন্য ধন্যবাদ!","thanks_renew":"Premium renew করার জন্য ধন্যবাদ!","rejected_title":"Payment প্রত্যাখ্যাত হয়েছে","rejected_body":"এই payment-এর মাধ্যমে দেওয়া Premium access সরিয়ে দেওয়া হয়েছে। ভুল মনে হলে Admin-এর সাথে যোগাযোগ করুন।"},
+    "mr": {"activated_title":"Premium यशस्वीरित्या सक्रिय झाले!","renewed_title":"Premium यशस्वीरित्या Renew झाले!","plan":"प्लॅन","duration":"कालावधी","added":"वाढवले","activated_at":"सक्रिय वेळ","expires":"समाप्ती","new_expiry":"नवीन समाप्ती","status":"स्थिती: सक्रिय","thanks_purchase":"Premium खरेदी केल्याबद्दल धन्यवाद!","thanks_renew":"Premium renew केल्याबद्दल धन्यवाद!","rejected_title":"Payment नाकारले गेले","rejected_body":"या payment मुळे दिलेले Premium access काढून टाकले आहे. चूक वाटत असल्यास Admin शी संपर्क करा."},
+    "gu": {"activated_title":"Premium સફળતાપૂર્વક સક્રિય થયું!","renewed_title":"Premium સફળતાપૂર્વક Renew થયું!","plan":"પ્લાન","duration":"સમયગાળો","added":"ઉમેરાયું","activated_at":"સક્રિય સમય","expires":"સમાપ્તિ","new_expiry":"નવી સમાપ્તિ","status":"સ્થિતિ: સક્રિય","thanks_purchase":"Premium ખરીદવા બદલ આભાર!","thanks_renew":"Premium renew કરવા બદલ આભાર!","rejected_title":"Payment નામંજૂર થયું","rejected_body":"આ payment દ્વારા આપવામાં આવેલ Premium access દૂર કરવામાં આવ્યું છે. ભૂલ લાગે તો Adminનો સંપર્ક કરો."},
+    "pa": {"activated_title":"Premium ਸਫਲਤਾਪੂਰਵਕ ਐਕਟੀਵੇਟ ਹੋ ਗਿਆ!","renewed_title":"Premium ਸਫਲਤਾਪੂਰਵਕ Renew ਹੋ ਗਿਆ!","plan":"ਪਲਾਨ","duration":"ਮਿਆਦ","added":"ਜੋੜਿਆ ਗਿਆ","activated_at":"ਐਕਟੀਵੇਟ ਸਮਾਂ","expires":"ਮਿਆਦ ਖਤਮ","new_expiry":"ਨਵੀਂ ਮਿਆਦ ਖਤਮ","status":"ਸਥਿਤੀ: Active","thanks_purchase":"Premium ਖਰੀਦਣ ਲਈ ਧੰਨਵਾਦ!","thanks_renew":"Premium renew ਕਰਨ ਲਈ ਧੰਨਵਾਦ!","rejected_title":"Payment ਰੱਦ ਕੀਤਾ ਗਿਆ","rejected_body":"ਇਸ payment ਨਾਲ ਦਿੱਤਾ Premium access ਹਟਾ ਦਿੱਤਾ ਗਿਆ ਹੈ। ਜੇ ਇਹ ਗਲਤੀ ਲੱਗਦੀ ਹੈ ਤਾਂ Admin ਨਾਲ ਸੰਪਰਕ ਕਰੋ।"},
+    "ur": {"activated_title":"Premium کامیابی سے فعال ہو گیا!","renewed_title":"Premium کامیابی سے Renew ہو گیا!","plan":"پلان","duration":"مدت","added":"شامل کیا گیا","activated_at":"فعال ہونے کا وقت","expires":"میعاد ختم","new_expiry":"نئی میعاد","status":"حیثیت: فعال","thanks_purchase":"Premium خریدنے کا شکریہ!","thanks_renew":"Premium renew کرنے کا شکریہ!","rejected_title":"Payment مسترد کر دی گئی","rejected_body":"اس payment سے دیا گیا Premium access ہٹا دیا گیا ہے۔ اگر یہ غلطی ہے تو Admin سے رابطہ کریں۔"},
+    "as": {"activated_title":"Premium সফলভাৱে সক্ৰিয় কৰা হৈছে!","renewed_title":"Premium সফলভাৱে Renew কৰা হৈছে!","plan":"Plan","duration":"সময়কাল","added":"যোগ কৰা হৈছে","activated_at":"সক্ৰিয় কৰাৰ সময়","expires":"ম্যাদ শেষ","new_expiry":"নতুন ম্যাদ শেষ","status":"স্থিতি: সক্ৰিয়","thanks_purchase":"Premium ক্ৰয় কৰাৰ বাবে ধন্যবাদ!","thanks_renew":"Premium renew কৰাৰ বাবে ধন্যবাদ!","rejected_title":"Payment নাকচ কৰা হৈছে","rejected_body":"এই payment-ৰ জৰিয়তে দিয়া Premium access আঁতৰাই দিয়া হৈছে। ভুল বুলি ভাবিলে Admin-ৰ সৈতে যোগাযোগ কৰক।"},
+    "ne": {"activated_title":"Premium सफलतापूर्वक सक्रिय भयो!","renewed_title":"Premium सफलतापूर्वक Renew भयो!","plan":"प्लान","duration":"अवधि","added":"थपिएको","activated_at":"सक्रिय समय","expires":"म्याद सकिने","new_expiry":"नयाँ म्याद","status":"स्थिति: सक्रिय","thanks_purchase":"Premium खरिद गर्नुभएकोमा धन्यवाद!","thanks_renew":"Premium renew गर्नुभएकोमा धन्यवाद!","rejected_title":"Payment अस्वीकार गरियो","rejected_body":"यस payment बाट दिइएको Premium access हटाइएको छ। गल्ती भएको जस्तो लागेमा Admin लाई सम्पर्क गर्नुहोस्।"},
+    "hinglish": {"activated_title":"Premium Successfully Activate Ho Gaya!","renewed_title":"Premium Successfully Renew Ho Gaya!","plan":"Plan","duration":"Duration","added":"Added","activated_at":"Activated","expires":"Expires","new_expiry":"New Expiry","status":"Status: Active","thanks_purchase":"Premium purchase karne ke liye thank you!","thanks_renew":"Premium renew karne ke liye thank you!","rejected_title":"Payment Reject Ho Gaya","rejected_body":"Is payment se mila Premium access remove kar diya gaya hai. Agar aapko lagta hai ye mistake hai, Admin se contact karo."},
+}
+
+def _result_text(lang, key):
+    return _RESULT_I18N.get(lang, _RESULT_I18N["en"]).get(key, _RESULT_I18N["en"][key])
+
+
 # Premium entry/order UI is also localized so the language choice is useful
 # from the very first Premium screen, not only after a screenshot is sent.
 PREMIUM_FLOW_I18N = {
@@ -250,16 +315,64 @@ PREMIUM_FLOW_I18N = {
         "order": "💳 <b>Premium Order സൃഷ്ടിച്ചു</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ കാലാവധി: <b>{duration}</b>\n💰 വില: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment പൂർത്തിയാക്കി screenshot dedicated payment bot-ലേക്ക് അയയ്ക്കുക.\n\n⚠️ Payment സ്ഥിരീകരിക്കുന്നതിന് മുമ്പ് screenshot പരിശോധിക്കും.",
         "send": "📸 PAYMENT SCREENSHOT അയയ്ക്കുക", "back": "• PLANS-ലേക്ക് മടങ്ങുക •", "close": "• അടയ്ക്കുക •", "selected": "Premium Plan തിരഞ്ഞെടുത്തു.",
     },
+    "as": {
+        "intro": "💎 <b>Premium Membership</b>\n\nAds আঁতৰাবলৈ আৰু Premium access পাবলৈ আপোনাৰ Premium Plan বাছক।",
+        "plans": "💎 <b>Premium Plans & Prices</b>\n\nPayment আগবঢ়াবলৈ তলৰ পৰা এটা Plan বাছক।",
+        "order": "💳 <b>Premium Order তৈয়াৰ হৈছে</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ সময়কাল: <b>{duration}</b>\n💰 মূল্য: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment সম্পূৰ্ণ কৰি screenshot-টো dedicated payment bot-লৈ পঠিয়াওক।\n\n⚠️ Payment confirm কৰাৰ আগতে screenshot পৰীক্ষা কৰা হ'ব।",
+        "send": "📸 PAYMENT SCREENSHOT পঠিয়াওক", "back": "• PLANS লৈ উভতি যাওক •", "close": "• বন্ধ কৰক •", "selected": "Premium Plan বাছনি কৰা হৈছে।",
+    },
+    "ne": {
+        "intro": "💎 <b>Premium Membership</b>\n\nAds हटाउन र Premium access पाउन आफ्नो Premium Plan छान्नुहोस्।",
+        "plans": "💎 <b>Premium Plans & Prices</b>\n\nPayment अगाडि बढाउन तलबाट एउटा Plan छान्नुहोस्।",
+        "order": "💳 <b>Premium Order तयार भयो</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ अवधि: <b>{duration}</b>\n💰 मूल्य: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment पूरा गरेर screenshot dedicated payment bot मा पठाउनुहोस्।\n\n⚠️ Payment confirm गर्नुअघि screenshot जाँच गरिनेछ।",
+        "send": "📸 PAYMENT SCREENSHOT पठाउनुहोस्", "back": "• PLANS मा फर्कनुहोस् •", "close": "• बन्द गर्नुहोस् •", "selected": "Premium Plan छानिएको छ।",
+    },
+    "hinglish": {
+        "intro": "💎 <b>Premium Membership</b>\n\nAds hatane aur Premium access paane ke liye apna Premium Plan choose karo.",
+        "plans": "💎 <b>Premium Plans & Prices</b>\n\nPayment continue karne ke liye neeche se ek Plan choose karo.",
+        "order": "💳 <b>Premium Order Create Ho Gaya</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ Duration: <b>{duration}</b>\n💰 Price: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment complete karo, phir screenshot dedicated payment bot par bhejo.\n\n⚠️ Payment confirm hone se pehle screenshot check kiya jayega.",
+        "send": "📸 PAYMENT SCREENSHOT BHEJO", "back": "• PLANS PAR WAPAS •", "close": "• CLOSE •", "selected": "Premium Plan select ho gaya hai.",
+    },
 }
-# Keep every advertised language functional; unsupported flow text falls back
-# to English while the language selector and payment-review messages remain safe.
-for _code in ("bn", "mr", "gu", "pa", "ur"):
-    PREMIUM_FLOW_I18N[_code] = PREMIUM_FLOW_I18N["en"]
+# Complete the Premium entry/order UI for every advertised language.
+PREMIUM_FLOW_I18N["bn"] = {
+    "intro":"💎 <b>Premium Membership</b>\n\nAds সরিয়ে Premium access পেতে আপনার Premium Plan বেছে নিন.",
+    "plans":"💎 <b>Premium Plans & Prices</b>\n\nPayment চালিয়ে যেতে নিচের একটি Plan বেছে নিন।",
+    "order":"💳 <b>Premium Order তৈরি হয়েছে</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ সময়কাল: <b>{duration}</b>\n💰 মূল্য: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment সম্পূর্ণ করে screenshot dedicated payment bot-এ পাঠান।\n\n⚠️ Payment confirm করার আগে screenshot যাচাই করা হবে।",
+    "send":"📸 PAYMENT SCREENSHOT পাঠান","back":"• PLANS-এ ফিরে যান •","close":"• বন্ধ করুন •","selected":"Premium Plan বেছে নেওয়া হয়েছে।"}
+PREMIUM_FLOW_I18N["mr"] = {
+    "intro":"💎 <b>Premium Membership</b>\n\nAds काढण्यासाठी आणि Premium access मिळवण्यासाठी तुमचा Premium Plan निवडा.",
+    "plans":"💎 <b>Premium Plans & Prices</b>\n\nPayment पुढे नेण्यासाठी खालील Plan निवडा.",
+    "order":"💳 <b>Premium Order तयार झाले</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ कालावधी: <b>{duration}</b>\n💰 किंमत: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment पूर्ण करा आणि screenshot dedicated payment bot वर पाठवा.\n\n⚠️ Payment confirm करण्यापूर्वी screenshot तपासला जाईल.",
+    "send":"📸 PAYMENT SCREENSHOT पाठवा","back":"• PLANS कडे परत •","close":"• बंद करा •","selected":"Premium Plan निवडला आहे."}
+PREMIUM_FLOW_I18N["gu"] = {
+    "intro":"💎 <b>Premium Membership</b>\n\nAds દૂર કરવા અને Premium access મેળવવા તમારો Premium Plan પસંદ કરો.",
+    "plans":"💎 <b>Premium Plans & Prices</b>\n\nPayment ચાલુ રાખવા નીચેનો Plan પસંદ કરો.",
+    "order":"💳 <b>Premium Order બની ગયો</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ સમયગાળો: <b>{duration}</b>\n💰 કિંમત: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment પૂર્ણ કરો અને screenshot dedicated payment bot પર મોકલો.\n\n⚠️ Payment confirm કરતા પહેલાં screenshot તપાસવામાં આવશે.",
+    "send":"📸 PAYMENT SCREENSHOT મોકલો","back":"• PLANS પર પાછા •","close":"• બંધ કરો •","selected":"Premium Plan પસંદ થયો છે."}
+PREMIUM_FLOW_I18N["pa"] = {
+    "intro":"💎 <b>Premium Membership</b>\n\nAds ਹਟਾਉਣ ਅਤੇ Premium access ਲੈਣ ਲਈ ਆਪਣਾ Premium Plan ਚੁਣੋ।",
+    "plans":"💎 <b>Premium Plans & Prices</b>\n\nPayment ਜਾਰੀ ਰੱਖਣ ਲਈ ਹੇਠਾਂ ਇੱਕ Plan ਚੁਣੋ।",
+    "order":"💳 <b>Premium Order ਬਣ ਗਿਆ</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ ਮਿਆਦ: <b>{duration}</b>\n💰 ਕੀਮਤ: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment ਪੂਰਾ ਕਰੋ ਅਤੇ screenshot dedicated payment bot ਨੂੰ ਭੇਜੋ।\n\n⚠️ Payment confirm ਕਰਨ ਤੋਂ ਪਹਿਲਾਂ screenshot ਚੈੱਕ ਕੀਤਾ ਜਾਵੇਗਾ।",
+    "send":"📸 PAYMENT SCREENSHOT ਭੇਜੋ","back":"• PLANS ਵੱਲ ਵਾਪਸ •","close":"• ਬੰਦ ਕਰੋ •","selected":"Premium Plan ਚੁਣਿਆ ਗਿਆ ਹੈ।"}
+PREMIUM_FLOW_I18N["ur"] = {
+    "intro":"💎 <b>Premium Membership</b>\n\nAds ہٹانے اور Premium access حاصل کرنے کے لیے اپنا Premium Plan منتخب کریں۔",
+    "plans":"💎 <b>Premium Plans & Prices</b>\n\nPayment جاری رکھنے کے لیے نیچے ایک Plan منتخب کریں۔",
+    "order":"💳 <b>Premium Order بن گیا</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ مدت: <b>{duration}</b>\n💰 قیمت: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment مکمل کریں اور screenshot dedicated payment bot پر بھیجیں۔\n\n⚠️ Payment confirm کرنے سے پہلے screenshot چیک کیا جائے گا۔",
+    "send":"📸 PAYMENT SCREENSHOT بھیجیں","back":"• PLANS پر واپس •","close":"• بند کریں •","selected":"Premium Plan منتخب کر لیا گیا ہے۔"}
 
+_CONTINUE_I18N = {
+    "en":"• CONTINUE TO PLANS •","hi":"• PLANS पर जाएँ •","ta":"• PLANS-க்கு தொடரவும் •","te":"• PLANS కి కొనసాగండి •","kn":"• PLANS ಗೆ ಮುಂದುವರಿಯಿರಿ •","ml":"• PLANS-ലേക്ക് തുടരുക •","bn":"• PLANS-এ যান •","mr":"• PLANS कडे जा •","gu":"• PLANS પર જાઓ •","pa":"• PLANS ਵੱਲ ਜਾਓ •","ur":"• PLANS پر جائیں •","as":"• PLANS লৈ আগবাঢ়ক •","ne":"• PLANS मा जानुहोस् •","hinglish":"• PLANS PAR CHALO •"}
+for _code in PREMIUM_FLOW_I18N:
+    PREMIUM_FLOW_I18N[_code].setdefault("continue", _CONTINUE_I18N.get(_code, _CONTINUE_I18N["en"]))
 
 def _premium_flow_text(lang, key, **values):
     text = PREMIUM_FLOW_I18N.get(lang, PREMIUM_FLOW_I18N["en"]).get(key, PREMIUM_FLOW_I18N["en"].get(key, key))
     return text.format(**values) if values else text
+
+
+def _language_button_text(lang):
+    return I18N.get(lang, I18N["en"]).get("language_button", I18N["en"]["language_button"])
 
 
 def _lang_from_code(code):
@@ -941,24 +1054,25 @@ async def _activate_order(client, order, screenshot_message_id):
 
     is_renewal = (not temporary_review) and isinstance(current_expiry, datetime.datetime) and current_expiry > now
     plan = PREMIUM_PLANS[plan_key]
+    lang = await _user_language(user_id)
     if is_renewal:
         text = (
-            "♻️ <b>Premium Renewed Successfully!</b>\n\n"
-            f"📦 Plan: {escape(plan['name'])}\n"
-            f"⏳ Added: {escape(plan['duration'])}\n"
-            f"📅 New Expiry: {_fmt_dt(new_expiry)}\n"
-            "🟢 Status: Active\n\n" +
-            _tr(await _user_language(user_id), "renewed")
+            f"♻️ <b>{_result_text(lang, 'renewed_title')}</b>\n\n"
+            f"📦 {_result_text(lang, 'plan')}: <b>{escape(plan['name'])}</b>\n"
+            f"⏳ {_result_text(lang, 'added')}: <b>{escape(plan['duration'])}</b>\n"
+            f"📅 {_result_text(lang, 'new_expiry')}: {_fmt_dt(new_expiry)}\n"
+            f"🟢 {_result_text(lang, 'status')}\n\n"
+            f"{_result_text(lang, 'thanks_renew')}"
         )
     else:
         text = (
-            "✅ <b>Premium Activated Successfully!</b>\n\n"
-            f"📦 Plan: {escape(plan['name'])}\n"
-            f"⏳ Duration: {escape(plan['duration'])}\n"
-            f"📅 Activated: {_fmt_dt(now)}\n"
-            f"⏳ Expires: {_fmt_dt(new_expiry)}\n"
-            "🟢 Status: Active\n\n" +
-            _tr(await _user_language(user_id), "activated")
+            f"✅ <b>{_result_text(lang, 'activated_title')}</b>\n\n"
+            f"📦 {_result_text(lang, 'plan')}: <b>{escape(plan['name'])}</b>\n"
+            f"⏳ {_result_text(lang, 'duration')}: <b>{escape(plan['duration'])}</b>\n"
+            f"📅 {_result_text(lang, 'activated_at')}: {_fmt_dt(now)}\n"
+            f"⏳ {_result_text(lang, 'expires')}: {_fmt_dt(new_expiry)}\n"
+            f"🟢 {_result_text(lang, 'status')}\n\n"
+            f"{_result_text(lang, 'thanks_purchase')}"
         )
     try:
         await _send_user_temp(client, user_id, text, parse_mode=enums.ParseMode.HTML)
@@ -1413,7 +1527,7 @@ async def premium_language_callback(client, query):
             plan_key = _plan_key(order.get("selected_plan"))
             plan = PREMIUM_PLANS.get(plan_key, {}) if plan_key else {}
             buttons = [[InlineKeyboardButton(_premium_flow_text(value, "send"), url=f"https://t.me/{PAYMENT_BOT_USERNAME}")]] if PAYMENT_BOT_USERNAME else []
-            buttons += [[InlineKeyboardButton("🌐 LANGUAGE", callback_data="paylang:menu")], [InlineKeyboardButton(_premium_flow_text(await _user_language(query.from_user.id, query.from_user), "back"), callback_data="free"), InlineKeyboardButton(_premium_flow_text(await _user_language(query.from_user.id, query.from_user), "close"), callback_data="close_data")]]
+            buttons += [[InlineKeyboardButton(_language_button_text(value), callback_data="paylang:menu")], [InlineKeyboardButton(_premium_flow_text(await _user_language(query.from_user.id, query.from_user), "back"), callback_data="free"), InlineKeyboardButton(_premium_flow_text(await _user_language(query.from_user.id, query.from_user), "close"), callback_data="close_data")]]
             payment_text = _premium_flow_text(
                 value, "order",
                 plan=escape(plan.get("name", order.get("plan_duration", "Premium"))),
@@ -1426,11 +1540,11 @@ async def premium_language_callback(client, query):
             # the user inside the Premium flow instead of trying to edit a
             # photo as text or leaving them on a broken/blank screen.
             buttons = [
-                [InlineKeyboardButton("🌐 LANGUAGE", callback_data="paylang:menu")],
-                [InlineKeyboardButton("• ᴄᴏɴᴛɪɴᴜᴇ ᴛᴏ ᴘʟᴀɴꜱ •", callback_data="free")],
-                [InlineKeyboardButton("• ᴄʟᴏꜱᴇ •", callback_data="close_data")],
+                [InlineKeyboardButton(_language_button_text(value), callback_data="paylang:menu")],
+                [InlineKeyboardButton(_premium_flow_text(value, "continue"), callback_data="free")],
+                [InlineKeyboardButton(_premium_flow_text(value, "close"), callback_data="close_data")],
             ]
-            intro = _tr(value, "language_saved") + "\n\n" + _tr(value, "language_body")
+            intro = _tr(value, "language_saved") + "\n\n" + _tr(value, "language_first_guide")
             if query.message.photo or query.message.video or query.message.animation:
                 await query.message.edit_caption(
                     caption=intro, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML
@@ -1459,23 +1573,23 @@ async def select_premium_plan(client, query):
         plan["price"],
     )
 
+    lang = await _user_language(user.id, user)
     buttons = []
     if PAYMENT_BOT_USERNAME:
         buttons.append([
             InlineKeyboardButton(
-                "📸 SEND PAYMENT SCREENSHOT",
+                _premium_flow_text(lang, "send"),
                 url=f"https://t.me/{PAYMENT_BOT_USERNAME}",
             )
         ])
     buttons.append([
-        InlineKeyboardButton("🌐 LANGUAGE", callback_data="paylang:menu"),
+        InlineKeyboardButton(_language_button_text(lang), callback_data="paylang:menu"),
     ])
     buttons.append([
-        InlineKeyboardButton("• ʙᴀᴄᴋ ᴛᴏ ᴘʟᴀɴꜱ •", callback_data="free"),
-        InlineKeyboardButton("• ᴄʟᴏꜱᴇ •", callback_data="close_data"),
+        InlineKeyboardButton(_premium_flow_text(lang, "back"), callback_data="free"),
+        InlineKeyboardButton(_premium_flow_text(lang, "close"), callback_data="close_data"),
     ])
 
-    lang = await _user_language(user.id, user)
     payment_text = _premium_flow_text(
         lang, "order",
         plan=escape(plan["name"]), duration=escape(plan["duration"]), price=escape(plan["price"]),
@@ -1688,12 +1802,10 @@ async def run_expiry_check(client, notify=True):
                 await _send_user_temp(
                     client,
                     user_id,
-                    "❌ <b>Premium Plan Expired</b>\n\n"
+                    _tr(await _user_language(user_id), "expired") + "\n\n"
                     f"📦 Plan: {escape(order.get('plan_duration', 'Premium'))}\n"
                     f"📅 Expired: {_fmt_dt(order.get('expires_at') or now)}\n"
-                    "🔴 Status: Expired\n\n"
-                    "Your Premium access has ended.\n\n"
-                    "🔄 Purchase a new Premium plan to continue.",
+                    "🔴 Status: Expired",
                     parse_mode=enums.ParseMode.HTML,
                 )
             except Exception as exc:
@@ -1717,11 +1829,10 @@ async def run_expiry_check(client, notify=True):
                 await _send_user_temp(
                     client,
                     user_id,
-                    "⚠️ <b>Premium Expiring Soon</b>\n\n"
+                    _tr(await _user_language(user_id), "expiring") + "\n\n"
                     f"📦 Plan: {escape(order.get('plan_duration', 'Premium'))}\n"
                     "⏳ Remaining: 4 Days or less\n"
-                    f"📅 Expiry: {_fmt_dt(expires_at)}\n\n"
-                    "Renew your Premium plan to continue using the service.",
+                    f"📅 Expiry: {_fmt_dt(expires_at)}",
                     parse_mode=enums.ParseMode.HTML,
                 )
             except Exception as exc:
@@ -1914,9 +2025,8 @@ def register_payment_bot_handlers(payment_client):
                 await _send_user_temp(
                     client,
                     user_id,
-                    "❌ <b>Your payment screenshot was rejected after manual review.</b>\n\n"
-                    "The Premium access added for this payment has been removed. "
-                    "Please contact the admin if you think this is a mistake.",
+                    f"❌ <b>{_result_text(await _user_language(user_id), 'rejected_title')}</b>\n\n"
+                    f"{_result_text(await _user_language(user_id), 'rejected_body')}",
                     parse_mode=enums.ParseMode.HTML,
                     reply_markup=_contact_admin_markup(),
                 )
