@@ -754,6 +754,15 @@ async def _activate_order(client, order, screenshot_message_id):
         LOGGER.warning("Could not write payment log: %s", exc)
 
 
+async def _delete_message_later(message, delay_seconds=150):
+    """Delete only temporary user-facing routing notices after a short delay."""
+    try:
+        await asyncio.sleep(delay_seconds)
+        await message.delete()
+    except Exception:
+        pass
+
+
 async def process_payment_submission(payment_client, message):
     """Handle a screenshot and show one temporary progress message during analysis."""
     progress_message = None
@@ -798,6 +807,41 @@ async def _process_payment_submission_impl(payment_client, message):
         file_unique_id = message.document.file_unique_id
 
     order = await db.get_pending_premium_order(user_id)
+
+    # Telegram/Pyrogram may deliver the same update more than once. If this
+    # exact screenshot message was already recorded, it has already been
+    # handled and must never generate a second warning, admin report, or
+    # Premium decision. This is especially important because the first pass
+    # may already have moved the order out of waiting_for_payment.
+    existing_submission = await db.get_payment_submission(user_id, message.id)
+    if existing_submission:
+        LOGGER.info(
+            "Ignoring duplicate payment screenshot update: user=%s message=%s",
+            user_id, message.id,
+        )
+        return
+
+    if not order:
+        # A valid order may already be in manual/automatic review because its
+        # first screenshot was accepted for processing. In that state there is
+        # still a valid Premium flow; do not mislabel a resend as an
+        # "unmatched" payment. The exact same Telegram message is already
+        # handled above, while a new resend is simply ignored until the current
+        # review finishes.
+        current_order = await db.get_premium_order(user_id)
+        if current_order and current_order.get("screenshot_message_id"):
+            current_status = str(current_order.get("payment_status") or "")
+            if current_status in {
+                "pending_manual_verification",
+                "manual_review_required",
+                "manually_verified",
+            }:
+                LOGGER.info(
+                    "Ignoring payment screenshot while an existing Premium review is active: user=%s message=%s",
+                    user_id, message.id,
+                )
+                return
+
     submission = {
         "user_id": user_id,
         "username": sender.username or "",
@@ -813,7 +857,11 @@ async def _process_payment_submission_impl(payment_client, message):
         "status": "matched" if order else "unmatched",
         "review_status": "pending" if order else "not_required",
     }
-    await db.record_payment_submission(submission)
+    recorded = await db.record_payment_submission(submission)
+    if not recorded:
+        # Another worker already recorded this exact Telegram message. Do not
+        # send the unmatched-order warning a second time.
+        return
 
     if not order:
         await _notify_admins(
@@ -825,10 +873,15 @@ async def _process_payment_submission_impl(payment_client, message):
             "No pending Premium order was found. Premium was <b>not</b> activated."
         )
         try:
-            await message.reply_text(
+            warning_message = await message.reply_text(
                 "⚠️ No pending Premium order was found for your Telegram account.\n"
                 "Premium was not activated. Please select a Premium plan first."
             )
+            # This warning is only a routing/error notice for users who skipped
+            # the Premium order flow. Keep it temporary so old warnings do not
+            # fill the payment bot chat. The actual auto-approval/manual-review
+            # analysis messages are intentionally NOT deleted by this timer.
+            asyncio.create_task(_delete_message_later(warning_message, 150))
         except Exception:
             pass
         return
