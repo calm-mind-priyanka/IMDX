@@ -32,7 +32,7 @@ from utils import (
     formate_file_name,
 )
 from database.users_chats_db import db
-from language import get_user_language, has_saved_language, tr
+from language import get_user_language, has_saved_language, tr, core_tr, home_tr, page_tr
 from database.ia_filterdb import (
     Media,
     get_search_results,
@@ -519,7 +519,8 @@ async def season_search(client: Client, query: CallbackQuery):
     files = merged
     if not files:
         await query.answer(
-            f"sᴏʀʀʏ {season.title()} ɴᴏᴛ ғᴏᴜɴᴅ ғᴏʀ {search}", show_alert=1
+            core_tr(ui_lang, "not_found", kind=tr(ui_lang, "season"), value=season.title(), search=search),
+            show_alert=True,
         )
         return
 
@@ -884,7 +885,8 @@ async def quality_search(client: Client, query: CallbackQuery):
         n_offset = 0
     if not files:
         await query.answer(
-            f"sᴏʀʀʏ ǫᴜᴀʟɪᴛʏ {qul.title()} ɴᴏᴛ ғᴏᴜɴᴅ ғᴏʀ {search}", show_alert=1
+            core_tr(ui_lang, "not_found", kind=tr(ui_lang, "quality"), value=qul.title(), search=search),
+            show_alert=True,
         )
         return
 
@@ -1092,7 +1094,8 @@ async def lang_search(client: Client, query: CallbackQuery):
     files = merged
     if not files:
         return await query.answer(
-            f"sᴏʀʀʏ ʟᴀɴɢᴜᴀɢᴇ {lang.title()} ɴᴏᴛ ғᴏᴜɴᴅ ғᴏʀ {search}", show_alert=1
+            core_tr(ui_lang, "not_found", kind=tr(ui_lang, "language"), value=lang.title(), search=search),
+            show_alert=True,
         )
 
     temp.FILES_ID[key] = files
@@ -1226,6 +1229,7 @@ async def lang_search(client: Client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex(r"^spol"))
 async def advantage_spoll_choker(bot, query):
+    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     _, id, user = query.data.split("#")
     if int(user) != 0 and query.from_user.id != int(user):
         return await query.answer(script.ALRT_TXT, show_alert=True)
@@ -1237,7 +1241,7 @@ async def advantage_spoll_choker(bot, query):
         k = (search, files, offset, total_results)
         await auto_filter(bot, query, k)
     else:
-        k = await query.message.edit(script.NO_RESULT_TXT)
+        k = await query.message.edit(core_tr(ui_lang, "no_result"))
         await asyncio.sleep(60)
         await k.delete()
         try:
@@ -1388,51 +1392,30 @@ async def cb_handler(client: Client, query: CallbackQuery):
         await query.answer(f"ʏᴏᴜ sᴇʟᴇᴄᴛᴇᴅ {lang.title()} ʟᴀɴɢᴜᴀɢᴇ ⚡️", show_alert=True)
 
     elif query.data == "start":
+        ui_lang = await get_user_language(query.from_user.id, query.from_user)
         buttons = [
-            [
-                InlineKeyboardButton(
-                    "⇋ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ⇋",
-                    url=f"http://telegram.dog/{temp.U_NAME}?startgroup=start",
-                )
-            ],
-            [
-                InlineKeyboardButton("• ᴅɪꜱᴀʙʟᴇ ᴀᴅꜱ •", callback_data="jisshupremium"),
-                InlineKeyboardButton("• ꜱᴘᴇᴄɪᴀʟ •", callback_data="special"),
-            ],
-            [
-                InlineKeyboardButton("• ʜᴇʟᴘ •", callback_data="help"),
-                InlineKeyboardButton("• ᴀʙᴏᴜᴛ •", callback_data="about"),
-            ],
-            [
-                InlineKeyboardButton(
-                    "• ᴇᴀʀɴ ᴜɴʟɪᴍɪᴛᴇᴅ ᴍᴏɴᴇʏ ᴡɪᴛʜ ʙᴏᴛ •", callback_data="earn"
-                )
-            ],
+            [InlineKeyboardButton(home_tr(ui_lang, "add_group"), url=f"http://telegram.dog/{temp.U_NAME}?startgroup=start")],
+            [InlineKeyboardButton(home_tr(ui_lang, "disable_ads"), callback_data="jisshupremium"), InlineKeyboardButton(home_tr(ui_lang, "special"), callback_data="special")],
+            [InlineKeyboardButton(home_tr(ui_lang, "help"), callback_data="help"), InlineKeyboardButton(home_tr(ui_lang, "about"), callback_data="about")],
+            [InlineKeyboardButton(home_tr(ui_lang, "earn"), callback_data="earn")],
+            [InlineKeyboardButton(tr(ui_lang, "language_button"), callback_data="global_lang:menu")],
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
         await query.message.edit_media(
             media=InputMediaPhoto(
                 media=random.choice(START_IMG),
-                caption=script.START_TXT.format(
-                    query.from_user.mention, get_status(), query.from_user.id
-                ),
+                caption=core_tr(ui_lang, "start", mention=query.from_user.mention, status=get_status()),
                 parse_mode=enums.ParseMode.HTML,
             ),
             reply_markup=reply_markup,
         )
-    #        await query.message.edit_text(
-    #            text=script.START_TXT.format(query.from_user.mention, get_status(), query.from_user.id),
-    #            reply_markup=reply_markup,
-    #            parse_mode=enums.ParseMode.HTML
-    #        )
-
     elif query.data == "jisshupremium":
         btn = [
             [
                 InlineKeyboardButton("ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ", callback_data="seeplans"),
                 InlineKeyboardButton("ʀᴇꜰᴇʀ & ᴇᴀʀɴ", callback_data="reffff"),
             ],
-            [InlineKeyboardButton("⋞ ʜᴏᴍᴇ", callback_data="start")],
+            [InlineKeyboardButton(tr(ui_lang, "home"), callback_data="start")],
         ]
         reply_markup = InlineKeyboardMarkup(btn)
         await query.message.edit_text(
@@ -1584,26 +1567,25 @@ async def cb_handler(client: Client, query: CallbackQuery):
         )
 
     elif query.data == "help":
+        ui_lang = await get_user_language(query.from_user.id, query.from_user)
         buttons = [
-            [
-                InlineKeyboardButton("• ᴀᴅᴍɪɴ •", callback_data="admincmd"),
-                InlineKeyboardButton("• ɢʀᴏᴜᴘ sᴇᴛᴜᴘ •", callback_data="earn2"),
-            ],
-            [InlineKeyboardButton("⋞ ʙᴀᴄᴋ ᴛᴏ ʜᴏᴍᴇ", callback_data="start")],
+            [InlineKeyboardButton("• ᴀᴅᴍɪɴ •", callback_data="admincmd"), InlineKeyboardButton("• ɢʀᴏᴜᴘ sᴇᴛᴜᴘ •", callback_data="earn2")],
+            [InlineKeyboardButton(tr(ui_lang, "home"), callback_data="start")],
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
         await query.message.edit_media(
             media=InputMediaPhoto(
                 media=random.choice(START_IMG),
-                caption=script.HELP_TXT,
+                caption=page_tr(ui_lang, "help"),
                 parse_mode=enums.ParseMode.HTML,
             ),
             reply_markup=reply_markup,
         )
 
     elif query.data == "about":
+        ui_lang = await get_user_language(query.from_user.id, query.from_user)
         await query.message.edit_text(
-            script.ABOUT_TEXT.format(query.from_user.mention(), temp.B_LINK),
+            page_tr(ui_lang, "about"),
             reply_markup=InlineKeyboardMarkup(
                 [
                     [
