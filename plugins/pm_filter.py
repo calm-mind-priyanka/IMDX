@@ -32,7 +32,7 @@ from utils import (
     formate_file_name,
 )
 from database.users_chats_db import db
-from language import has_saved_language, get_user_language, language_markup
+from language import get_user_language, has_saved_language, tr
 from database.ia_filterdb import (
     Media,
     get_search_results,
@@ -108,15 +108,17 @@ logger.setLevel(logging.ERROR)
 
 @Client.on_message(filters.private & filters.text & filters.incoming)
 async def pm_search(client, message):
-    # First-time users must choose the global UI language before using normal features.
-    if message.from_user and not await has_saved_language(message.from_user.id):
-        return await message.reply_text(
-            "🌐 <b>Choose Your Language</b>\n\nSelect the language you want the bot to use. You can change it anytime.",
-            reply_markup=language_markup(), parse_mode=enums.ParseMode.HTML
-        )
     await mdb.update_top_messages(message.from_user.id, message.text)
     bot_id = client.me.id
     user_id = message.from_user.id
+    # First-time private users must choose the global UI language before search.
+    if not await has_saved_language(user_id):
+        await message.reply_text(
+            tr("en", "language_title") + "\n\n" + tr("en", "language_body"),
+            reply_markup=__import__("language").language_markup(),
+            parse_mode=enums.ParseMode.HTML,
+        )
+        return
     #   if user_id in ADMINS: return
     if str(message.text).startswith("/"):
         return
@@ -143,11 +145,6 @@ async def pm_search(client, message):
 
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def group_search(client, message):
-    if message.chat and message.chat.type == enums.ChatType.PRIVATE and message.from_user and not await has_saved_language(message.from_user.id):
-        return await message.reply_text(
-            "🌐 <b>Choose Your Language</b>\n\nSelect the language you want the bot to use. You can change it anytime.",
-            reply_markup=language_markup(), parse_mode=enums.ParseMode.HTML
-        )
     # await message.react(emoji=random.choice(REACTIONS))
     await mdb.update_top_messages(message.from_user.id, message.text)
     user_id = message.from_user.id if message.from_user else None
@@ -287,12 +284,13 @@ async def refercall(bot, query):
 
 @Client.on_callback_query(filters.regex("admincmd"))
 async def admin_commands(client, query):
+    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     if query.from_user.id not in ADMINS:
         return await query.answer("ᴛʜɪꜱ ɪꜱ ɴᴏᴛ ꜰᴏʀ ʏᴏᴜ ʙʀᴏ!", show_alert=True)
 
     buttons = [
         [
-            InlineKeyboardButton("⋞ ʙᴀᴄᴋ", callback_data="help"),
+            InlineKeyboardButton(tr(ui_lang, "back"), callback_data="help"),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(buttons)
@@ -311,6 +309,7 @@ async def admin_commands(client, query):
 
 @Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
+    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     ident, req, key, offset = query.data.split("_")
     if int(req) not in [query.from_user.id, 0]:
         return await query.answer(
@@ -376,17 +375,17 @@ async def next_page(bot, query):
     else:
         off_set = offset - max_results
     btn.append([
-        InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇ", callback_data=f"languages#{key}#{offset}#{req}"),
-        InlineKeyboardButton("ǫᴜᴀʟɪᴛʏ", callback_data=f"qualities#{key}#{offset}#{req}"),
+        InlineKeyboardButton(tr(ui_lang, "language"), callback_data=f"languages#{key}#{offset}#{req}"),
+        InlineKeyboardButton(tr(ui_lang, "quality"), callback_data=f"qualities#{key}#{offset}#{req}"),
     ])
-    btn.append([InlineKeyboardButton("ꜱᴇᴀsᴏɴ", callback_data=f"seasons#{key}#{offset}#{req}")])
-    btn.append([InlineKeyboardButton("sᴇɴᴅ ᴀʟʟ ғɪʟᴇs", callback_data=f"send_all#{key}")])
+    btn.append([InlineKeyboardButton(tr(ui_lang, "season"), callback_data=f"seasons#{key}#{offset}#{req}")])
+    btn.append([InlineKeyboardButton(tr(ui_lang, "send_all"), callback_data=f"send_all#{key}")])
     if n_offset == 0:
 
         btn.append(
             [
                 InlineKeyboardButton(
-                    "⋞ ʙᴀᴄᴋ", callback_data=f"next_{req}_{key}_{off_set}"
+                    tr(ui_lang, "back"), callback_data=f"next_{req}_{key}_{off_set}"
                 ),
                 InlineKeyboardButton(
                     f"ᴘᴀɢᴇ {math.ceil(int(offset) / max_results) + 1} / {math.ceil(total / max_results)}",
@@ -402,7 +401,7 @@ async def next_page(bot, query):
                     callback_data="pages",
                 ),
                 InlineKeyboardButton(
-                    "ɴᴇxᴛ ⋟", callback_data=f"next_{req}_{key}_{n_offset}"
+                    tr(ui_lang, "next"), callback_data=f"next_{req}_{key}_{n_offset}"
                 ),
             ]
         )
@@ -410,14 +409,14 @@ async def next_page(bot, query):
         btn.append(
             [
                 InlineKeyboardButton(
-                    "⋞ ʙᴀᴄᴋ", callback_data=f"next_{req}_{key}_{off_set}"
+                    tr(ui_lang, "back"), callback_data=f"next_{req}_{key}_{off_set}"
                 ),
                 InlineKeyboardButton(
                     f"{math.ceil(int(offset) / max_results) + 1} / {math.ceil(total / max_results)}",
                     callback_data="pages",
                 ),
                 InlineKeyboardButton(
-                    "ɴᴇxᴛ ⋟", callback_data=f"next_{req}_{key}_{n_offset}"
+                    tr(ui_lang, "next"), callback_data=f"next_{req}_{key}_{n_offset}"
                 ),
             ],
         )
@@ -441,11 +440,12 @@ async def next_page(bot, query):
 
 @Client.on_callback_query(filters.regex(r"^seasons#"))
 async def seasons_cb_handler(client: Client, query: CallbackQuery):
+    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     _, key, offset, req = query.data.split("#")
     if int(req) != query.from_user.id:
         return await query.answer(script.ALRT_TXT, show_alert=True)
     btn = []
-    for i in range(0, len(SEASONS) - 1, 2):
+    for i in range(0, len(SEASONS), 2):
         btn.append(
             [
                 InlineKeyboardButton(
@@ -462,12 +462,12 @@ async def seasons_cb_handler(client: Client, query: CallbackQuery):
     btn.append(
         [
             InlineKeyboardButton(
-                text="⋞ ʙᴀᴄᴋ ᴛᴏ ᴍᴀɪɴ ᴘᴀɢᴇ", callback_data=f"next_{req}_{key}_{offset}"
+                text=tr(ui_lang, "home"), callback_data=f"next_{req}_{key}_{offset}"
             )
         ]
     )
     await query.message.edit_text(
-        "<b>ɪɴ ᴡʜɪᴄʜ sᴇᴀsᴏɴ ᴅᴏ ʏᴏᴜ ᴡᴀɴᴛ, ᴄʜᴏᴏsᴇ ғʀᴏᴍ ʜᴇʀᴇ ↓↓</b>",
+        f"<b>{tr(ui_lang, 'season_choose')}</b>",
         reply_markup=InlineKeyboardMarkup(btn),
     )
     return
@@ -475,6 +475,7 @@ async def seasons_cb_handler(client: Client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex(r"^season_search#"))
 async def season_search(client: Client, query: CallbackQuery):
+    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     _, season, key, offset, orginal_offset, req = query.data.split("#")
     seas = int(season.split(" ", 1)[1])
     if seas < 10:
@@ -507,17 +508,20 @@ async def season_search(client: Client, query: CallbackQuery):
             n_offset = int(n_offset2)
         except:
             n_offset = 0
-    files = [file for file in files if re.search(seas, file.file_name, re.IGNORECASE)]
-
+    merged = []
+    seen_ids = set()
+    for candidate in list(files) + list(files2):
+        fid = getattr(candidate, "file_id", None)
+        if fid in seen_ids:
+            continue
+        seen_ids.add(fid)
+        merged.append(candidate)
+    files = merged
     if not files:
-        files = [
-            file for file in files2 if re.search(season, file.file_name, re.IGNORECASE)
-        ]
-        if not files:
-            await query.answer(
-                f"sᴏʀʀʏ {season.title()} ɴᴏᴛ ғᴏᴜɴᴅ ғᴏʀ {search}", show_alert=1
-            )
-            return
+        await query.answer(
+            f"sᴏʀʀʏ {season.title()} ɴᴏᴛ ғᴏᴜɴᴅ ғᴏʀ {search}", show_alert=1
+        )
+        return
 
     temp.FILES_ID[key] = files
     reqnxt = query.from_user.id if query.from_user else 0
@@ -553,7 +557,7 @@ async def season_search(client: Client, query: CallbackQuery):
         0,
         [
             InlineKeyboardButton(
-                "sᴇɴᴅ ᴀʟʟ ғɪʟᴇs", callback_data=f"send_all#{key}"
+                tr(ui_lang, "send_all"), callback_data=f"send_all#{key}"
             ),
         ],
     )
@@ -561,28 +565,28 @@ async def season_search(client: Client, query: CallbackQuery):
         1,
         [
             InlineKeyboardButton(
-                "ʟᴀɴɢᴜᴀɢᴇ ", callback_data=f"languages#{key}#{offset}#{req}"
+                tr(ui_lang, "language"), callback_data=f"languages#{key}#{offset}#{req}"
             ),
             InlineKeyboardButton(
-                "ǫᴜᴀʟɪᴛʏ ", callback_data=f"qualities#{key}#{offset}#{req}"
+                tr(ui_lang, "quality"), callback_data=f"qualities#{key}#{offset}#{req}"
             ),
         ],
     )
     btn.insert(2, [
         InlineKeyboardButton(
-            "ꜱᴇᴀꜱᴏɴ", callback_data=f"seasons#{key}#{offset}#{req}"
+            tr(ui_lang, "season"), callback_data=f"seasons#{key}#{offset}#{req}"
         )
     ])
 
     if n_offset == "":
         btn.append(
-            [InlineKeyboardButton(text="↭ ɴᴏ ᴍᴏʀᴇ ᴘᴀɢᴇꜱ ᴀᴠᴀɪʟᴀʙʟᴇ ↭", callback_data="buttons")]
+            [InlineKeyboardButton(text=tr(ui_lang, "no_more"), callback_data="buttons")]
         )
     elif n_offset == 0:
         btn.append(
             [
                 InlineKeyboardButton(
-                    "⋞ ʙᴀᴄᴋ",
+                    tr(ui_lang, "back"),
                     callback_data=f"season_search#{season}#{key}#{offset- await _max_results_for_query(query, key)}#{orginal_offset}#{req}",
                 ),
                 InlineKeyboardButton(
@@ -599,7 +603,7 @@ async def season_search(client: Client, query: CallbackQuery):
                     callback_data="pages",
                 ),
                 InlineKeyboardButton(
-                    "ɴᴇxᴛ ⋟",
+                    tr(ui_lang, "next"),
                     callback_data=f"season_search#{season}#{key}#{n_offset}#{orginal_offset}#{req}",
                 ),
             ]
@@ -608,7 +612,7 @@ async def season_search(client: Client, query: CallbackQuery):
         btn.append(
             [
                 InlineKeyboardButton(
-                    "⋞ ʙᴀᴄᴋ",
+                    tr(ui_lang, "back"),
                     callback_data=f"season_search#{season}#{key}#{offset- await _max_results_for_query(query, key)}#{orginal_offset}#{req}",
                 ),
                 InlineKeyboardButton(
@@ -616,7 +620,7 @@ async def season_search(client: Client, query: CallbackQuery):
                     callback_data="pages",
                 ),
                 InlineKeyboardButton(
-                    "ɴᴇxᴛ ⋟",
+                    tr(ui_lang, "next"),
                     callback_data=f"season_search#{season}#{key}#{n_offset}#{orginal_offset}#{req}",
                 ),
             ]
@@ -625,7 +629,7 @@ async def season_search(client: Client, query: CallbackQuery):
     btn.append(
         [
             InlineKeyboardButton(
-                text="⋞ ʙᴀᴄᴋ ᴛᴏ ᴍᴀɪɴ ᴘᴀɢᴇ",
+                text=tr(ui_lang, "home"),
                 callback_data=f"next_{req}_{key}_{orginal_offset}",
             ),
         ]
@@ -641,6 +645,7 @@ async def season_search(client: Client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex(r"^years#"))
 async def years_cb_handler(client: Client, query: CallbackQuery):
+    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     _, key, offset, req = query.data.split("#")
     if int(req) != query.from_user.id:
         return await query.answer(script.ALRT_TXT, show_alert=True)
@@ -662,7 +667,7 @@ async def years_cb_handler(client: Client, query: CallbackQuery):
     btn.append(
         [
             InlineKeyboardButton(
-                text="⋞ ʙᴀᴄᴋ ᴛᴏ ᴍᴀɪɴ ᴘᴀɢᴇ", callback_data=f"next_{req}_{key}_{offset}"
+                text=tr(ui_lang, "home"), callback_data=f"next_{req}_{key}_{offset}"
             )
         ]
     )
@@ -675,6 +680,7 @@ async def years_cb_handler(client: Client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex(r"^years_search#"))
 async def year_search(client: Client, query: CallbackQuery):
+    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     _, year, key, offset, orginal_offset, req = query.data.split("#")
     if int(req) != query.from_user.id:
         return await query.answer(script.ALRT_TXT, show_alert=True)
@@ -694,7 +700,6 @@ async def year_search(client: Client, query: CallbackQuery):
         n_offset = int(n_offset)
     except:
         n_offset = 0
-    files = [file for file in files if re.search(year, file.file_name, re.IGNORECASE)]
     if not files:
         await query.answer(
             f"sᴏʀʀʏ ʏᴇᴀʀ {year.title()} ɴᴏᴛ ғᴏᴜɴᴅ ғᴏʀ {search}", show_alert=1
@@ -735,7 +740,7 @@ async def year_search(client: Client, query: CallbackQuery):
         0,
         [
             InlineKeyboardButton(
-                "sᴇɴᴅ ᴀʟʟ ғɪʟᴇs", callback_data=f"send_all#{key}"
+                tr(ui_lang, "send_all"), callback_data=f"send_all#{key}"
             ),
         ],
     )
@@ -743,28 +748,28 @@ async def year_search(client: Client, query: CallbackQuery):
         1,
         [
             InlineKeyboardButton(
-                "ʟᴀɴɢᴜᴀɢᴇ ", callback_data=f"languages#{key}#{offset}#{req}"
+                tr(ui_lang, "language"), callback_data=f"languages#{key}#{offset}#{req}"
             ),
             InlineKeyboardButton(
-                "ǫᴜᴀʟɪᴛʏ ", callback_data=f"qualities#{key}#{offset}#{req}"
+                tr(ui_lang, "quality"), callback_data=f"qualities#{key}#{offset}#{req}"
             ),
         ],
     )
     btn.insert(2, [
         InlineKeyboardButton(
-            "ꜱᴇᴀꜱᴏɴ", callback_data=f"seasons#{key}#{offset}#{req}"
+            tr(ui_lang, "season"), callback_data=f"seasons#{key}#{offset}#{req}"
         )
     ])
 
     if n_offset == "":
         btn.append(
-            [InlineKeyboardButton(text="↭ ɴᴏ ᴍᴏʀᴇ ᴘᴀɢᴇꜱ ᴀᴠᴀɪʟᴀʙʟᴇ ↭", callback_data="buttons")]
+            [InlineKeyboardButton(text=tr(ui_lang, "no_more"), callback_data="buttons")]
         )
     elif n_offset == 0:
         btn.append(
             [
                 InlineKeyboardButton(
-                    "⋞ ʙᴀᴄᴋ",
+                    tr(ui_lang, "back"),
                     callback_data=f"years_search#{year}#{key}#{offset- await _max_results_for_query(query, key)}#{orginal_offset}#{req}",
                 ),
                 InlineKeyboardButton(
@@ -781,7 +786,7 @@ async def year_search(client: Client, query: CallbackQuery):
                     callback_data="pages",
                 ),
                 InlineKeyboardButton(
-                    "ɴᴇxᴛ ⋟",
+                    tr(ui_lang, "next"),
                     callback_data=f"years_search#{year}#{key}#{n_offset}#{orginal_offset}#{req}",
                 ),
             ]
@@ -790,7 +795,7 @@ async def year_search(client: Client, query: CallbackQuery):
         btn.append(
             [
                 InlineKeyboardButton(
-                    "⋞ ʙᴀᴄᴋ",
+                    tr(ui_lang, "back"),
                     callback_data=f"years_search#{year}#{key}#{offset- await _max_results_for_query(query, key)}#{orginal_offset}#{req}",
                 ),
                 InlineKeyboardButton(
@@ -798,7 +803,7 @@ async def year_search(client: Client, query: CallbackQuery):
                     callback_data="pages",
                 ),
                 InlineKeyboardButton(
-                    "ɴᴇxᴛ ⋟",
+                    tr(ui_lang, "next"),
                     callback_data=f"years_search#{year}#{key}#{n_offset}#{orginal_offset}#{req}",
                 ),
             ]
@@ -807,7 +812,7 @@ async def year_search(client: Client, query: CallbackQuery):
     btn.append(
         [
             InlineKeyboardButton(
-                text="⋞ ʙᴀᴄᴋ ᴛᴏ ᴍᴀɪɴ ᴘᴀɢᴇ",
+                text=tr(ui_lang, "home"),
                 callback_data=f"next_{req}_{key}_{orginal_offset}",
             ),
         ]
@@ -823,6 +828,7 @@ async def year_search(client: Client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex(r"^qualities#"))
 async def quality_cb_handler(client: Client, query: CallbackQuery):
+    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     _, key, offset, req = query.data.split("#")
     if int(req) != query.from_user.id:
         return await query.answer(script.ALRT_TXT, show_alert=True)
@@ -843,12 +849,12 @@ async def quality_cb_handler(client: Client, query: CallbackQuery):
     btn.append(
         [
             InlineKeyboardButton(
-                text="⋞ ʙᴀᴄᴋ ᴛᴏ ᴍᴀɪɴ ᴘᴀɢᴇ", callback_data=f"next_{req}_{key}_{offset}"
+                text=tr(ui_lang, "home"), callback_data=f"next_{req}_{key}_{offset}"
             )
         ]
     )
     await query.message.edit_text(
-        "<b>ɪɴ ᴡʜɪᴄʜ ǫᴜᴀʟɪᴛʏ ᴅᴏ ʏᴏᴜ ᴡᴀɴᴛ, ᴄʜᴏᴏsᴇ ғʀᴏᴍ ʜᴇʀᴇ ↓↓</b>",
+        f"<b>{tr(ui_lang, 'quality_choose')}</b>",
         reply_markup=InlineKeyboardMarkup(btn),
     )
     return
@@ -859,99 +865,189 @@ async def quality_search(client: Client, query: CallbackQuery):
     _, qul, key, offset, orginal_offset, req = query.data.split("#")
     if int(req) != query.from_user.id:
         return await query.answer(script.ALRT_TXT, show_alert=True)
-    offset = max(0, int(offset))
-    original_offset = max(0, int(orginal_offset))
+    offset = int(offset)
+    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     search = BUTTONS.get(key)
     cap = CAP.get(key)
     if not search:
-        return await query.answer(
+        await query.answer(
             script.OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True
         )
+        return
     search = search.replace("_", " ")
-    limit = await _max_results_for_query(query, key)
     files, n_offset, total = await get_search_results(
-        f"{search} {qul}", max_results=limit, offset=offset
+        f"{search} {qul}", max_results=await _max_results_for_query(query, key), offset=offset
     )
     try:
         n_offset = int(n_offset)
-    except (TypeError, ValueError):
+    except:
         n_offset = 0
-    # The database query already applies the quality term. Do not run a second
-    # client-side filename filter: that used to discard valid matches and make
-    # the Quality button appear inconsistent.
     if not files:
-        return await query.answer(
-            f"Sorry, quality {qul.title()} was not found for {search}.", show_alert=True
+        await query.answer(
+            f"sᴏʀʀʏ ǫᴜᴀʟɪᴛʏ {qul.title()} ɴᴏᴛ ғᴏᴜɴᴅ ғᴏʀ {search}", show_alert=1
         )
+        return
 
     temp.FILES_ID[key] = files
-    reqnxt = query.from_user.id
+    reqnxt = query.from_user.id if query.from_user else 0
     settings = await get_settings(await _group_id_for_query(query))
+    del_msg = (
+        f"\n\n<blockquote>⚠️ <b>THIS MESSAGE WILL BE AUTO DELETE AFTER {_delete_time_text(int(settings.get('delete_time', DELETE_TIME)))} TO AVOID COPYRIGHT ISSUES 🗑</b></blockquote>"
+        if settings.get("auto_delete") else ""
+    )
+    temp.CHAT[query.from_user.id] = query.message.chat.id
     temp.CHAT[query.from_user.id] = query.message.chat.id
     ads, ads_name, _ = await mdb.get_advirtisment()
     ads_text = ""
     if ads is not None and ads_name is not None:
         ads_url = f"https://telegram.dog/{temp.U_NAME}?start=ads"
         ads_text = f"<a href={ads_url}>{ads_name}</a>"
-    js_ads = f"\n━━━━━━━━━━━━━━━━━━\n <b>{ads_text}</b> \n━━━━━━━━━━━━━━━━━━" if ads_text else ""
+    js_ads = (
+        f"\n━━━━━━━━━━━━━━━━━━\n <b>{ads_text}</b> \n━━━━━━━━━━━━━━━━━━"
+        if ads_text
+        else ""
+    )
     links = ""
     if settings["link"]:
         btn = []
         for file_num, file in enumerate(files, start=offset + 1):
             links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{query.message.chat.id}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
     else:
-        btn = [[InlineKeyboardButton(text=f"🔗 {get_size(file.file_size)}≽ {formate_file_name(file.file_name)}", callback_data=f"cfiles#{reqnxt}#{file.file_id}")] for file in files]
-    btn.insert(0, [InlineKeyboardButton("sᴇɴᴅ ᴀʟʟ ғɪʟᴇs", callback_data=f"send_all#{key}")])
-    btn.insert(1, [
-        InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇ", callback_data=f"languages#{key}#{offset}#{req}"),
-        InlineKeyboardButton("ǫᴜᴀʟɪᴛʏ", callback_data=f"qualities#{key}#{offset}#{req}"),
-        InlineKeyboardButton("ꜱᴇᴀsᴏɴ", callback_data=f"seasons#{key}#{offset}#{req}"),
-    ])
-    page = math.ceil((offset + 1) / limit) if total else 1
-    pages = math.ceil(total / limit) if total else 1
-    if n_offset:
-        nav = [InlineKeyboardButton(f"{page}/{pages}", callback_data="pages"), InlineKeyboardButton("ɴᴇxᴛ ⋟", callback_data=f"quality_search#{qul}#{key}#{n_offset}#{original_offset}#{req}")]
-        if offset:
-            nav.insert(0, InlineKeyboardButton("⋞ ʙᴀᴄᴋ", callback_data=f"quality_search#{qul}#{key}#{max(0, offset-limit)}#{original_offset}#{req}"))
-        btn.append(nav)
-    elif offset:
-        btn.append([InlineKeyboardButton("⋞ ʙᴀᴄᴋ", callback_data=f"quality_search#{qul}#{key}#{max(0, offset-limit)}#{original_offset}#{req}"), InlineKeyboardButton(f"{page}/{pages}", callback_data="pages")])
+        btn = [
+            [
+                InlineKeyboardButton(
+                    text=f"🔗 {get_size(file.file_size)}≽ {formate_file_name(file.file_name)}",
+                    callback_data=f"cfiles#{reqnxt}#{file.file_id}",
+                ),
+            ]
+            for file in files
+        ]
+
+    btn.insert(
+        0,
+        [
+            InlineKeyboardButton(
+                f"{tr(ui_lang, 'send_all')}", callback_data=f"send_all#{key}"
+            ),
+        ],
+    )
+    btn.insert(
+        1,
+        [
+            InlineKeyboardButton(
+                f"🌐 {tr(ui_lang, 'language')}", callback_data=f"languages#{key}#{offset}#{req}"
+            ),
+            InlineKeyboardButton(
+                f"{tr(ui_lang, 'quality')}", callback_data=f"qualities#{key}#{offset}#{req}"
+            ),
+            InlineKeyboardButton(
+                tr(ui_lang, "season"), callback_data=f"seasons#{key}#{offset}#{req}"
+            ),
+        ],
+    )
+    if n_offset == "":
+        btn.append(
+            [InlineKeyboardButton(text=tr(ui_lang, "no_more"), callback_data="buttons")]
+        )
+    elif n_offset == 0:
+        btn.append(
+            [
+                InlineKeyboardButton(
+                    tr(ui_lang, "back"),
+                    callback_data=f"quality_search#{qul}#{key}#{offset- await _max_results_for_query(query, key)}#{orginal_offset}#{req}",
+                ),
+                InlineKeyboardButton(
+                    f"{math.ceil(offset / await _max_results_for_query(query, key)) + 1}/{math.ceil(total / await _max_results_for_query(query, key))}",
+                    callback_data="pages",
+                ),
+            ]
+        )
+    elif offset == 0:
+        btn.append(
+            [
+                InlineKeyboardButton(
+                    f"{math.ceil(offset / await _max_results_for_query(query, key)) + 1}/{math.ceil(total / await _max_results_for_query(query, key))}",
+                    callback_data="pages",
+                ),
+                InlineKeyboardButton(
+                    tr(ui_lang, "next"),
+                    callback_data=f"quality_search#{qul}#{key}#{n_offset}#{orginal_offset}#{req}",
+                ),
+            ]
+        )
     else:
-        btn.append([InlineKeyboardButton("↭ ɴᴏ ᴍᴏʀᴇ ᴘᴀɢᴇꜱ ᴀᴠᴀɪʟᴀʙʟᴇ ↭", callback_data="buttons")])
-    btn.append([InlineKeyboardButton("⋞ ʙᴀᴄᴋ ᴛᴏ ᴍᴀɪɴ ᴘᴀɢᴇ", callback_data=f"next_{req}_{key}_{original_offset}")])
-    await query.message.edit_text(cap + links + del_msg + js_ads, disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML, reply_markup=InlineKeyboardMarkup(btn))
+        btn.append(
+            [
+                InlineKeyboardButton(
+                    tr(ui_lang, "back"),
+                    callback_data=f"quality_search#{qul}#{key}#{offset- await _max_results_for_query(query, key)}#{orginal_offset}#{req}",
+                ),
+                InlineKeyboardButton(
+                    f"{math.ceil(offset / await _max_results_for_query(query, key)) + 1}/{math.ceil(total / await _max_results_for_query(query, key))}",
+                    callback_data="pages",
+                ),
+                InlineKeyboardButton(
+                    tr(ui_lang, "next"),
+                    callback_data=f"quality_search#{qul}#{key}#{n_offset}#{orginal_offset}#{req}",
+                ),
+            ]
+        )
+
+    btn.append(
+        [
+            InlineKeyboardButton(
+                text=tr(ui_lang, "home"),
+                callback_data=f"next_{req}_{key}_{orginal_offset}",
+            ),
+        ]
+    )
     await query.answer()
+    try:
+        await query.message.edit_text(
+        cap + links + del_msg + js_ads,
+        disable_web_page_preview=True,
+        parse_mode=enums.ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(btn),
+        )
+    except MessageNotModified:
+        pass
+    return
+    await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
+
 
 @Client.on_callback_query(filters.regex(r"^languages#"))
 async def languages_cb_handler(client: Client, query: CallbackQuery):
+    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     _, key, offset, req = query.data.split("#")
     if int(req) != query.from_user.id:
         return await query.answer(script.ALRT_TXT, show_alert=True)
     btn = []
-    for i in range(0, len(LANGUAGES) - 1, 2):
-        btn.append(
-            [
-                InlineKeyboardButton(
-                    text=LANGUAGES[i].title(),
-                    callback_data=f"lang_search#{LANGUAGES[i].lower()}#{key}#0#{offset}#{req}",
-                ),
-                InlineKeyboardButton(
-                    text=LANGUAGES[i + 1].title(),
-                    callback_data=f"lang_search#{LANGUAGES[i+1].lower()}#{key}#0#{offset}#{req}",
-                ),
-            ]
-        )
+    for i in range(0, len(LANGUAGES), 2):
+        row = [InlineKeyboardButton(
+            text=LANGUAGES[i].title(),
+            callback_data=f"lang_search#{LANGUAGES[i].lower()}#{key}#0#{offset}#{req}",
+        )]
+        if i + 1 < len(LANGUAGES):
+            row.append(InlineKeyboardButton(
+                text=LANGUAGES[i + 1].title(),
+                callback_data=f"lang_search#{LANGUAGES[i+1].lower()}#{key}#0#{offset}#{req}",
+            ))
+        btn.append(row)
     btn.append(
         [
             InlineKeyboardButton(
-                text="⋞ ʙᴀᴄᴋ ᴛᴏ ᴍᴀɪɴ ᴘᴀɢᴇ", callback_data=f"next_{req}_{key}_{offset}"
+                text=tr(ui_lang, "home"), callback_data=f"next_{req}_{key}_{offset}"
             )
         ]
     )
-    await query.message.edit_text(
-        "<b>ɪɴ ᴡʜɪᴄʜ ʟᴀɴɢᴜᴀɢᴇ ᴅᴏ ʏᴏᴜ ᴡᴀɴᴛ, ᴄʜᴏᴏsᴇ ғʀᴏᴍ ʜᴇʀᴇ ↓↓</b>",
+    await query.answer()
+    try:
+        await query.message.edit_text(
+        f"<b>{tr(ui_lang, 'language_choose')}</b>",
         reply_markup=InlineKeyboardMarkup(btn),
-    )
+        )
+    except MessageNotModified:
+        pass
     return
 
 
@@ -962,6 +1058,7 @@ async def lang_search(client: Client, query: CallbackQuery):
     if int(req) != query.from_user.id:
         return await query.answer(script.ALRT_TXT, show_alert=True)
     offset = int(offset)
+    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     search = BUTTONS.get(key)
     cap = CAP.get(key)
     if not search:
@@ -984,19 +1081,28 @@ async def lang_search(client: Client, query: CallbackQuery):
             n_offset = int(n_offset2)
         except:
             n_offset = 0
-    files = [file for file in files if re.search(lang, file.file_name, re.IGNORECASE)]
+    merged = []
+    seen_ids = set()
+    for candidate in list(files) + list(files2):
+        fid = getattr(candidate, "file_id", None)
+        if fid in seen_ids:
+            continue
+        seen_ids.add(fid)
+        merged.append(candidate)
+    files = merged
     if not files:
-        files = [
-            file for file in files2 if re.search(lang2, file.file_name, re.IGNORECASE)
-        ]
-        if not files:
-            return await query.answer(
-                f"sᴏʀʀʏ ʟᴀɴɢᴜᴀɢᴇ {lang.title()} ɴᴏᴛ ғᴏᴜɴᴅ ғᴏʀ {search}", show_alert=1
-            )
+        return await query.answer(
+            f"sᴏʀʀʏ ʟᴀɴɢᴜᴀɢᴇ {lang.title()} ɴᴏᴛ ғᴏᴜɴᴅ ғᴏʀ {search}", show_alert=1
+        )
 
     temp.FILES_ID[key] = files
     reqnxt = query.from_user.id if query.from_user else 0
     settings = await get_settings(await _group_id_for_query(query))
+    del_msg = (
+        f"\n\n<blockquote>⚠️ <b>THIS MESSAGE WILL BE AUTO DELETE AFTER {_delete_time_text(int(settings.get('delete_time', DELETE_TIME)))} TO AVOID COPYRIGHT ISSUES 🗑</b></blockquote>"
+        if settings.get("auto_delete") else ""
+    )
+    temp.CHAT[query.from_user.id] = query.message.chat.id
     group_id = query.message.chat.id
     temp.CHAT[query.from_user.id] = query.message.chat.id
     ads, ads_name, _ = await mdb.get_advirtisment()
@@ -1030,7 +1136,7 @@ async def lang_search(client: Client, query: CallbackQuery):
         0,
         [
             InlineKeyboardButton(
-                "sᴇɴᴅ ᴀʟʟ ғɪʟᴇs", callback_data=f"send_all#{key}"
+                f"{tr(ui_lang, 'send_all')}", callback_data=f"send_all#{key}"
             ),
         ],
     )
@@ -1038,25 +1144,25 @@ async def lang_search(client: Client, query: CallbackQuery):
         1,
         [
             InlineKeyboardButton(
-                "ʟᴀɴɢᴜᴀɢᴇ", callback_data=f"languages#{key}#{offset}#{req}"
+                f"🌐 {tr(ui_lang, 'language')}", callback_data=f"languages#{key}#{offset}#{req}"
             ),
             InlineKeyboardButton(
-                "ǫᴜᴀʟɪᴛʏ", callback_data=f"qualities#{key}#{offset}#{req}"
+                f"{tr(ui_lang, 'quality')}", callback_data=f"qualities#{key}#{offset}#{req}"
             ),
             InlineKeyboardButton(
-                "ꜱᴇᴀꜱᴏɴ", callback_data=f"seasons#{key}#{offset}#{req}"
+                tr(ui_lang, "season"), callback_data=f"seasons#{key}#{offset}#{req}"
             ),
         ],
     )
     if n_offset == "":
         btn.append(
-            [InlineKeyboardButton(text="↭ ɴᴏ ᴍᴏʀᴇ ᴘᴀɢᴇꜱ ᴀᴠᴀɪʟᴀʙʟᴇ ↭", callback_data="buttons")]
+            [InlineKeyboardButton(text=tr(ui_lang, "no_more"), callback_data="buttons")]
         )
     elif n_offset == 0:
         btn.append(
             [
                 InlineKeyboardButton(
-                    "⋞ ʙᴀᴄᴋ",
+                    tr(ui_lang, "back"),
                     callback_data=f"lang_search#{lang}#{key}#{offset- await _max_results_for_query(query, key)}#{orginal_offset}#{req}",
                 ),
                 InlineKeyboardButton(
@@ -1073,7 +1179,7 @@ async def lang_search(client: Client, query: CallbackQuery):
                     callback_data="pages",
                 ),
                 InlineKeyboardButton(
-                    "ɴᴇxᴛ ⋟",
+                    tr(ui_lang, "next"),
                     callback_data=f"lang_search#{lang}#{key}#{n_offset}#{orginal_offset}#{req}",
                 ),
             ]
@@ -1082,7 +1188,7 @@ async def lang_search(client: Client, query: CallbackQuery):
         btn.append(
             [
                 InlineKeyboardButton(
-                    "⋞ ʙᴀᴄᴋ",
+                    tr(ui_lang, "back"),
                     callback_data=f"lang_search#{lang}#{key}#{offset- await _max_results_for_query(query, key)}#{orginal_offset}#{req}",
                 ),
                 InlineKeyboardButton(
@@ -1090,7 +1196,7 @@ async def lang_search(client: Client, query: CallbackQuery):
                     callback_data="pages",
                 ),
                 InlineKeyboardButton(
-                    "ɴᴇxᴛ ⋟",
+                    tr(ui_lang, "next"),
                     callback_data=f"lang_search#{lang}#{key}#{n_offset}#{orginal_offset}#{req}",
                 ),
             ]
@@ -1099,17 +1205,21 @@ async def lang_search(client: Client, query: CallbackQuery):
     btn.append(
         [
             InlineKeyboardButton(
-                text="⋞ ʙᴀᴄᴋ ᴛᴏ ᴍᴀɪɴ ᴘᴀɢᴇ",
+                text=tr(ui_lang, "home"),
                 callback_data=f"next_{req}_{key}_{orginal_offset}",
             ),
         ]
     )
-    await query.message.edit_text(
+    await query.answer()
+    try:
+        await query.message.edit_text(
         cap + links + del_msg + js_ads,
         disable_web_page_preview=True,
         parse_mode=enums.ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup(btn),
-    )
+        )
+    except MessageNotModified:
+        pass
     return
     await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
 
@@ -1139,7 +1249,7 @@ async def advantage_spoll_choker(bot, query):
 @Client.on_callback_query(filters.regex(r"^cfiles"))
 async def pmfile_cb(client, query):
     _, userid, fileid = query.data.split("#")
-    if query.from_user.id != userid:
+    if str(query.from_user.id) != str(userid):
         await query.answer("Please Request Your Own!!", show_alert=True)
         return
 
@@ -1151,6 +1261,7 @@ async def pmfile_cb(client, query):
 
 @Client.on_callback_query()
 async def cb_handler(client: Client, query: CallbackQuery):
+    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     if query.data == "close_data":
         try:
             user = query.message.reply_to_message.from_user.id
@@ -1525,7 +1636,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 )
             ],
             [
-                InlineKeyboardButton("⋞ ʙᴀᴄᴋ", callback_data="about"),
+                InlineKeyboardButton(tr(ui_lang, "back"), callback_data="about"),
                 InlineKeyboardButton("• ᴄʟᴏsᴇ •", callback_data="close_data"),
             ],
         ]
@@ -1559,7 +1670,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
                     url=f"http://telegram.dog/{temp.U_NAME}?startgroup=start",
                 )
             ],
-            [InlineKeyboardButton("⋞ ʙᴀᴄᴋ", callback_data="help")],
+            [InlineKeyboardButton(tr(ui_lang, "back"), callback_data="help")],
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
         await client.edit_message_media(
@@ -1574,7 +1685,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         )
 
     elif query.data == "telegraph":
-        buttons = [[InlineKeyboardButton("⋞ ʙᴀᴄᴋ", callback_data="special")]]
+        buttons = [[InlineKeyboardButton(tr(ui_lang, "back"), callback_data="special")]]
         reply_markup = InlineKeyboardMarkup(buttons)
         await query.message.edit_text(
             text=script.TELE_TXT,
@@ -1582,7 +1693,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             parse_mode=enums.ParseMode.HTML,
         )
     elif query.data == "font":
-        buttons = [[InlineKeyboardButton("⋞ ʙᴀᴄᴋ", callback_data="special")]]
+        buttons = [[InlineKeyboardButton(tr(ui_lang, "back"), callback_data="special")]]
         reply_markup = InlineKeyboardMarkup(buttons)
         await query.message.edit_text(
             text=script.FONT_TXT,
@@ -2046,6 +2157,8 @@ async def ai_spell_check(wrong_name):
 
 
 async def auto_filter(client, msg, spoll=False, pm_mode=False):
+    _fu = getattr(msg, "from_user", None) or getattr(getattr(msg, "message", None), "from_user", None)
+    ui_lang = await get_user_language(_fu.id if _fu else 0, _fu)
     if not spoll:
         message = msg
         search = message.text
@@ -2123,17 +2236,17 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
         req = message.from_user.id if message.from_user else 0
         # Filters and Send All come after the file results, before pagination.
         btn.append([
-            InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇ", callback_data=f"languages#{key}#{offset}#{req}"),
-            InlineKeyboardButton("ǫᴜᴀʟɪᴛʏ", callback_data=f"qualities#{key}#{offset}#{req}"),
+            InlineKeyboardButton(tr(ui_lang, "language"), callback_data=f"languages#{key}#{offset}#{req}"),
+            InlineKeyboardButton(tr(ui_lang, "quality"), callback_data=f"qualities#{key}#{offset}#{req}"),
         ])
-        btn.append([InlineKeyboardButton("ꜱᴇᴀsᴏɴ", callback_data=f"seasons#{key}#{offset}#{req}")])
-        btn.append([InlineKeyboardButton("sᴇɴᴅ ᴀʟʟ ғɪʟᴇs", callback_data=f"send_all#{key}")])
+        btn.append([InlineKeyboardButton(tr(ui_lang, "season"), callback_data=f"seasons#{key}#{offset}#{req}")])
+        btn.append([InlineKeyboardButton(tr(ui_lang, "send_all"), callback_data=f"send_all#{key}")])
         btn.append([
             InlineKeyboardButton(
                 text=f"1/{math.ceil(int(total_results) / max_results)}", callback_data="pages",
             ),
             InlineKeyboardButton(
-                text="ɴᴇxᴛ ⋟", callback_data=f"next_{req}_{key}_{offset}",
+                text=tr(ui_lang, "next"), callback_data=f"next_{req}_{key}_{offset}",
             ),
         ])
         key = f"{message.chat.id}-{message.id}"
@@ -2145,12 +2258,12 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
             offset = max_results
     else:
         btn.append([
-            InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇ", callback_data=f"languages#{key}#{offset}#{req}"),
-            InlineKeyboardButton("ǫᴜᴀʟɪᴛʏ", callback_data=f"qualities#{key}#{offset}#{req}"),
+            InlineKeyboardButton(tr(ui_lang, "language"), callback_data=f"languages#{key}#{offset}#{req}"),
+            InlineKeyboardButton(tr(ui_lang, "quality"), callback_data=f"qualities#{key}#{offset}#{req}"),
         ])
-        btn.append([InlineKeyboardButton("ꜱᴇᴀsᴏɴ", callback_data=f"seasons#{key}#{offset}#{req}")])
-        btn.append([InlineKeyboardButton("sᴇɴᴅ ᴀʟʟ ғɪʟᴇs", callback_data=f"send_all#{key}")])
-        btn.append([InlineKeyboardButton("↭ ɴᴏ ᴍᴏʀᴇ ᴘᴀɢᴇꜱ ᴀᴠᴀɪʟᴀʙʟᴇ ↭", user_id=ADMINS[0])])
+        btn.append([InlineKeyboardButton(tr(ui_lang, "season"), callback_data=f"seasons#{key}#{offset}#{req}")])
+        btn.append([InlineKeyboardButton(tr(ui_lang, "send_all"), callback_data=f"send_all#{key}")])
+        btn.append([InlineKeyboardButton(tr(ui_lang, "no_more"), callback_data="buttons")])
     imdb = (
         await get_poster(search, file=(files[0]).file_name)
         if settings["imdb"]
