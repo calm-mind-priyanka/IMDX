@@ -42,11 +42,21 @@ from utils import (
 import re
 import base64
 from info import *
-from language import language_markup, has_saved_language, get_user_language
+from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr
 
 logger = logging.getLogger(__name__)
 movie_series_db = JsTopDB(DATABASE_URI)
 verification_ids = {}
+
+
+def _global_home_markup(lang):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(home_tr(lang, "add_group"), url=f"http://telegram.dog/{temp.U_NAME}?startgroup=start")],
+        [InlineKeyboardButton(home_tr(lang, "disable_ads"), callback_data="jisshupremium"), InlineKeyboardButton(home_tr(lang, "special"), callback_data="special")],
+        [InlineKeyboardButton(home_tr(lang, "help"), callback_data="help"), InlineKeyboardButton(home_tr(lang, "about"), callback_data="about")],
+        [InlineKeyboardButton(home_tr(lang, "earn"), callback_data="earn")],
+        [InlineKeyboardButton(tr(lang, "language_button"), callback_data="global_lang:menu")],
+    ])
 
 
 def _file_mode_greeting():
@@ -86,11 +96,65 @@ def _file_mode_markup(settings, file_id):
     ])
 
 
+@Client.on_callback_query(filters.regex(r"^global_lang:"))
+async def global_language_callback(client: Client, query):
+    value = query.data.split(":", 1)[1]
+    if value == "menu":
+        lang = await get_user_language(query.from_user.id, query.from_user)
+        await query.answer()
+        text = tr(lang, "language_title") + "\n\n" + tr(lang, "language_body")
+        return await _edit_language_message(query, text, language_markup())
+    from language import LANGUAGES
+    if value not in LANGUAGES:
+        return await query.answer("Language unavailable.", show_alert=True)
+    await db.update_user({"id": int(query.from_user.id), "language": value, "language_code": value})
+    await query.answer(tr(value, "language_saved"), show_alert=True)
+    # Rebuild the normal home menu immediately; this makes the global language
+    # control usable from /start instead of leaving the user on the picker.
+    markup = _global_home_markup(value)
+    try:
+        if query.message and (query.message.photo or query.message.video or query.message.animation):
+            await query.message.edit_caption(
+                caption=core_tr(value, "start", mention=query.from_user.mention, status=get_status()),
+                reply_markup=markup, parse_mode=enums.ParseMode.HTML,
+            )
+        else:
+            await query.message.edit_text(
+                core_tr(value, "start", mention=query.from_user.mention, status=get_status()).format(query.from_user.mention, get_status(), query.from_user.id),
+                reply_markup=markup, parse_mode=enums.ParseMode.HTML,
+            )
+    except Exception:
+        logger.exception("Could not refresh home UI after global language change")
+
+
+async def _edit_language_message(query, text, markup):
+    try:
+        if query.message and (query.message.photo or query.message.video or query.message.animation):
+            return await query.message.edit_caption(caption=text, reply_markup=markup, parse_mode=enums.ParseMode.HTML)
+        return await query.message.edit_text(text, reply_markup=markup, parse_mode=enums.ParseMode.HTML)
+    except Exception as exc:
+        from pyrogram.errors import MessageNotModified
+        if isinstance(exc, MessageNotModified):
+            return
+        logger.exception("Could not display global language picker")
+
+
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client: Client, message):
     await message.react(emoji=random.choice(REACTIONS))
     m = message
     user_id = m.from_user.id
+    # Global language is the first private-chat step, including deep links.
+    # This prevents file/verification/payment flows from silently reverting
+    # to English for a user who has never selected a language.
+    if message.chat.type == enums.ChatType.PRIVATE and not await has_saved_language(user_id):
+        await db.update_user({"id": int(user_id), "name": message.from_user.first_name})
+        await message.reply_text(
+            tr("en", "language_title") + "\n\n" + tr("en", "language_body"),
+            reply_markup=language_markup(),
+            parse_mode=enums.ParseMode.HTML,
+        )
+        return
     if message.chat.type == enums.ChatType.PRIVATE and len(m.command) == 2 and m.command[1].startswith("settings_"):
         from plugins.advanced_settings import show_group_list, show_group_settings
         try:
@@ -195,37 +259,10 @@ async def start(client: Client, message):
                 temp.B_LINK, message.from_user.id, message.from_user.mention
             ),
         )
+    lang = await get_user_language(message.from_user.id, message.from_user)
     if len(message.command) != 2:
-        if not await has_saved_language(message.from_user.id):
-            await message.reply_text(
-                "🌐 <b>Choose Your Language</b>\n\nSelect the language you want the bot to use. You can change it anytime.",
-                reply_markup=language_markup(),
-                parse_mode=enums.ParseMode.HTML,
-            )
-            return
-        buttons = [
-            [
-                InlineKeyboardButton(
-                    "⇋ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ⇋",
-                    url=f"http://telegram.dog/{temp.U_NAME}?startgroup=start",
-                )
-            ],
-            [
-                InlineKeyboardButton("• ᴅɪꜱᴀʙʟᴇ ᴀᴅꜱ •", callback_data="jisshupremium"),
-                InlineKeyboardButton("• ꜱᴘᴇᴄɪᴀʟ •", callback_data="special"),
-            ],
-            [
-                InlineKeyboardButton("• ʜᴇʟᴘ •", callback_data="help"),
-                InlineKeyboardButton("• ᴀʙᴏᴜᴛ •", callback_data="about"),
-            ],
-            [
-                InlineKeyboardButton(
-                    "• ᴇᴀʀɴ ᴜɴʟɪᴍɪᴛᴇᴅ ᴍᴏɴᴇʏ ᴡɪᴛʜ ʙᴏᴛ •", callback_data="earn"
-                )
-            ],
-            [InlineKeyboardButton("🌐 ʟᴀɴɢᴜᴀɢᴇ", callback_data="global_language")],
-        ]
-        reply_markup = InlineKeyboardMarkup(buttons)
+        lang = await get_user_language(message.from_user.id, message.from_user)
+        reply_markup = _global_home_markup(lang)
         m = await message.reply_sticker(
             "CAACAgUAAx0CZz_GMwACMBdnXZA4SejgJ6a_0TrNzOfn9ImI_QACNwsAArT4iFVaZPJf8ldVVh4E"
         )
@@ -233,48 +270,19 @@ async def start(client: Client, message):
         await m.delete()
         await message.reply_photo(
             photo=random.choice(START_IMG),
-            caption=script.START_TXT.format(
-                message.from_user.mention, get_status(), message.from_user.id
-            ),
+            caption=core_tr(lang, "start", mention=message.from_user.mention, status=get_status()),
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML,
         )
         return
     if len(message.command) == 2 and message.command[1] in [
-        "subscribe",
-        "error",
-        "okay",
-        "help",
+        "subscribe", "error", "okay", "help",
     ]:
-        buttons = [
-            [
-                InlineKeyboardButton(
-                    "⇋ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ⇋",
-                    url=f"http://telegram.dog/{temp.U_NAME}?startgroup=start",
-                )
-            ],
-            [
-                InlineKeyboardButton("• ᴅɪꜱᴀʙʟᴇ ᴀᴅꜱ •", callback_data="jisshupremium"),
-                InlineKeyboardButton("• ꜱᴘᴇᴄɪᴀʟ •", callback_data="special"),
-            ],
-            [
-                InlineKeyboardButton("• ʜᴇʟᴘ •", callback_data="help"),
-                InlineKeyboardButton("• ᴀʙᴏᴜᴛ •", callback_data="about"),
-            ],
-            [
-                InlineKeyboardButton(
-                    "• ᴇᴀʀɴ ᴜɴʟɪᴍɪᴛᴇᴅ ᴍᴏɴᴇʏ ᴡɪᴛʜ ʙᴏᴛ •", callback_data="earn"
-                )
-            ],
-            [InlineKeyboardButton("🌐 ʟᴀɴɢᴜᴀɢᴇ", callback_data="global_language")],
-        ]
-        reply_markup = InlineKeyboardMarkup(buttons)
+        lang = await get_user_language(message.from_user.id, message.from_user)
         return await message.reply_photo(
             photo=START_IMG,
-            caption=script.START_TXT.format(
-                message.from_user.mention, get_status(), message.from_user.id
-            ),
-            reply_markup=reply_markup,
+            caption=core_tr(lang, "start", mention=message.from_user.mention, status=get_status()),
+            reply_markup=_global_home_markup(lang),
             parse_mode=enums.ParseMode.HTML,
         )
     if len(message.command) == 2 and message.command[1].startswith("reff_"):
@@ -591,7 +599,7 @@ async def start(client: Client, message):
             ),
         )
         replyed = await message.reply(delCap)
-        await asyncio.sleep(FILE_AUTO_DEL_TIMER)
+        await asyncio.sleep(delete_delay)
         for file in files_to_delete:
             try:
                 await file.delete()
