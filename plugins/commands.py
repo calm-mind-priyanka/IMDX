@@ -42,7 +42,7 @@ from utils import (
 import re
 import base64
 from info import *
-from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr
+from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr, verify_tr, verify_button_tr
 
 logger = logging.getLogger(__name__)
 movie_series_db = JsTopDB(DATABASE_URI)
@@ -187,14 +187,8 @@ async def start(client: Client, message):
             num = 3
         else:
             num = 2 if key == "second_time_verified" else 1
-        if key == "third_time_verified":
-            msg = script.THIRDT_VERIFY_COMPLETE_TEXT
-        else:
-            msg = (
-                script.SECOND_VERIFY_COMPLETE_TEXT
-                if key == "second_time_verified"
-                else script.VERIFY_COMPLETE_TEXT
-            )
+        lang = await get_user_language(message.from_user.id, message.from_user)
+        msg = verify_tr(lang, "done", mention=message.from_user.mention, num=num, duration=get_readable_time(TWO_VERIFY_GAP))
         if message.command[1].startswith("jisshu"):
             verifiedfiles = (
                 f"https://telegram.me/{temp.U_NAME}?start=allfiles_{grp_id}_{file_id}"
@@ -220,9 +214,7 @@ async def start(client: Client, message):
         reply_markup = InlineKeyboardMarkup(btn)
         await m.reply_photo(
             photo=(VERIFY_IMG),
-            caption=msg.format(
-                message.from_user.mention, get_readable_time(TWO_VERIFY_GAP)
-            ),
+            caption=msg,
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML,
         )
@@ -493,18 +485,12 @@ async def start(client: Client, message):
             ]
             reply_markup = InlineKeyboardMarkup(buttons)
             if shortlink_mode:
-                if await db.user_verified(user_id):
-                    msg = script.SHORTLINK_THIRD_VERIFICATION_TEXT
-                else:
-                    msg = (
-                        script.SHORTLINK_SECOND_VERIFICATION_TEXT
-                        if is_second_shortener
-                        else script.SHORTLINK_VERIFICATION_TEXT
-                    )
+                verify_key = "short3" if await db.user_verified(user_id) else ("short2" if is_second_shortener else "short1")
             elif await db.user_verified(user_id):
-                msg = script.THIRDT_VERIFICATION_TEXT
+                verify_key = "verify3"
             else:
-                msg = script.SECOND_VERIFICATION_TEXT if is_second_shortener else script.VERIFICATION_TEXT
+                verify_key = "verify2" if is_second_shortener else "verify1"
+            msg = verify_tr(lang, verify_key)
             if shortlink_mode:
                 # Shortlink mode shows the same dynamic movie/file information
                 # as the File Mode caption, while keeping the Shortlink 1/3 →
@@ -512,12 +498,12 @@ async def start(client: Client, message):
                 shortlink_file = (await get_file_details(file_id) or [None])[0]
                 if shortlink_file:
                     d = await m.reply_text(
-                        text=msg.format(
-                            message.from_user.mention,
-                            _file_mode_greeting(),
-                            formate_file_name(shortlink_file.file_name),
-                            get_size(shortlink_file.file_size),
-                        ),
+                        text=verify_tr(lang, verify_key,
+                            mention=message.from_user.mention,
+                            greeting=_file_mode_greeting(),
+                            name=formate_file_name(shortlink_file.file_name),
+                            size=get_size(shortlink_file.file_size),
+                            status=get_status()),
                         protect_content=True, reply_markup=reply_markup,
                         parse_mode=enums.ParseMode.HTML,
                     )
