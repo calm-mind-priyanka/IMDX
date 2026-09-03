@@ -32,7 +32,7 @@ from utils import (
     formate_file_name,
 )
 from database.users_chats_db import db
-from language import get_user_language, has_saved_language, tr, core_tr, home_tr, page_tr
+from language import get_user_language, has_saved_language, tr, core_tr, home_tr, page_tr, search_tr, display_movie_name
 from database.ia_filterdb import (
     Media,
     get_search_results,
@@ -2150,7 +2150,7 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
             max_results = max(1, min(20, int(settings.get("max_results", MAX_BTN))))
         except (TypeError, ValueError):
             max_results = int(MAX_BTN)
-        searching_msg = await msg.reply_text(f"🎯 sᴇᴀʀᴄʜɪɴɢ {search}")
+        searching_msg = await msg.reply_text(search_tr(ui_lang, "searching", search))
         files, offset, total_results = await get_search_results(search, max_results=max_results)
         await searching_msg.delete()
         if not files:
@@ -2208,9 +2208,7 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
     else:
         pass
     if spoll:
-        m = await msg.message.edit(
-            f"<b><code>{search}</code> ɪs ꜰᴏᴜɴᴅ ᴘʟᴇᴀsᴇ ᴡᴀɪᴛ ꜰᴏʀ ꜰɪʟᴇs 📫</b>"
-        )
+        m = await msg.message.edit(search_tr(ui_lang, "found", search))
         await asyncio.sleep(1.2)
         await m.delete()
     if offset != "":
@@ -2254,8 +2252,8 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
     TEMPLATE = settings["template"]
     if imdb:
         cap = TEMPLATE.format(
-            query=search,
-            search=search,
+            query=display_movie_name(ui_lang, search),
+            search=display_movie_name(ui_lang, search),
             mention=message.from_user.mention if message.from_user else "",
             group=message.chat.title or str(message.chat.id),
             title=imdb["title"],
@@ -2288,7 +2286,7 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
             **locals(),
         )
     else:
-        cap = f"<b>📂 ʜᴇʀᴇ ɪ ꜰᴏᴜɴᴅ ꜰᴏʀ ʏᴏᴜʀ sᴇᴀʀᴄʜ {search}</b>"
+        cap = search_tr(ui_lang, "found", search)
 
     ads, ads_name, _ = await mdb.get_advirtisment()
     ads_text = ""
