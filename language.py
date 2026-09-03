@@ -116,8 +116,25 @@ UI = {
 }
 
 
+_SMALL_CAPS = str.maketrans({
+    "a":"ᴀ","b":"ʙ","c":"ᴄ","d":"ᴅ","e":"ᴇ","f":"ғ","g":"ɢ",
+    "h":"ʜ","i":"ɪ","j":"ᴊ","k":"ᴋ","l":"ʟ","m":"ᴍ","n":"ɴ",
+    "o":"ᴏ","p":"ᴘ","q":"ǫ","r":"ʀ","s":"ꜱ","t":"ᴛ","u":"ᴜ",
+    "v":"ᴠ","w":"ᴡ","x":"x","y":"ʏ","z":"ᴢ",
+})
+
+def small_caps(text):
+    """Apply the bot's single requested Unicode Small-Caps style to Latin text.
+    Native-script text is left untouched; URLs, IDs and callback data are never
+    passed through this helper.
+    """
+    if text is None:
+        return text
+    return str(text).lower().translate(_SMALL_CAPS)
+
+
 def tr(lang, key):
-    return UI.get(lang, UI["en"]).get(key, UI["en"].get(key, key))
+    return small_caps(UI.get(lang, UI["en"]).get(key, UI["en"].get(key, key)))
 
 
 # User-facing core text used throughout the normal bot flow.  English is the
@@ -166,14 +183,62 @@ for _code, _ui in UI.items():
     for _key in ("back","send_all","language","quality","season","no_more"):
         CORE[_code][_key] = _ui.get(_key, CORE["en"][_key])
 
+# Direct alert shown by Season/Quality/Content-Language filters.  The searched
+# title/value is inserted unchanged; only the surrounding bot text is localized.
+_NOT_FOUND = {
+ "en":"sᴏʀʀʏ, {kind} {value} ɴᴏᴛ ғᴏᴜɴᴅ ғᴏʀ {search}.",
+ "hi":"माफ़ कीजिए, {search} के लिए {kind} {value} नहीं मिला।",
+ "ta":"மன்னிக்கவும், {search} க்கு {kind} {value} கிடைக்கவில்லை.",
+ "te":"క్షమించండి, {search} కోసం {kind} {value} కనుగొనబడలేదు.",
+ "kn":"ಕ್ಷಮಿಸಿ, {search} ಗೆ {kind} {value} ಕಂಡುಬಂದಿಲ್ಲ.",
+ "ml":"ക്ഷമിക്കണം, {search} ന് {kind} {value} കണ്ടെത്താനായില്ല.",
+ "bn":"দুঃখিত, {search}-এর জন্য {kind} {value} পাওয়া যায়নি।",
+ "mr":"माफ करा, {search} साठी {kind} {value} सापडले नाही.",
+ "gu":"માફ કરશો, {search} માટે {kind} {value} મળ્યું નથી.",
+ "pa":"ਮਾਫ਼ ਕਰਨਾ, {search} ਲਈ {kind} {value} ਨਹੀਂ ਮਿਲਿਆ।",
+ "ur":"معذرت، {search} کے لیے {kind} {value} نہیں ملا۔",
+ "as":"ক্ষমা কৰিব, {search}ৰ বাবে {kind} {value} পোৱা নগ'ল।",
+ "ne":"माफ गर्नुहोस्, {search} का लागि {kind} {value} फेला परेन।",
+ "hinglish":"Sorry, {search} ke liye {kind} {value} nahi mila.",
+}
+for _code, _text in _NOT_FOUND.items():
+    CORE.setdefault(_code, {})["not_found"] = _text
+
 
 def core_tr(lang, key, **values):
     data = CORE.get(lang) or CORE[DEFAULT_LANGUAGE]
     text = data.get(key) or CORE[DEFAULT_LANGUAGE].get(key, key)
     try:
-        return text.format(**values)
+        return small_caps(text.format(**values))
     except Exception:
-        return text
+        return small_caps(text)
+
+
+# User-facing pages that are shown when navigating back from Home.  These are
+# deliberately separate from admin/settings text; the selected language belongs
+# to the Telegram user and never changes another user's UI.
+PAGE_I18N = {
+    "en": {
+        "help": "<b>ᴄʟɪᴄᴋ ᴛʜᴇ ʙᴜᴛᴛᴏɴs ʙᴇʟᴏᴡ ᴛᴏ ᴠɪᴇᴡ ᴛʜᴇ ʙᴏᴛ ᴅᴏᴄᴜᴍᴇɴᴛᴀᴛɪᴏɴ.</b>",
+        "about": "<blockquote><b>‣ ᴍʏ ɴᴀᴍᴇ : Jisshu filter bot\n‣ ᴄʀᴇᴀᴛᴏʀ : sandy Bots\n‣ ʟɪʙʀᴀʀʏ : ᴘʏʀᴏɢʀᴀᴍ\n‣ ʟᴀɴɢᴜᴀɢᴇ : ᴘʏᴛʜᴏɴ\n‣ ᴅᴀᴛᴀʙᴀsᴇ : ᴍᴏɴɢᴏ ᴅʙ\n‣ ʙᴜɪʟᴅ : V-4.1 [sᴛᴀʙʟᴇ]</b></blockquote>",
+    },
+    "hi": {"help":"<b>नीचे दिए गए बटन दबाकर Bot की जानकारी देखें।</b>","about":"<blockquote><b>‣ नाम : Jisshu filter bot\n‣ क्रिएटर : sandy Bots\n‣ लाइब्रेरी : Pyrogram\n‣ भाषा : Python\n‣ डेटाबेस : MongoDB\n‣ बिल्ड : V-4.1 [stable]</b></blockquote>"},
+    "ta": {"help":"<b>கீழே உள்ள பொத்தான்களை அழுத்தி Bot தகவல்களைப் பார்க்கவும்.</b>","about":"<blockquote><b>‣ பெயர் : Jisshu filter bot\n‣ உருவாக்கியவர் : sandy Bots\n‣ Library : Pyrogram\n‣ மொழி : Python\n‣ Database : MongoDB\n‣ Build : V-4.1 [stable]</b></blockquote>"},
+    "te": {"help":"<b>Bot వివరాలను చూడటానికి క్రింద ఉన్న బటన్లను నొక్కండి.</b>","about":"<blockquote><b>‣ పేరు : Jisshu filter bot\n‣ క్రియేటర్ : sandy Bots\n‣ Library : Pyrogram\n‣ భాష : Python\n‣ Database : MongoDB\n‣ Build : V-4.1 [stable]</b></blockquote>"},
+    "kn": {"help":"<b>Bot ಮಾಹಿತಿಯನ್ನು ನೋಡಲು ಕೆಳಗಿನ ಬಟನ್‌ಗಳನ್ನು ಒತ್ತಿರಿ.</b>","about":"<blockquote><b>‣ ಹೆಸರು : Jisshu filter bot\n‣ ಸೃಷ್ಟಿಕರ್ತ : sandy Bots\n‣ Library : Pyrogram\n‣ ಭಾಷೆ : Python\n‣ Database : MongoDB\n‣ Build : V-4.1 [stable]</b></blockquote>"},
+    "ml": {"help":"<b>Bot വിവരങ്ങൾ കാണാൻ താഴെയുള്ള ബട്ടണുകൾ അമർത്തുക.</b>","about":"<blockquote><b>‣ പേര് : Jisshu filter bot\n‣ സ്രഷ്ടാവ് : sandy Bots\n‣ Library : Pyrogram\n‣ ഭാഷ : Python\n‣ Database : MongoDB\n‣ Build : V-4.1 [stable]</b></blockquote>"},
+    "bn": {"help":"<b>Bot-এর তথ্য দেখতে নিচের বাটনগুলো চাপুন।</b>","about":"<blockquote><b>‣ নাম : Jisshu filter bot\n‣ নির্মাতা : sandy Bots\n‣ Library : Pyrogram\n‣ ভাষা : Python\n‣ Database : MongoDB\n‣ Build : V-4.1 [stable]</b></blockquote>"},
+    "mr": {"help":"<b>Bot ची माहिती पाहण्यासाठी खालील बटणे दाबा.</b>","about":"<blockquote><b>‣ नाव : Jisshu filter bot\n‣ निर्माता : sandy Bots\n‣ Library : Pyrogram\n‣ भाषा : Python\n‣ Database : MongoDB\n‣ Build : V-4.1 [stable]</b></blockquote>"},
+    "gu": {"help":"<b>Bot ની માહિતી જોવા નીચેના બટનો દબાવો.</b>","about":"<blockquote><b>‣ નામ : Jisshu filter bot\n‣ નિર્માતા : sandy Bots\n‣ Library : Pyrogram\n‣ ભાષા : Python\n‣ Database : MongoDB\n‣ Build : V-4.1 [stable]</b></blockquote>"},
+    "pa": {"help":"<b>Bot ਦੀ ਜਾਣਕਾਰੀ ਦੇਖਣ ਲਈ ਹੇਠਾਂ ਦਿੱਤੇ ਬਟਨ ਦਬਾਓ।</b>","about":"<blockquote><b>‣ ਨਾਮ : Jisshu filter bot\n‣ ਨਿਰਮਾਤਾ : sandy Bots\n‣ Library : Pyrogram\n‣ ਭਾਸ਼ਾ : Python\n‣ Database : MongoDB\n‣ Build : V-4.1 [stable]</b></blockquote>"},
+    "ur": {"help":"<b>Bot کی معلومات دیکھنے کے لیے نیچے دیے گئے بٹن دبائیں۔</b>","about":"<blockquote><b>‣ نام : Jisshu filter bot\n‣ تخلیق کار : sandy Bots\n‣ Library : Pyrogram\n‣ زبان : Python\n‣ Database : MongoDB\n‣ Build : V-4.1 [stable]</b></blockquote>"},
+    "as": {"help":"<b>Bot-ৰ তথ্য চাবলৈ তলৰ বুটামসমূহ টিপক।</b>","about":"<blockquote><b>‣ নাম : Jisshu filter bot\n‣ নিৰ্মাতা : sandy Bots\n‣ Library : Pyrogram\n‣ ভাষা : Python\n‣ Database : MongoDB\n‣ Build : V-4.1 [stable]</b></blockquote>"},
+    "ne": {"help":"<b>Bot को जानकारी हेर्न तलका बटनहरू थिच्नुहोस्।</b>","about":"<blockquote><b>‣ नाम : Jisshu filter bot\n‣ निर्माता : sandy Bots\n‣ Library : Pyrogram\n‣ भाषा : Python\n‣ Database : MongoDB\n‣ Build : V-4.1 [stable]</b></blockquote>"},
+    "hinglish": {"help":"<b>Bot ki information dekhne ke liye neeche diye buttons par click karo.</b>","about":"<blockquote><b>‣ Name : Jisshu filter bot\n‣ Creator : sandy Bots\n‣ Library : Pyrogram\n‣ Language : Python\n‣ Database : MongoDB\n‣ Build : V-4.1 [stable]</b></blockquote>"},
+}
+
+def page_tr(lang, key):
+    return small_caps(PAGE_I18N.get(lang, PAGE_I18N[DEFAULT_LANGUAGE]).get(key, PAGE_I18N[DEFAULT_LANGUAGE].get(key, key)))
 
 HOME_LABELS = {
 "en": {"add_group":"⇋ Add Me To Your Group ⇋","disable_ads":"• Disable Ads •","special":"• Special •","help":"• Help •","about":"• About •","earn":"• Earn Unlimited Money •"},
@@ -193,7 +258,7 @@ HOME_LABELS = {
 }
 
 def home_tr(lang, key):
-    return HOME_LABELS.get(lang, HOME_LABELS[DEFAULT_LANGUAGE]).get(key, HOME_LABELS[DEFAULT_LANGUAGE][key])
+    return small_caps(HOME_LABELS.get(lang, HOME_LABELS[DEFAULT_LANGUAGE]).get(key, HOME_LABELS[DEFAULT_LANGUAGE][key]))
 
 VERIFY = {
 "en": {
