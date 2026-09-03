@@ -42,6 +42,7 @@ from utils import (
 import re
 import base64
 from info import *
+from language import language_markup, has_saved_language, get_user_language
 
 logger = logging.getLogger(__name__)
 movie_series_db = JsTopDB(DATABASE_URI)
@@ -195,6 +196,13 @@ async def start(client: Client, message):
             ),
         )
     if len(message.command) != 2:
+        if not await has_saved_language(message.from_user.id):
+            await message.reply_text(
+                "🌐 <b>Choose Your Language</b>\n\nSelect the language you want the bot to use. You can change it anytime.",
+                reply_markup=language_markup(),
+                parse_mode=enums.ParseMode.HTML,
+            )
+            return
         buttons = [
             [
                 InlineKeyboardButton(
@@ -215,6 +223,7 @@ async def start(client: Client, message):
                     "• ᴇᴀʀɴ ᴜɴʟɪᴍɪᴛᴇᴅ ᴍᴏɴᴇʏ ᴡɪᴛʜ ʙᴏᴛ •", callback_data="earn"
                 )
             ],
+            [InlineKeyboardButton("🌐 ʟᴀɴɢᴜᴀɢᴇ", callback_data="global_language")],
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
         m = await message.reply_sticker(
@@ -257,6 +266,7 @@ async def start(client: Client, message):
                     "• ᴇᴀʀɴ ᴜɴʟɪᴍɪᴛᴇᴅ ᴍᴏɴᴇʏ ᴡɪᴛʜ ʙᴏᴛ •", callback_data="earn"
                 )
             ],
+            [InlineKeyboardButton("🌐 ʟᴀɴɢᴜᴀɢᴇ", callback_data="global_language")],
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
         return await message.reply_photo(
