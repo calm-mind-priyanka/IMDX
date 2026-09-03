@@ -39,7 +39,7 @@ from info import (
     API_HASH,
 )
 from database.users_chats_db import db
-from language import LANGUAGES as GLOBAL_LANGUAGES
+from language import LANGUAGES as GLOBAL_LANGUAGES, get_user_language as _global_user_language
 
 LOGGER = logging.getLogger(__name__)
 
@@ -249,6 +249,10 @@ I18N.update({
 
 # Complete user-facing payment result templates. These are used for every
 # selected language so headings/labels do not fall back to English.
+
+for _lang_key, _lang_data in I18N.items():
+    _lang_data.setdefault("processing_error", "⚠️ Your screenshot was received, but processing failed temporarily. Please contact the admin.")
+
 _RESULT_I18N = {
     "en": {"activated_title":"Premium Activated Successfully!","renewed_title":"Premium Renewed Successfully!","plan":"Plan","duration":"Duration","added":"Added","activated_at":"Activated","expires":"Expires","new_expiry":"New Expiry","status":"Status: Active","thanks_purchase":"Thank you for purchasing Premium!","thanks_renew":"Thank you for renewing Premium!","rejected_title":"Payment Rejected","rejected_body":"The Premium access added for this payment has been removed. Please contact the admin if you think this is a mistake."},
     "hi": {"activated_title":"Premium सफलतापूर्वक सक्रिय हुआ!","renewed_title":"Premium सफलतापूर्वक Renew हुआ!","plan":"प्लान","duration":"अवधि","added":"जोड़ा गया","activated_at":"सक्रिय किया गया","expires":"समाप्ति","new_expiry":"नई समाप्ति","status":"स्थिति: सक्रिय","thanks_purchase":"Premium खरीदने के लिए धन्यवाद!","thanks_renew":"Premium renew करने के लिए धन्यवाद!","rejected_title":"Payment अस्वीकार किया गया","rejected_body":"इस payment से दिया गया Premium access हटा दिया गया है। गलती लगने पर Admin से संपर्क करें।"},
@@ -377,14 +381,9 @@ def _lang_from_code(code):
 
 
 async def _user_language(user_id, telegram_user=None):
-    try:
-        data = await db.get_user(int(user_id))
-        saved = (data or {}).get("language") or (data or {}).get("language_code")
-        if saved in I18N:
-            return saved
-    except Exception:
-        pass
-    return _lang_from_code(getattr(telegram_user, "language_code", None))
+    # One global language source for the entire bot, including Premium/payment.
+    # Existing accounts without a saved preference safely default to English.
+    return await _global_user_language(user_id, telegram_user)
 
 
 def _tr(lang, key, **values):
@@ -396,9 +395,9 @@ def _language_markup():
     codes = list(LANGUAGES)
     rows = []
     for i in range(0, len(codes), 2):
-        rows.append([InlineKeyboardButton(LANGUAGES[codes[i]], callback_data=f"paylang:{codes[i]}")])
+        rows.append([InlineKeyboardButton(LANGUAGES[codes[i]], callback_data=f"global_lang:{codes[i]}")])
         if i + 1 < len(codes):
-            rows[-1].append(InlineKeyboardButton(LANGUAGES[codes[i + 1]], callback_data=f"paylang:{codes[i+1]}"))
+            rows[-1].append(InlineKeyboardButton(LANGUAGES[codes[i + 1]], callback_data=f"global_lang:{codes[i+1]}"))
     return InlineKeyboardMarkup(rows)
 
 
@@ -1094,9 +1093,8 @@ async def _activate_order(client, order, screenshot_message_id):
 
 
 async def process_payment_submission(payment_client, message):
-    """Process a payment screenshot without showing progress for unmatched users."""
+    """Handle a payment screenshot through the verified Premium-order pipeline."""
     return await _process_payment_submission_impl(payment_client, message)
-
 
 async def _process_payment_submission_impl(payment_client, message):
     """Handle a screenshot, verify sender/order and perform a soft OCR check."""
@@ -1263,7 +1261,7 @@ async def _process_payment_submission_impl(payment_client, message):
         if check.get("success_signal") is False:
             reason.append("A payment-success confirmation was not detected.")
         if check.get("duplicate_suspected"):
-            reason.append("The same or a very similar screenshot was already submitted.")
+            reason.append("The exact same screenshot file was already submitted.")
         if check.get("ocr_status") == "disabled":
             reason.append("OCR verification is disabled, so automatic evidence checks were unavailable.")
         elif ocr_status == "download_failed":
@@ -1490,64 +1488,6 @@ async def _notify_admins(client, text):
             LOGGER.warning("Could not notify admin %s: %s", admin_id, exc)
 
 
-@Client.on_callback_query(filters.regex(r"^paylang:"), group=1)
-async def premium_language_callback(client, query):
-    value = query.data.split(":", 1)[1]
-    if value == "menu":
-        lang = await _user_language(query.from_user.id, query.from_user)
-        text = _tr(lang, "language_title") + "\n\n" + _tr(lang, "language_body")
-        markup = _language_markup()
-        # Premium entry screens can be photo messages. edit_text() fails on
-        # those, so edit the caption when a captioned media message is used.
-        if query.message.photo or query.message.video or query.message.animation:
-            await query.message.edit_caption(
-                caption=text, reply_markup=markup, parse_mode=enums.ParseMode.HTML
-            )
-        else:
-            await query.message.edit_text(
-                text, reply_markup=markup, parse_mode=enums.ParseMode.HTML
-            )
-        return await query.answer()
-    if value not in I18N:
-        return await query.answer("Language unavailable.", show_alert=True)
-    await db.update_user({"id": int(query.from_user.id), "language": value, "language_code": value})
-    await query.answer(_tr(value, "language_saved"), show_alert=True)
-    try:
-        order = await db.get_premium_order(int(query.from_user.id))
-        if order and order.get("selected_plan"):
-            plan_key = _plan_key(order.get("selected_plan"))
-            plan = PREMIUM_PLANS.get(plan_key, {}) if plan_key else {}
-            buttons = [[InlineKeyboardButton(_premium_flow_text(value, "send"), url=f"https://t.me/{PAYMENT_BOT_USERNAME}")]] if PAYMENT_BOT_USERNAME else []
-            buttons += [[InlineKeyboardButton(_language_button_text(value), callback_data="paylang:menu")], [InlineKeyboardButton(_premium_flow_text(await _user_language(query.from_user.id, query.from_user), "back"), callback_data="free"), InlineKeyboardButton(_premium_flow_text(await _user_language(query.from_user.id, query.from_user), "close"), callback_data="close_data")]]
-            payment_text = _premium_flow_text(
-                value, "order",
-                plan=escape(plan.get("name", order.get("plan_duration", "Premium"))),
-                duration=escape(plan.get("duration", order.get("plan_duration", "N/A"))),
-                price=escape(str(order.get("plan_price", "N/A"))),
-            )
-            await query.message.edit_text(payment_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML)
-        else:
-            # Language was chosen from the initial Premium entry screen. Keep
-            # the user inside the Premium flow instead of trying to edit a
-            # photo as text or leaving them on a broken/blank screen.
-            buttons = [
-                [InlineKeyboardButton(_language_button_text(value), callback_data="paylang:menu")],
-                [InlineKeyboardButton(_premium_flow_text(value, "continue"), callback_data="free")],
-                [InlineKeyboardButton(_premium_flow_text(value, "close"), callback_data="close_data")],
-            ]
-            intro = _tr(value, "language_saved") + "\n\n" + _tr(value, "language_first_guide")
-            if query.message.photo or query.message.video or query.message.animation:
-                await query.message.edit_caption(
-                    caption=intro, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML
-                )
-            else:
-                await query.message.edit_text(
-                    intro, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML
-                )
-    except Exception:
-        LOGGER.exception("Could not refresh Premium UI after language change")
-
-
 @Client.on_callback_query(filters.regex(r"^buyplan_"), group=1)
 async def select_premium_plan(client, query):
     plan_key = _plan_key(query.data.split("_", 1)[1])
@@ -1574,7 +1514,7 @@ async def select_premium_plan(client, query):
             )
         ])
     buttons.append([
-        InlineKeyboardButton(_language_button_text(lang), callback_data="paylang:menu"),
+        InlineKeyboardButton(_language_button_text(lang), callback_data="global_lang:menu"),
     ])
     buttons.append([
         InlineKeyboardButton(_premium_flow_text(lang, "back"), callback_data="free"),
@@ -1622,19 +1562,8 @@ async def user_plan_command(client, message):
             plan = PREMIUM_PLANS[key]
             row.append(InlineKeyboardButton(f"💳 {plan['name']} ₹{plan['price']}", callback_data=f"buyplan_{key}"))
         rows.append(row)
-    rows.append([InlineKeyboardButton(_language_button_text(lang), callback_data="paylang:menu")])
+    rows.append([InlineKeyboardButton(_language_button_text(lang), callback_data="global_lang:menu")])
     await message.reply_text(_premium_flow_text(lang, "plans"), reply_markup=InlineKeyboardMarkup(rows), parse_mode=enums.ParseMode.HTML)
-
-
-@Client.on_callback_query(filters.regex(r"^global_language$"), group=1)
-async def global_language_callback(client, query):
-    lang = await _user_language(query.from_user.id, query.from_user)
-    text = _tr(lang, "language_title") + "\n\n" + _tr(lang, "language_body")
-    if query.message.photo or query.message.video or query.message.animation:
-        await query.message.edit_caption(caption=text, reply_markup=_language_markup(), parse_mode=enums.ParseMode.HTML)
-    else:
-        await query.message.edit_text(text, reply_markup=_language_markup(), parse_mode=enums.ParseMode.HTML)
-    await query.answer()
 
 
 @Client.on_message(filters.command("pending"))
@@ -2094,9 +2023,8 @@ def register_payment_bot_handlers(payment_client):
         except Exception:
             LOGGER.exception("Payment screenshot processing failed.")
             try:
-                await _reply_temp(message, 
-                    "⚠️ Your screenshot was received, but processing failed temporarily. "
-                    "Please contact the admin."
+                await _reply_temp(message,
+                    _tr(await _user_language(message.from_user.id, message.from_user), "processing_error")
                 )
             except Exception:
                 pass
