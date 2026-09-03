@@ -39,6 +39,7 @@ from info import (
     API_HASH,
 )
 from database.users_chats_db import db
+from language import LANGUAGES as GLOBAL_LANGUAGES
 
 LOGGER = logging.getLogger(__name__)
 
@@ -102,13 +103,7 @@ TEMP_MESSAGE_DELETE_SECONDS = 300  # 5 minutes after the bot sends the message
 # ---------------------------------------------------------------------------
 # Admin analysis/review reports intentionally remain in English for consistent
 # moderation. Only normal user-facing Premium/payment messages are localized.
-LANGUAGES = {
-    "en": "🇬🇧 English", "hi": "🇮🇳 हिन्दी", "ta": "🇮🇳 தமிழ்",
-    "te": "🇮🇳 తెలుగు", "kn": "🇮🇳 ಕನ್ನಡ", "ml": "🇮🇳 മലയാളം",
-    "bn": "🇮🇳 বাংলা", "mr": "🇮🇳 मराठी", "gu": "🇮🇳 ગુજરાતી",
-    "pa": "🇮🇳 ਪੰਜਾਬੀ", "ur": "🇮🇳 اردو",
-    "as": "🇮🇳 অসমীয়া", "ne": "🇳🇵 नेपाली", "hinglish": "🇮🇳 Hinglish",
-}
+LANGUAGES = GLOBAL_LANGUAGES
 
 LANGUAGE_ALIASES = {
     "en": "en", "en-us": "en", "en-gb": "en",
@@ -1099,20 +1094,7 @@ async def _activate_order(client, order, screenshot_message_id):
 
 
 async def process_payment_submission(payment_client, message):
-    """Handle a screenshot and show one temporary progress message during analysis."""
-    progress_message = None
-    try:
-        lang = await _user_language(message.from_user.id, message.from_user)
-        progress_message = await _reply_temp(
-            message, _tr(lang, "progress_title") + "\n\n" + _tr(lang, "progress_body"),
-            parse_mode=enums.ParseMode.HTML,
-        )
-    except Exception:
-        progress_message = None
-
-    # _reply_temp() already schedules this progress message for the normal
-    # 5-minute temporary lifetime. Do not delete it as soon as OCR finishes;
-    # otherwise users lose the localized analysis status almost immediately.
+    """Process a payment screenshot without showing progress for unmatched users."""
     return await _process_payment_submission_impl(payment_client, message)
 
 
@@ -1148,6 +1130,7 @@ async def _process_payment_submission_impl(payment_client, message):
     # ``waiting_for_payment`` here: another payment/review transition can
     # legitimately change that status before the screenshot is processed.
     # Only a truly missing/unconfigured order is unmatched.
+    lang = await _user_language(user_id, sender)
     order = await db.get_premium_order(user_id)
     if order and not order.get("selected_plan"):
         order = None
@@ -1199,7 +1182,6 @@ async def _process_payment_submission_impl(payment_client, message):
         # send a separate admin notification here; the useful admin-side
         # analysis/review messages are reserved for matched Premium orders.
         try:
-            lang = await _user_language(user_id, sender)
             await _reply_temp(
                 message,
                 _tr(lang, "no_order_title") + "\n\n" + _tr(lang, "no_order_body"),
@@ -1208,6 +1190,15 @@ async def _process_payment_submission_impl(payment_client, message):
         except Exception:
             pass
         return
+
+    try:
+        await _reply_temp(
+            message,
+            _tr(lang, "progress_title") + "\n\n" + _tr(lang, "progress_body"),
+            parse_mode=enums.ParseMode.HTML,
+        )
+    except Exception:
+        LOGGER.exception("Could not send payment processing notice")
 
     ocr_text, ocr_status, file_sha256, perceptual_hash = await _ocr_payment_message(payment_client, message)
     passed, check = _payment_match_result(order, ocr_text, received_at)
@@ -1600,6 +1591,50 @@ async def select_premium_plan(client, query):
         parse_mode=enums.ParseMode.HTML,
     )
     await query.answer(_premium_flow_text(lang, "selected"))
+
+
+async def _saved_language(user_id):
+    try:
+        data = await db.get_user(int(user_id))
+        saved = (data or {}).get("language") or (data or {}).get("language_code")
+        return saved if saved in LANGUAGES else None
+    except Exception:
+        return None
+
+
+@Client.on_message(filters.command("plan") & filters.private & filters.incoming)
+async def user_plan_command(client, message):
+    user = message.from_user
+    if not user:
+        return
+    if not await _saved_language(user.id):
+        return await message.reply_text(
+            _tr("en", "language_title") + "\n\n" + _tr("en", "language_body"),
+            reply_markup=_language_markup(),
+            parse_mode=enums.ParseMode.HTML,
+        )
+    lang = await _user_language(user.id, user)
+    rows = []
+    keys = list(PREMIUM_PLANS)
+    for i in range(0, len(keys), 2):
+        row = []
+        for key in keys[i:i + 2]:
+            plan = PREMIUM_PLANS[key]
+            row.append(InlineKeyboardButton(f"💳 {plan['name']} ₹{plan['price']}", callback_data=f"buyplan_{key}"))
+        rows.append(row)
+    rows.append([InlineKeyboardButton(_language_button_text(lang), callback_data="paylang:menu")])
+    await message.reply_text(_premium_flow_text(lang, "plans"), reply_markup=InlineKeyboardMarkup(rows), parse_mode=enums.ParseMode.HTML)
+
+
+@Client.on_callback_query(filters.regex(r"^global_language$"), group=1)
+async def global_language_callback(client, query):
+    lang = await _user_language(query.from_user.id, query.from_user)
+    text = _tr(lang, "language_title") + "\n\n" + _tr(lang, "language_body")
+    if query.message.photo or query.message.video or query.message.animation:
+        await query.message.edit_caption(caption=text, reply_markup=_language_markup(), parse_mode=enums.ParseMode.HTML)
+    else:
+        await query.message.edit_text(text, reply_markup=_language_markup(), parse_mode=enums.ParseMode.HTML)
+    await query.answer()
 
 
 @Client.on_message(filters.command("pending"))
