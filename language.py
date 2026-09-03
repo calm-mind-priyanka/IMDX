@@ -116,22 +116,13 @@ UI = {
 }
 
 
-_SMALL_CAPS = str.maketrans({
-    "a":"ᴀ","b":"ʙ","c":"ᴄ","d":"ᴅ","e":"ᴇ","f":"ғ","g":"ɢ",
-    "h":"ʜ","i":"ɪ","j":"ᴊ","k":"ᴋ","l":"ʟ","m":"ᴍ","n":"ɴ",
-    "o":"ᴏ","p":"ᴘ","q":"ǫ","r":"ʀ","s":"ꜱ","t":"ᴛ","u":"ᴜ",
-    "v":"ᴠ","w":"ᴡ","x":"x","y":"ʏ","z":"ᴢ",
-})
+_SMALL_CAPS = str.maketrans({"a":"ᴀ","b":"ʙ","c":"ᴄ","d":"ᴅ","e":"ᴇ","f":"ғ","g":"ɢ","h":"ʜ","i":"ɪ","j":"ᴊ","k":"ᴋ","l":"ʟ","m":"ᴍ","n":"ɴ","o":"ᴏ","p":"ᴘ","q":"ǫ","r":"ʀ","s":"ꜱ","t":"ᴛ","u":"ᴜ","v":"ᴠ","w":"ᴡ","x":"x","y":"ʏ","z":"ᴢ"})
 
 def small_caps(text):
-    """Apply the bot's single requested Unicode Small-Caps style to Latin text.
-    Native-script text is left untouched; URLs, IDs and callback data are never
-    passed through this helper.
-    """
-    if text is None:
-        return text
-    return str(text).lower().translate(_SMALL_CAPS)
-
+    """Apply the single requested Unicode Small-Caps style without corrupting HTML."""
+    if text is None: return text
+    parts = __import__("re").split(r"(<[^>]*>)", str(text))
+    return "".join(part if part.startswith("<") and part.endswith(">") else part.lower().translate(_SMALL_CAPS) for part in parts)
 
 def tr(lang, key):
     return small_caps(UI.get(lang, UI["en"]).get(key, UI["en"].get(key, key)))
@@ -260,6 +251,15 @@ HOME_LABELS = {
 def home_tr(lang, key):
     return small_caps(HOME_LABELS.get(lang, HOME_LABELS[DEFAULT_LANGUAGE]).get(key, HOME_LABELS[DEFAULT_LANGUAGE][key]))
 
+_MOVIE_DISPLAY_NAMES = {"en":"Venom","hi":"वेनम","ta":"வெனோம்","te":"వెనమ్","kn":"ವೆನಮ್","ml":"വെനം","bn":"ভেনম","mr":"व्हेनम","gu":"વેનમ","pa":"ਵੇਨਮ","ur":"وینم","as":"ভেনম","ne":"भेनम","hinglish":"Venom"}
+def display_movie_name(lang, name):
+    if name and str(name).strip().casefold() == "venom": return _MOVIE_DISPLAY_NAMES.get(lang, "Venom")
+    return name
+
+def search_tr(lang, key, search):
+    texts={"searching":{"en":"🎯 Searching {search}","hi":"🎯 {search} खोजा जा रहा है","ta":"🎯 {search} தேடப்படுகிறது","te":"🎯 {search} కోసం వెతుకుతున్నాము","kn":"🎯 {search} ಹುಡುಕಲಾಗುತ್ತಿದೆ","ml":"🎯 {search} തിരയുന്നു","bn":"🎯 {search} খোঁজা হচ্ছে","mr":"🎯 {search} शोधत आहोत","gu":"🎯 {search} શોધી રહ્યા છીએ","pa":"🎯 {search} ਖੋਜਿਆ ਜਾ ਰਿਹਾ ਹੈ","ur":"🎯 {search} تلاش کیا جا رہا ہے","as":"🎯 {search} বিচৰা হৈছে","ne":"🎯 {search} खोजिँदैछ","hinglish":"🎯 {search} Search Ho Raha Hai"},"found":{"en":"📂 Here I found for your search {search}","hi":"📂 आपके {search} सर्च के लिए मिल गया","ta":"📂 உங்கள் {search} தேடலுக்கான கோப்புகள் கிடைத்தன","te":"📂 మీ {search} శోధన కోసం ఫైళ్లు దొరికాయి","kn":"📂 ನಿಮ್ಮ {search} ಹುಡುಕಾಟಕ್ಕೆ ಫೈಲ್‌ಗಳು ಸಿಕ್ಕಿವೆ","ml":"📂 നിങ്ങളുടെ {search} തിരച്ചിലിന് ഫയലുകൾ കണ്ടെത്തി","bn":"📂 আপনার {search} সার্চের জন্য পাওয়া গেছে","mr":"📂 तुमच्या {search} शोधासाठी फाइल्स सापडल्या","gu":"📂 તમારા {search} સર્ચ માટે ફાઇલો મળી ગઈ","pa":"📂 ਤੁਹਾਡੀ {search} ਖੋਜ ਲਈ ਫਾਈਲਾਂ ਮਿਲ ਗਈਆਂ","ur":"📂 آپ کی {search} تلاش کے لیے فائلیں مل گئیں","as":"📂 আপোনাৰ {search} সন্ধানৰ বাবে ফাইল পোৱা গৈছে","ne":"📂 तपाईंको {search} खोजका लागि फाइलहरू भेटिए","hinglish":"📂 Aapke {search} search ke liye files mil gayi"}}
+    return small_caps(texts.get(key,{}).get(lang,texts.get(key,{}).get("en",key))).format(search=display_movie_name(lang,search))
+
 VERIFY = {
 "en": {
  "verify1":"<b>👋 Hey {mention}, {status},\n\n📌 You are not verified today. Click Verify to get unlimited access until the next verification.\n\n#Verification: 1/3 ✓\n\nIf you want direct files without verification, buy Premium. 😊\n\n💎 Send /plan to buy Premium.</b>",
@@ -279,7 +279,41 @@ VERIFY.update({
 })
 for _c in LANGUAGES:
     VERIFY.setdefault(_c, VERIFY["en"])
+# Every offered language gets its own verification/shortlink copy.
+_VERIFY_CORE = {
+ "ta":("👋 வணக்கம் {mention}, {status}","இன்று நீங்கள் verified செய்யப்படவில்லை. Verify செய்து அடுத்த verification வரை unlimited access பெறுங்கள்.","Premium வாங்கினால் verification தேவையில்லை."),
+ "te":("👋 హాయ్ {mention}, {status}","ఈ రోజు మీరు verified కాలేదు. Verify చేసి తదుపరి verification వరకు unlimited access పొందండి.","Premium కొనుగోలు చేస్తే verification అవసరం లేదు."),
+ "kn":("👋 ನಮಸ್ಕಾರ {mention}, {status}","ಇಂದು ನೀವು verified ಆಗಿಲ್ಲ. Verify ಮಾಡಿ ಮುಂದಿನ verification ವರೆಗೆ unlimited access ಪಡೆಯಿರಿ.","Premium ಖರೀದಿಸಿದರೆ verification ಅಗತ್ಯವಿಲ್ಲ."),
+ "ml":("👋 ഹായ് {mention}, {status}","ഇന്ന് നിങ്ങൾ verified അല്ല. Verify ചെയ്ത് അടുത്ത verification വരെ unlimited access നേടുക.","Premium വാങ്ങിയാൽ verification ആവശ്യമില്ല."),
+ "bn":("👋 হ্যালো {mention}, {status}","আজ আপনি verified নন। Verify করে পরবর্তী verification পর্যন্ত unlimited access নিন।","Premium কিনলে verification লাগবে না।"),
+ "mr":("👋 हाय {mention}, {status}","आज तुम्ही verified नाही. Verify करून पुढील verification पर्यंत unlimited access मिळवा.","Premium घेतल्यास verification ची गरज नाही."),
+ "gu":("👋 હાય {mention}, {status}","આજે તમે verified નથી. Verify કરીને આગળના verification સુધી unlimited access મેળવો.","Premium ખરીદશો તો verification જરૂરી નથી."),
+ "pa":("👋 ਸਤ ਸ੍ਰੀ ਅਕਾਲ {mention}, {status}","ਅੱਜ ਤੁਸੀਂ verified ਨਹੀਂ ਹੋ। Verify ਕਰਕੇ ਅਗਲੇ verification ਤੱਕ unlimited access ਲਵੋ।","Premium ਲੈਣ ਨਾਲ verification ਦੀ ਲੋੜ ਨਹੀਂ।"),
+ "ur":("👋 ہیلو {mention}, {status}","آج آپ verified نہیں ہیں۔ Verify کرکے اگلی verification تک unlimited access حاصل کریں۔","Premium خریدنے پر verification کی ضرورت نہیں۔"),
+ "as":("👋 হেল্ল' {mention}, {status}","আজি আপুনি verified নহয়। Verify কৰি পৰৱৰ্তী verification লৈ unlimited access লওক।","Premium কিনিলে verification নালাগে।"),
+ "ne":("👋 नमस्ते {mention}, {status}","आज तपाईं verified हुनुहुन्न। Verify गरेर अर्को verification सम्म unlimited access पाउनुहोस्।","Premium किन्दा verification चाहिँदैन।"),
+}
+_VERIFY_TEXTS = {
+"ta": {"verify2":"<b>👋 வணக்கம் {mention}, {status}\n\n📌 நீங்கள் verified இல்லை. அடுத்த verification-ஐ தொடர verification link-ஐ திறக்கவும்.\n\n#Verification: 2/3\n\n💎 Verification இல்லாமல் direct files பெற Premium வாங்குங்கள்.</b>","verify3":"<b>👋 வணக்கம் {mention},\n\n📌 இறுதி verification link-ஐ திறந்து அடுத்த முழு நாளுக்கான access பெறுங்கள்.\n\n#Verification: 3/3</b>","done":"<b>👋 வணக்கம் {mention},\n\nVerification {num} முடித்துவிட்டீர்கள் ✓\n\n<code>{duration}</code> வரை unlimited access உள்ளது.</b>"},
+"te": {"verify2":"<b>👋 హాయ్ {mention}, {status}\n\n📌 మీరు verified కాలేదు. తదుపరి verification కోసం link తెరవండి.\n\n#Verification: 2/3\n\n💎 Verification లేకుండా files కోసం Premium కొనండి.</b>","verify3":"<b>👋 హాయ్ {mention},\n\n📌 చివరి verification link తెరిచి పూర్తి రోజు access పొందండి.\n\n#Verification: 3/3</b>","done":"<b>👋 హాయ్ {mention},\n\nVerification {num} పూర్తైంది ✓\n\n<code>{duration}</code> వరకు unlimited access ఉంది.</b>"},
+"kn": {"verify2":"<b>👋 ನಮಸ್ಕಾರ {mention}, {status}\n\n📌 ನೀವು verified ಆಗಿಲ್ಲ. ಮುಂದಿನ verification ಗಾಗಿ link ತೆರೆಯಿರಿ.\n\n#Verification: 2/3\n\n💎 Verification ಇಲ್ಲದೆ files ಪಡೆಯಲು Premium ಖರೀದಿಸಿ.</b>","verify3":"<b>👋 ನಮಸ್ಕಾರ {mention},\n\n📌 ಕೊನೆಯ verification link ತೆರೆಯಿರಿ ಮತ್ತು ಪೂರ್ಣ ದಿನದ access ಪಡೆಯಿರಿ.\n\n#Verification: 3/3</b>","done":"<b>👋 ನಮಸ್ಕಾರ {mention},\n\nVerification {num} ಪೂರ್ಣಗೊಂಡಿದೆ ✓\n\n<code>{duration}</code> ವರೆಗೆ unlimited access ಇದೆ.</b>"},
+"ml": {"verify2":"<b>👋 ഹായ് {mention}, {status}\n\n📌 നിങ്ങൾ verified അല്ല. അടുത്ത verification-നായി link തുറക്കുക.\n\n#Verification: 2/3\n\n💎 Verification ഇല്ലാതെ files ലഭിക്കാൻ Premium വാങ്ങുക.</b>","verify3":"<b>👋 ഹായ് {mention},\n\n📌 അവസാന verification link തുറന്ന് ഒരു പൂർണ്ണ ദിവസത്തേക്ക് access നേടുക.\n\n#Verification: 3/3</b>","done":"<b>👋 ഹായ് {mention},\n\nVerification {num} പൂർത്തിയായി ✓\n\n<code>{duration}</code> വരെ unlimited access ലഭിക്കും.</b>"},
+"bn": {"verify2":"<b>👋 হ্যালো {mention}, {status}\n\n📌 আপনি verified নন। পরবর্তী verification-এর জন্য link খুলুন।\n\n#Verification: 2/3\n\n💎 Verification ছাড়া files পেতে Premium কিনুন।</b>","verify3":"<b>👋 হ্যালো {mention},\n\n📌 শেষ verification link খুলে পুরো এক দিনের access নিন।\n\n#Verification: 3/3</b>","done":"<b>👋 হ্যালো {mention},\n\nVerification {num} সম্পূর্ণ হয়েছে ✓\n\n<code>{duration}</code> পর্যন্ত unlimited access আছে।</b>"},
+"mr": {"verify2":"<b>👋 हाय {mention}, {status}\n\n📌 तुम्ही verified नाही. पुढील verification साठी link उघडा.\n\n#Verification: 2/3\n\n💎 Verification शिवाय files साठी Premium घ्या.</b>","verify3":"<b>👋 हाय {mention},\n\n📌 शेवटची verification link उघडा आणि पूर्ण दिवसाचा access मिळवा.\n\n#Verification: 3/3</b>","done":"<b>👋 हाय {mention},\n\nVerification {num} पूर्ण झाले ✓\n\n<code>{duration}</code> पर्यंत unlimited access आहे.</b>"},
+"gu": {"verify2":"<b>👋 હાય {mention}, {status}\n\n📌 તમે verified નથી. આગળના verification માટે link ખોલો.\n\n#Verification: 2/3\n\n💎 Verification વગર files માટે Premium ખરીદો.</b>","verify3":"<b>👋 હાય {mention},\n\n📌 છેલ્લી verification link ખોલીને આખા દિવસનો access મેળવો.\n\n#Verification: 3/3</b>","done":"<b>👋 હાય {mention},\n\nVerification {num} પૂર્ણ થયું ✓\n\n<code>{duration}</code> સુધી unlimited access છે.</b>"},
+"pa": {"verify2":"<b>👋 ਸਤ ਸ੍ਰੀ ਅਕਾਲ {mention}, {status}\n\n📌 ਤੁਸੀਂ verified ਨਹੀਂ ਹੋ। ਅਗਲੇ verification ਲਈ link ਖੋਲ੍ਹੋ।\n\n#Verification: 2/3\n\n💎 Verification ਤੋਂ ਬਿਨਾਂ files ਲਈ Premium ਲਵੋ।</b>","verify3":"<b>👋 ਸਤ ਸ੍ਰੀ ਅਕਾਲ {mention},\n\n📌 ਆਖਰੀ verification link ਖੋਲ੍ਹ ਕੇ ਪੂਰੇ ਦਿਨ ਦਾ access ਲਵੋ।\n\n#Verification: 3/3</b>","done":"<b>👋 ਸਤ ਸ੍ਰੀ ਅਕਾਲ {mention},\n\nVerification {num} ਪੂਰਾ ਹੋ ਗਿਆ ✓\n\n<code>{duration}</code> ਤੱਕ unlimited access ਹੈ।</b>"},
+"ur": {"verify2":"<b>👋 ہیلو {mention}، {status}\n\n📌 آپ verified نہیں ہیں۔ اگلی verification کے لیے link کھولیں۔\n\n#Verification: 2/3\n\n💎 Verification کے بغیر files کے لیے Premium خریدیں۔</b>","verify3":"<b>👋 ہیلو {mention}،\n\n📌 آخری verification link کھول کر پورے دن کا access حاصل کریں۔\n\n#Verification: 3/3</b>","done":"<b>👋 ہیلو {mention}،\n\nVerification {num} مکمل ہوگئی ✓\n\n<code>{duration}</code> تک unlimited access ہے۔</b>"},
+"as": {"verify2":"<b>👋 হেল্ল' {mention}, {status}\n\n📌 আপুনি verified নহয়। পৰৱৰ্তী verification-ৰ বাবে link খোলক।\n\n#Verification: 2/3</b>","verify3":"<b>👋 হেল্ল' {mention},\n\n📌 শেষ verification link খুলি সম্পূৰ্ণ দিনৰ access লওক।\n\n#Verification: 3/3</b>","done":"<b>👋 হেল্ল' {mention},\n\nVerification {num} সম্পূৰ্ণ হৈছে ✓\n\n<code>{duration}</code> লৈ unlimited access আছে।</b>"},
+"ne": {"verify2":"<b>👋 नमस्ते {mention}, {status}\n\n📌 तपाईं verified हुनुहुन्न। अर्को verification का लागि link खोल्नुहोस्।\n\n#Verification: 2/3</b>","verify3":"<b>👋 नमस्ते {mention},\n\n📌 अन्तिम verification link खोलेर पूरा दिनको access पाउनुहोस्।\n\n#Verification: 3/3</b>","done":"<b>👋 नमस्ते {mention},\n\nVerification {num} पूरा भयो ✓\n\n<code>{duration}</code> सम्म unlimited access छ।</b>"},
+}
+for _c, _vals in _VERIFY_TEXTS.items():
+    VERIFY[_c].update(_vals)
+for _c, _vals in _VERIFY_TEXTS.items():
+    VERIFY[_c]["verify1"] = _vals["verify2"].replace("2/3", "1/3")
 
 def verify_tr(lang, key, **values):
     text = VERIFY.get(lang, VERIFY[DEFAULT_LANGUAGE]).get(key, VERIFY[DEFAULT_LANGUAGE].get(key, key))
-    return text.format(**values)
+    return small_caps(text).format(**values)
+
+def verify_button_tr(lang, key):
+    return small_caps(VERIFY_BUTTONS.get(lang, VERIFY_BUTTONS[DEFAULT_LANGUAGE]).get(key, key))
