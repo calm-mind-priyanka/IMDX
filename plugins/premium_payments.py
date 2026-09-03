@@ -32,14 +32,13 @@ from info import (
     PAYMENT_OCR_ENABLED,
     PAYMENT_MAX_DELAY_MINUTES,
     PAYMENT_FUTURE_TOLERANCE_MINUTES,
-    PAYMENT_TIME_APPROVAL_ENABLED,
     PAYMENT_OCR_PASS_TIMEOUT,
     PAYMENT_OCR_JOB_TIMEOUT_SECONDS,
     API_ID,
     API_HASH,
 )
 from database.users_chats_db import db
-from language import LANGUAGES as GLOBAL_LANGUAGES, get_user_language as _global_user_language
+from language import LANGUAGES as GLOBAL_LANGUAGES, get_user_language as _global_user_language, small_caps
 
 LOGGER = logging.getLogger(__name__)
 
@@ -271,7 +270,7 @@ _RESULT_I18N = {
 }
 
 def _result_text(lang, key):
-    return _RESULT_I18N.get(lang, _RESULT_I18N["en"]).get(key, _RESULT_I18N["en"][key])
+    return small_caps(_RESULT_I18N.get(lang, _RESULT_I18N["en"]).get(key, _RESULT_I18N["en"][key]))
 
 
 # Premium entry/order UI is also localized so the language choice is useful
@@ -364,6 +363,19 @@ _CONTINUE_I18N = {
     "en":"• CONTINUE TO PLANS •","hi":"• PLANS पर जाएँ •","ta":"• PLANS-க்கு தொடரவும் •","te":"• PLANS కి కొనసాగండి •","kn":"• PLANS ಗೆ ಮುಂದುವರಿಯಿರಿ •","ml":"• PLANS-ലേക്ക് തുടരുക •","bn":"• PLANS-এ যান •","mr":"• PLANS कडे जा •","gu":"• PLANS પર જાઓ •","pa":"• PLANS ਵੱਲ ਜਾਓ •","ur":"• PLANS پر جائیں •","as":"• PLANS লৈ আগবাঢ়ক •","ne":"• PLANS मा जानुहोस् •","hinglish":"• PLANS PAR CHALO •"}
 for _code in PREMIUM_FLOW_I18N:
     PREMIUM_FLOW_I18N[_code].setdefault("continue", _CONTINUE_I18N.get(_code, _CONTINUE_I18N["en"]))
+
+# Critical screenshot states are available in every advertised language so a
+# user never gets an English processing/no-order message after choosing a language.
+for _c in GLOBAL_LANGUAGES:
+    I18N.setdefault(_c, dict(I18N["en"]))
+I18N["bn"].update({"progress_title":"🔎 <b>পেমেন্ট স্ক্রিনশট পাওয়া গেছে</b>","progress_body":"⏳ আপনার পেমেন্ট নিরাপদভাবে পরীক্ষা করা হচ্ছে। এতে <b>১–২ মিনিট</b> লাগতে পারে। স্ক্রিনশট আবার পাঠাবেন না এবং মেনু বন্ধ করবেন না।\n\n✅ পরীক্ষা শেষ হলে ফলাফল স্বয়ংক্রিয়ভাবে পাবেন।","no_order_title":"⚠️ <b>কোনো Premium Order পাওয়া যায়নি</b>","no_order_body":"প্রথমে একটি Premium Plan নির্বাচন করে payment সম্পূর্ণ করুন, তারপর screenshot পাঠান।\n\n🧹 এই বার্তাটি ৫ মিনিট পরে নিজে থেকে মুছে যাবে।"})
+I18N["mr"].update({"progress_title":"🔎 <b>Payment Screenshot मिळाला</b>","progress_body":"⏳ तुमचे payment सुरक्षितपणे तपासले जात आहे. यासाठी <b>1–2 मिनिटे</b> लागू शकतात. Screenshot पुन्हा पाठवू नका आणि menu बंद करू नका.\n\n✅ तपासणी पूर्ण झाल्यावर निकाल आपोआप मिळेल.","no_order_title":"⚠️ <b>Premium Order सापडला नाही</b>","no_order_body":"आधी Premium Plan निवडा, payment पूर्ण करा आणि नंतर screenshot पाठवा.\n\n🧹 हा संदेश 5 मिनिटांनी आपोआप हटेल."})
+I18N["gu"].update({"progress_title":"🔎 <b>Payment Screenshot મળ્યો</b>","progress_body":"⏳ તમારું payment સુરક્ષિત રીતે તપાસાઈ રહ્યું છે. તેમાં <b>1–2 મિનિટ</b> લાગી શકે છે. Screenshot ફરી મોકલશો નહીં અને menu બંધ કરશો નહીં.\n\n✅ તપાસ પૂર્ણ થયા પછી પરિણામ આપમેળે મળશે.","no_order_title":"⚠️ <b>Premium Order મળ્યો નથી</b>","no_order_body":"પહેલા Premium Plan પસંદ કરો, payment પૂર્ણ કરો અને પછી screenshot મોકલો.\n\n🧹 આ સંદેશ 5 મિનિટ પછી આપમેળે દૂર થશે."})
+I18N["pa"].update({"progress_title":"🔎 <b>Payment Screenshot ਮਿਲ ਗਿਆ</b>","progress_body":"⏳ ਤੁਹਾਡਾ payment ਸੁਰੱਖਿਅਤ ਤਰੀਕੇ ਨਾਲ check ਹੋ ਰਿਹਾ ਹੈ। ਇਸ ਵਿੱਚ <b>1–2 ਮਿੰਟ</b> ਲੱਗ ਸਕਦੇ ਹਨ। Screenshot ਦੁਬਾਰਾ ਨਾ ਭੇਜੋ ਅਤੇ menu ਬੰਦ ਨਾ ਕਰੋ।\n\n✅ Check ਪੂਰਾ ਹੋਣ ਤੇ result ਆਪਣੇ ਆਪ ਮਿਲੇਗਾ.","no_order_title":"⚠️ <b>Premium Order ਨਹੀਂ ਮਿਲਿਆ</b>","no_order_body":"ਪਹਿਲਾਂ Premium Plan ਚੁਣੋ, payment complete ਕਰੋ ਅਤੇ ਫਿਰ screenshot ਭੇਜੋ।\n\n🧹 ਇਹ message 5 ਮਿੰਟ ਬਾਅਦ ਆਪਣੇ ਆਪ delete ਹੋ ਜਾਵੇਗਾ."})
+I18N["ur"].update({"progress_title":"🔎 <b>Payment Screenshot موصول ہو گیا</b>","progress_body":"⏳ آپ کی payment محفوظ طریقے سے چیک کی جا رہی ہے۔ اس میں <b>1–2 منٹ</b> لگ سکتے ہیں۔ Screenshot دوبارہ نہ بھیجیں اور menu بند نہ کریں۔\n\n✅ چیک مکمل ہونے پر نتیجہ خود مل جائے گا۔","no_order_title":"⚠️ <b>Premium Order نہیں ملا</b>","no_order_body":"پہلے Premium Plan منتخب کریں، payment مکمل کریں اور پھر screenshot بھیجیں۔\n\n🧹 یہ پیغام 5 منٹ بعد خود حذف ہو جائے گا۔"})
+I18N["as"].update({"progress_title":"🔎 <b>Payment Screenshot পোৱা গ'ল</b>","progress_body":"⏳ আপোনাৰ payment সুৰক্ষিতভাৱে পৰীক্ষা কৰা হৈছে। <b>১–২ মিনিট</b> লাগিব পাৰে। Screenshot পুনৰ নপঠাব আৰু menu বন্ধ নকৰিব।\n\n✅ পৰীক্ষা শেষ হ'লে ফলাফল নিজে পাব।","no_order_title":"⚠️ <b>Premium Order পোৱা নগ'ল</b>","no_order_body":"আগতে Premium Plan বাছি payment সম্পূৰ্ণ কৰক, তাৰ পিছত screenshot পঠাওক।\n\n🧹 এই বাৰ্তা ৫ মিনিট পিছত নিজে মচি যাব।"})
+I18N["ne"].update({"progress_title":"🔎 <b>Payment Screenshot प्राप्त भयो</b>","progress_body":"⏳ तपाईंको payment सुरक्षित रूपमा जाँच भइरहेको छ। यसलाई <b>१–२ मिनेट</b> लाग्न सक्छ। Screenshot फेरि नपठाउनुहोस् र menu बन्द नगर्नुहोस्।\n\n✅ जाँच पूरा भएपछि परिणाम आफैं आउनेछ।","no_order_title":"⚠️ <b>Premium Order भेटिएन</b>","no_order_body":"पहिले Premium Plan छान्नुहोस्, payment पूरा गर्नुहोस् र त्यसपछि screenshot पठाउनुहोस्।\n\n🧹 यो सन्देश ५ मिनेटपछि आफैं हट्नेछ।"})
+I18N["hinglish"].update({"progress_title":"🔎 <b>Payment Screenshot Mil Gaya</b>","progress_body":"⏳ Aapka payment safely check ho raha hai. Isme <b>1–2 minutes</b> lag sakte hain. Screenshot dobara mat bhejo aur menu close mat karo.\n\n✅ Check complete hone ke baad result automatically mil jayega.","no_order_title":"⚠️ <b>Premium Order Nahi Mila</b>","no_order_body":"Pehle Premium Plan choose karo, payment complete karo aur phir screenshot bhejo.\n\n🧹 Ye message 5 minutes baad automatically delete ho jayega."})
 
 def _premium_flow_text(lang, key, **values):
     text = PREMIUM_FLOW_I18N.get(lang, PREMIUM_FLOW_I18N["en"]).get(key, PREMIUM_FLOW_I18N["en"].get(key, key))
@@ -701,12 +713,11 @@ def _payment_success_signal(text):
 
 
 def _payment_match_result(order, ocr_text, received_at):
-    """Match payment evidence without trusting OCR blindly.
+    """Validate payment evidence using amount + transaction date + success status.
 
-    Amount is always required. The OCR transaction date is anchored to when the
-    screenshot was received, not when the user originally opened the order.
-    Optional timestamp approval checks the full date+time against a bounded
-    window and therefore also catches wrong day/month/year selections.
+    Transaction TIME is informational only and is never used as an approval gate.
+    This deliberately removes the old time-window matching so OCR cannot reject
+    a genuine payment because it selected/read a wrong transaction time.
     """
     expected = _expected_amount(order.get("plan_price"))
     found = _extract_amount(ocr_text, expected)
@@ -716,40 +727,34 @@ def _payment_match_result(order, ocr_text, received_at):
     tx_dt = parsed_tx_dt if parsed_confident else None
     reference = _aware_ist(received_at)
     date_match = None
-    time_match = None
     date_note = "Transaction date could not be read."
-
     if tx_dt is not None and reference is not None:
-        tx_aware = IST.localize(tx_dt) if tx_dt.tzinfo is None else tx_dt.astimezone(IST)
-        # Date is tied to the screenshot submission, avoiding stale order-created
-        # dates and UTC/IST day-boundary errors.
+        tx_aware = tx_dt.astimezone(IST) if tx_dt.tzinfo else IST.localize(tx_dt)
         date_match = tx_aware.date() == reference.date()
         date_note = f"Transaction date: {tx_aware.date().isoformat()}"
-        if PAYMENT_TIME_APPROVAL_ENABLED:
-            earliest = reference - datetime.timedelta(minutes=PAYMENT_MAX_DELAY_MINUTES)
-            latest = reference + datetime.timedelta(minutes=PAYMENT_FUTURE_TOLERANCE_MINUTES)
-            time_match = earliest <= tx_aware <= latest
     elif tx_dt is not None:
         date_match = True
 
     success_signal = _payment_success_signal(ocr_text) if ocr_text else None
     if not PAYMENT_OCR_ENABLED:
         return True, {"ocr_status": "disabled", "amount_found": found, "amount_match": None,
-                      "transaction_at": tx_dt, "date_match": None, "time_match": None,
-                      "success_signal": None, "confidence": 0, "date_note": "OCR checks disabled; sender/order matching used."}
+                      "transaction_at": tx_dt, "date_match": None,
+                      "success_signal": None, "confidence": 0,
+                      "date_note": "OCR checks disabled; sender/order matching used."}
 
-    hard_fail = amount_match is False or date_match is False or (PAYMENT_TIME_APPROVAL_ENABLED and time_match is False)
+    hard_fail = amount_match is False or date_match is False
     score = 0
-    if amount_match: score += 60
-    if date_match: score += 30
-    if success_signal: score += 10
-    if PAYMENT_TIME_APPROVAL_ENABLED and time_match:
+    if amount_match:
+        score += 60
+    if date_match:
+        score += 30
+    if success_signal:
         score += 10
-    passed = (not hard_fail) and amount_match is True and date_match is True and success_signal is True and (not PAYMENT_TIME_APPROVAL_ENABLED or time_match is True)
+    passed = (not hard_fail) and amount_match is True and date_match is True and success_signal is True
     return passed, {
         "ocr_status": "matched" if passed else "manual_review",
         "amount_found": found, "amount_match": amount_match,
-        "transaction_at": tx_dt, "date_match": date_match, "time_match": time_match,
+        "transaction_at": tx_dt, "date_match": date_match,
         "success_signal": success_signal, "confidence": min(score, 100),
         "date_note": date_note,
         "date_detected": tx_dt.date().isoformat() if tx_dt else None,
@@ -974,6 +979,28 @@ def _run_original_payment_ocr_sync(blob, sha256):
                 pass
 
 
+async def _send_payment_result_with_screenshot(client, user_id, screenshot_message_id, text, order=None, reply_markup=None):
+    """Send the final user result with the submitted screenshot as one message.
+
+    The screenshot is copied into the payment chat with the localized final
+    result as its caption. If Telegram rejects the copy/caption operation, a
+    normal text result is used as a safe fallback.
+    """
+    try:
+        source_chat = int((order or {}).get("payment_chat_id") or user_id)
+        return await client.copy_message(
+            chat_id=int(user_id),
+            from_chat_id=source_chat,
+            message_id=int(screenshot_message_id),
+            caption=text,
+            parse_mode=enums.ParseMode.HTML,
+            reply_markup=reply_markup,
+        )
+    except Exception as exc:
+        LOGGER.warning("Could not send final payment result with screenshot for %s: %s", user_id, exc)
+        return await _send_user_temp(client, user_id, text, parse_mode=enums.ParseMode.HTML, reply_markup=reply_markup)
+
+
 async def _activate_order(client, order, screenshot_message_id):
     """Grant Premium using the exact plan stored on the payment order.
 
@@ -1069,7 +1096,9 @@ async def _activate_order(client, order, screenshot_message_id):
             f"{_result_text(lang, 'thanks_purchase')}"
         )
     try:
-        await _send_user_temp(client, user_id, text, parse_mode=enums.ParseMode.HTML)
+        await _send_payment_result_with_screenshot(
+            client, user_id, screenshot_message_id, text, order=order
+        )
     except Exception as exc:
         LOGGER.warning("Could not send Premium activation to %s: %s", user_id, exc)
 
@@ -1189,10 +1218,13 @@ async def _process_payment_submission_impl(payment_client, message):
             pass
         return
 
+    processing_message = None
     try:
-        await _reply_temp(
+        processing_message = await _reply_temp(
             message,
-            _tr(lang, "progress_title") + "\n\n" + _tr(lang, "progress_body"),
+            "⏳ <b>🔄 PAYMENT SCREENSHOT PROCESSING...</b>\n\n" +
+            _tr(lang, "progress_body") +
+            "\n\n🛑 <b>DO NOT RESEND • DO NOT CLOSE THE MENU • PLEASE WAIT</b>",
             parse_mode=enums.ParseMode.HTML,
         )
     except Exception:
@@ -1222,7 +1254,6 @@ async def _process_payment_submission_impl(payment_client, message):
             "amount_found": check["amount_found"],
             "amount_match": check["amount_match"],
             "transaction_at": check["transaction_at"],
-            "time_match": check.get("time_match"),
             "date_match": check.get("date_match"),
             "ocr_engine_status": ocr_status,
             "file_sha256": file_sha256,
@@ -1253,11 +1284,6 @@ async def _process_payment_submission_impl(payment_client, message):
             reason.append("Transaction date does not match the screenshot submission date.")
         elif check.get("date_match") is None:
             reason.append("Transaction date could not be read confidently.")
-        if PAYMENT_TIME_APPROVAL_ENABLED:
-            if check.get("time_match") is False:
-                reason.append("Transaction time is outside the allowed approval window.")
-            elif check.get("time_match") is None:
-                reason.append("Transaction time could not be read confidently.")
         if check.get("success_signal") is False:
             reason.append("A payment-success confirmation was not detected.")
         if check.get("duplicate_suspected"):
@@ -1274,10 +1300,6 @@ async def _process_payment_submission_impl(payment_client, message):
         amount_found = check.get("amount_found")
         tx_at = check.get("transaction_at")
         amount_result = "Matched" if check.get("amount_match") is True else ("Not matched" if check.get("amount_match") is False else "Not confidently detected")
-        if PAYMENT_TIME_APPROVAL_ENABLED:
-            time_result = "Matched" if check.get("time_match") is True else ("Not matched" if check.get("time_match") is False else "Not confidently detected")
-        else:
-            time_result = "Not used for approval (setting OFF)"
         success_result = "Detected" if check.get("success_signal") is True else ("Not detected" if check.get("success_signal") is False else "Not available")
         duplicate_result = "Suspected duplicate" if check.get("duplicate_suspected") else "No duplicate detected"
         ocr_result = str(ocr_status or "unknown").replace("_", " ").title()
@@ -1302,9 +1324,7 @@ async def _process_payment_submission_impl(payment_client, message):
             f"• Amount comparison: {escape(amount_result)}\n"
             f"• Date detected: {escape(tx_at.strftime('%d %B %Y') if tx_at else 'NOT DETECTED')}\n"
             f"• Time detected: {escape(tx_at.strftime('%I:%M %p') if tx_at else 'NOT DETECTED')}\n"
-            f"• Date/time comparison: {escape(time_result)}\n"
-            f"• Time approval: {'ON' if PAYMENT_TIME_APPROVAL_ENABLED else 'OFF'}\n"
-            f"• Allowed transaction delay: {PAYMENT_MAX_DELAY_MINUTES} min; future tolerance: {PAYMENT_FUTURE_TOLERANCE_MINUTES} min\n"
+            f"• Transaction time detected (informational): {escape(tx_at.strftime('%I:%M %p') if tx_at else 'NOT DETECTED')}\n"
             f"• Payment-success signal: {escape(success_result)}\n"
             f"• Duplicate check: {escape(duplicate_result)}\n"
             f"• Verification confidence: {escape(confidence_text)}\n"
@@ -1348,6 +1368,11 @@ async def _process_payment_submission_impl(payment_client, message):
                 "🟢 Status: Active\n\n" +
                 _tr(lang, "manual_body")
             )
+            if processing_message:
+                try:
+                    await processing_message.delete()
+                except Exception:
+                    pass
             await _reply_temp(
                 message,
                 user_text,
@@ -1386,10 +1411,6 @@ async def _process_payment_submission_impl(payment_client, message):
     sender_username = f"@{sender.username}" if sender.username else "none"
     amount_found = check.get("amount_found")
     amount_result = "Matched" if check.get("amount_match") is True else ("Not matched" if check.get("amount_match") is False else "Not confidently detected")
-    if PAYMENT_TIME_APPROVAL_ENABLED:
-        time_result = "Matched" if check.get("time_match") is True else ("Not matched" if check.get("time_match") is False else "Not confidently detected")
-    else:
-        time_result = "Not used for approval (setting OFF)"
     success_result = "Detected" if check.get("success_signal") is True else ("Not detected" if check.get("success_signal") is False else "Not available")
     confidence = check.get("confidence")
     confidence_text = f"{confidence}%" if isinstance(confidence, (int, float)) else "N/A"
@@ -1409,9 +1430,7 @@ async def _process_payment_submission_impl(payment_client, message):
         f"• Amount comparison: {escape(amount_result)}\n"
         f"• Date detected: {escape(tx_at.strftime('%d %B %Y') if tx_at else 'NOT DETECTED')}\n"
         f"• Time detected: {escape(tx_at.strftime('%I:%M %p') if tx_at else 'NOT DETECTED')}\n"
-        f"• Date/time comparison: {escape(time_result)}\n"
-        f"• Time approval: {'ON' if PAYMENT_TIME_APPROVAL_ENABLED else 'OFF'}\n"
-        f"• Allowed transaction delay: {PAYMENT_MAX_DELAY_MINUTES} min; future tolerance: {PAYMENT_FUTURE_TOLERANCE_MINUTES} min\n"
+        f"• Transaction time detected (informational): {escape(tx_at.strftime('%I:%M %p') if tx_at else 'NOT DETECTED')}\n"
         f"• Payment-success signal: {escape(success_result)}\n"
         "• Duplicate check: No duplicate detected\n"
         f"• Verification confidence: {escape(confidence_text)}\n"
@@ -1437,7 +1456,16 @@ async def _process_payment_submission_impl(payment_client, message):
         except Exception as exc:
             LOGGER.warning("Could not send auto-approved payment review to %s: %s", admin_id, exc)
 
+    if processing_message:
+        try:
+            await processing_message.delete()
+        except Exception:
+            pass
     await _activate_order(payment_client, claimed, message.id)
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
 
 async def _grant_review_access(user_id, order, minutes=None):
@@ -1514,9 +1542,6 @@ async def select_premium_plan(client, query):
             )
         ])
     buttons.append([
-        InlineKeyboardButton(_language_button_text(lang), callback_data="global_lang:menu"),
-    ])
-    buttons.append([
         InlineKeyboardButton(_premium_flow_text(lang, "back"), callback_data="free"),
         InlineKeyboardButton(_premium_flow_text(lang, "close"), callback_data="close_data"),
     ])
@@ -1562,7 +1587,6 @@ async def user_plan_command(client, message):
             plan = PREMIUM_PLANS[key]
             row.append(InlineKeyboardButton(f"💳 {plan['name']} ₹{plan['price']}", callback_data=f"buyplan_{key}"))
         rows.append(row)
-    rows.append([InlineKeyboardButton(_language_button_text(lang), callback_data="global_lang:menu")])
     await message.reply_text(_premium_flow_text(lang, "plans"), reply_markup=InlineKeyboardMarkup(rows), parse_mode=enums.ParseMode.HTML)
 
 
@@ -1911,12 +1935,13 @@ def register_payment_bot_handlers(payment_client):
                         }},
                     )
                     try:
-                        await _send_user_temp(
+                        await _send_payment_result_with_screenshot(
                             client,
                             user_id,
-                            "✅ <b>Payment Approved Successfully!</b>\n\n"
-                            "Your payment has been confirmed. Your existing Premium plan and expiry date remain unchanged.",
-                            parse_mode=enums.ParseMode.HTML,
+                            screenshot_message_id,
+                            f"✅ <b>{_result_text(await _user_language(user_id), 'approved_title')}</b>\n\n"
+                            f"{_result_text(await _user_language(user_id), 'approved_body')}",
+                            order=order,
                         )
                     except Exception:
                         pass
@@ -1940,6 +1965,10 @@ def register_payment_bot_handlers(payment_client):
                 user_id, screenshot_message_id,
                 {"review_status": "approved", "approval_error": None},
             )
+            try:
+                await client.delete_messages(user_id, screenshot_message_id)
+            except Exception:
+                pass
             text = (
                 f"✅ <b>Payment approved</b>\n\n"
                 f"User ID: <code>{user_id}</code>\n"
@@ -1986,14 +2015,19 @@ def register_payment_bot_handlers(payment_client):
                     restore["premium_price"] = previous.get("premium_price")
                 await db.update_user(restore)
             try:
-                await _send_user_temp(
+                await _send_payment_result_with_screenshot(
                     client,
                     user_id,
+                    screenshot_message_id,
                     f"❌ <b>{_result_text(await _user_language(user_id), 'rejected_title')}</b>\n\n"
                     f"{_result_text(await _user_language(user_id), 'rejected_body')}",
-                    parse_mode=enums.ParseMode.HTML,
+                    order=order,
                     reply_markup=_contact_admin_markup(),
                 )
+            except Exception:
+                pass
+            try:
+                await client.delete_messages(user_id, screenshot_message_id)
             except Exception:
                 pass
             text = (
