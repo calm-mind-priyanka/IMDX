@@ -32,6 +32,7 @@ from utils import (
     formate_file_name,
 )
 from database.users_chats_db import db
+from language import has_saved_language, get_user_language, language_markup
 from database.ia_filterdb import (
     Media,
     get_search_results,
@@ -107,6 +108,12 @@ logger.setLevel(logging.ERROR)
 
 @Client.on_message(filters.private & filters.text & filters.incoming)
 async def pm_search(client, message):
+    # First-time users must choose the global UI language before using normal features.
+    if message.from_user and not await has_saved_language(message.from_user.id):
+        return await message.reply_text(
+            "🌐 <b>Choose Your Language</b>\n\nSelect the language you want the bot to use. You can change it anytime.",
+            reply_markup=language_markup(), parse_mode=enums.ParseMode.HTML
+        )
     await mdb.update_top_messages(message.from_user.id, message.text)
     bot_id = client.me.id
     user_id = message.from_user.id
@@ -136,6 +143,11 @@ async def pm_search(client, message):
 
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def group_search(client, message):
+    if message.chat and message.chat.type == enums.ChatType.PRIVATE and message.from_user and not await has_saved_language(message.from_user.id):
+        return await message.reply_text(
+            "🌐 <b>Choose Your Language</b>\n\nSelect the language you want the bot to use. You can change it anytime.",
+            reply_markup=language_markup(), parse_mode=enums.ParseMode.HTML
+        )
     # await message.react(emoji=random.choice(REACTIONS))
     await mdb.update_top_messages(message.from_user.id, message.text)
     user_id = message.from_user.id if message.from_user else None
@@ -847,31 +859,33 @@ async def quality_search(client: Client, query: CallbackQuery):
     _, qul, key, offset, orginal_offset, req = query.data.split("#")
     if int(req) != query.from_user.id:
         return await query.answer(script.ALRT_TXT, show_alert=True)
-    offset = int(offset)
+    offset = max(0, int(offset))
+    original_offset = max(0, int(orginal_offset))
     search = BUTTONS.get(key)
     cap = CAP.get(key)
     if not search:
-        await query.answer(
+        return await query.answer(
             script.OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True
         )
-        return
     search = search.replace("_", " ")
+    limit = await _max_results_for_query(query, key)
     files, n_offset, total = await get_search_results(
-        f"{search} {qul}", max_results=await _max_results_for_query(query, key), offset=offset
+        f"{search} {qul}", max_results=limit, offset=offset
     )
     try:
         n_offset = int(n_offset)
-    except:
+    except (TypeError, ValueError):
         n_offset = 0
-    files = [file for file in files if re.search(qul, file.file_name, re.IGNORECASE)]
+    # The database query already applies the quality term. Do not run a second
+    # client-side filename filter: that used to discard valid matches and make
+    # the Quality button appear inconsistent.
     if not files:
-        await query.answer(
-            f"sᴏʀʀʏ ǫᴜᴀʟɪᴛʏ {qul.title()} ɴᴏᴛ ғᴏᴜɴᴅ ғᴏʀ {search}", show_alert=1
+        return await query.answer(
+            f"Sorry, quality {qul.title()} was not found for {search}.", show_alert=True
         )
-        return
 
     temp.FILES_ID[key] = files
-    reqnxt = query.from_user.id if query.from_user else 0
+    reqnxt = query.from_user.id
     settings = await get_settings(await _group_id_for_query(query))
     temp.CHAT[query.from_user.id] = query.message.chat.id
     ads, ads_name, _ = await mdb.get_advirtisment()
@@ -879,114 +893,34 @@ async def quality_search(client: Client, query: CallbackQuery):
     if ads is not None and ads_name is not None:
         ads_url = f"https://telegram.dog/{temp.U_NAME}?start=ads"
         ads_text = f"<a href={ads_url}>{ads_name}</a>"
-    js_ads = (
-        f"\n━━━━━━━━━━━━━━━━━━\n <b>{ads_text}</b> \n━━━━━━━━━━━━━━━━━━"
-        if ads_text
-        else ""
-    )
+    js_ads = f"\n━━━━━━━━━━━━━━━━━━\n <b>{ads_text}</b> \n━━━━━━━━━━━━━━━━━━" if ads_text else ""
     links = ""
     if settings["link"]:
         btn = []
         for file_num, file in enumerate(files, start=offset + 1):
             links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{query.message.chat.id}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
     else:
-        btn = [
-            [
-                InlineKeyboardButton(
-                    text=f"🔗 {get_size(file.file_size)}≽ {formate_file_name(file.file_name)}",
-                    callback_data=f"cfiles#{reqnxt}#{file.file_id}",
-                ),
-            ]
-            for file in files
-        ]
-
-    btn.insert(
-        0,
-        [
-            InlineKeyboardButton(
-                "sᴇɴᴅ ᴀʟʟ ғɪʟᴇs", callback_data=f"send_all#{key}"
-            ),
-        ],
-    )
-    btn.insert(
-        1,
-        [
-            InlineKeyboardButton(
-                "ʟᴀɴɢᴜᴀɢᴇ", callback_data=f"languages#{key}#{offset}#{req}"
-            ),
-            InlineKeyboardButton(
-                "ǫᴜᴀʟɪᴛʏ", callback_data=f"qualities#{key}#{offset}#{req}"
-            ),
-            InlineKeyboardButton(
-                "ꜱᴇᴀꜱᴏɴ", callback_data=f"seasons#{key}#{offset}#{req}"
-            ),
-        ],
-    )
-    if n_offset == "":
-        btn.append(
-            [InlineKeyboardButton(text="↭ ɴᴏ ᴍᴏʀᴇ ᴘᴀɢᴇꜱ ᴀᴠᴀɪʟᴀʙʟᴇ ↭", callback_data="buttons")]
-        )
-    elif n_offset == 0:
-        btn.append(
-            [
-                InlineKeyboardButton(
-                    "⋞ ʙᴀᴄᴋ",
-                    callback_data=f"quality_search#{qul}#{key}#{offset- await _max_results_for_query(query, key)}#{orginal_offset}#{req}",
-                ),
-                InlineKeyboardButton(
-                    f"{math.ceil(offset / await _max_results_for_query(query, key)) + 1}/{math.ceil(total / await _max_results_for_query(query, key))}",
-                    callback_data="pages",
-                ),
-            ]
-        )
-    elif offset == 0:
-        btn.append(
-            [
-                InlineKeyboardButton(
-                    f"{math.ceil(offset / await _max_results_for_query(query, key)) + 1}/{math.ceil(total / await _max_results_for_query(query, key))}",
-                    callback_data="pages",
-                ),
-                InlineKeyboardButton(
-                    "ɴᴇxᴛ ⋟",
-                    callback_data=f"quality_search#{qul}#{key}#{n_offset}#{orginal_offset}#{req}",
-                ),
-            ]
-        )
+        btn = [[InlineKeyboardButton(text=f"🔗 {get_size(file.file_size)}≽ {formate_file_name(file.file_name)}", callback_data=f"cfiles#{reqnxt}#{file.file_id}")] for file in files]
+    btn.insert(0, [InlineKeyboardButton("sᴇɴᴅ ᴀʟʟ ғɪʟᴇs", callback_data=f"send_all#{key}")])
+    btn.insert(1, [
+        InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇ", callback_data=f"languages#{key}#{offset}#{req}"),
+        InlineKeyboardButton("ǫᴜᴀʟɪᴛʏ", callback_data=f"qualities#{key}#{offset}#{req}"),
+        InlineKeyboardButton("ꜱᴇᴀsᴏɴ", callback_data=f"seasons#{key}#{offset}#{req}"),
+    ])
+    page = math.ceil((offset + 1) / limit) if total else 1
+    pages = math.ceil(total / limit) if total else 1
+    if n_offset:
+        nav = [InlineKeyboardButton(f"{page}/{pages}", callback_data="pages"), InlineKeyboardButton("ɴᴇxᴛ ⋟", callback_data=f"quality_search#{qul}#{key}#{n_offset}#{original_offset}#{req}")]
+        if offset:
+            nav.insert(0, InlineKeyboardButton("⋞ ʙᴀᴄᴋ", callback_data=f"quality_search#{qul}#{key}#{max(0, offset-limit)}#{original_offset}#{req}"))
+        btn.append(nav)
+    elif offset:
+        btn.append([InlineKeyboardButton("⋞ ʙᴀᴄᴋ", callback_data=f"quality_search#{qul}#{key}#{max(0, offset-limit)}#{original_offset}#{req}"), InlineKeyboardButton(f"{page}/{pages}", callback_data="pages")])
     else:
-        btn.append(
-            [
-                InlineKeyboardButton(
-                    "⋞ ʙᴀᴄᴋ",
-                    callback_data=f"quality_search#{qul}#{key}#{offset- await _max_results_for_query(query, key)}#{orginal_offset}#{req}",
-                ),
-                InlineKeyboardButton(
-                    f"{math.ceil(offset / await _max_results_for_query(query, key)) + 1}/{math.ceil(total / await _max_results_for_query(query, key))}",
-                    callback_data="pages",
-                ),
-                InlineKeyboardButton(
-                    "ɴᴇxᴛ ⋟",
-                    callback_data=f"quality_search#{qul}#{key}#{n_offset}#{orginal_offset}#{req}",
-                ),
-            ]
-        )
-
-    btn.append(
-        [
-            InlineKeyboardButton(
-                text="⋞ ʙᴀᴄᴋ ᴛᴏ ᴍᴀɪɴ ᴘᴀɢᴇ",
-                callback_data=f"next_{req}_{key}_{orginal_offset}",
-            ),
-        ]
-    )
-    await query.message.edit_text(
-        cap + links + del_msg + js_ads,
-        disable_web_page_preview=True,
-        parse_mode=enums.ParseMode.HTML,
-        reply_markup=InlineKeyboardMarkup(btn),
-    )
-    return
-    await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
-
+        btn.append([InlineKeyboardButton("↭ ɴᴏ ᴍᴏʀᴇ ᴘᴀɢᴇꜱ ᴀᴠᴀɪʟᴀʙʟᴇ ↭", callback_data="buttons")])
+    btn.append([InlineKeyboardButton("⋞ ʙᴀᴄᴋ ᴛᴏ ᴍᴀɪɴ ᴘᴀɢᴇ", callback_data=f"next_{req}_{key}_{original_offset}")])
+    await query.message.edit_text(cap + links + del_msg + js_ads, disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML, reply_markup=InlineKeyboardMarkup(btn))
+    await query.answer()
 
 @Client.on_callback_query(filters.regex(r"^languages#"))
 async def languages_cb_handler(client: Client, query: CallbackQuery):
