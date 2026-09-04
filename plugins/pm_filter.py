@@ -108,45 +108,31 @@ logger.setLevel(logging.ERROR)
 
 @Client.on_message(filters.private & filters.text & filters.incoming)
 async def pm_search(client, message):
-    await mdb.update_top_messages(message.from_user.id, message.text)
+    try:
+        await mdb.update_top_messages(message.from_user.id, message.text)
+    except Exception:
+        pass
     bot_id = client.me.id
     user_id = message.from_user.id
-    # First-time private users must choose the global UI language before search.
-    if not await has_saved_language(user_id):
-        await message.reply_text(
-            tr("en", "language_title") + "\n\n" + tr("en", "language_body"),
-            reply_markup=__import__("language").language_markup(),
-            parse_mode=enums.ParseMode.HTML,
-        )
-        return
+    # Do not block movie search for users who have not explicitly selected a language.
+    # get_user_language() falls back to Telegram's language code (then English).
     #   if user_id in ADMINS: return
     if str(message.text).startswith("/"):
         return
-    if await db.get_pm_search_status(bot_id):
-        if (
-            "hindi" in message.text.lower()
-            or "tamil" in message.text.lower()
-            or "telugu" in message.text.lower()
-            or "malayalam" in message.text.lower()
-            or "kannada" in message.text.lower()
-            or "english" in message.text.lower()
-            or "gujarati" in message.text.lower()
-        ):
-            return await auto_filter(client, message)
-        await auto_filter(client, message)
-    else:
-        await message.reply_text(
-            "<b><i>ɪ ᴀᴍ ɴᴏᴛ ᴡᴏʀᴋɪɴɢ ʜᴇʀᴇ. ꜱᴇᴀʀᴄʜ ᴍᴏᴠɪᴇꜱ ɪɴ ᴏᴜʀ ᴍᴏᴠɪᴇ ꜱᴇᴀʀᴄʜ ɢʀᴏᴜᴘ.</i></b>",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("📝 ᴍᴏᴠɪᴇ ꜱᴇᴀʀᴄʜ ɢʀᴏᴜᴘ ", url=MOVIE_GROUP_LINK)]]
-            ),
-        )
+    # Always run the private movie search handler.  The PM-search setting is
+    # not allowed to swallow a normal movie query; users must get the search
+    # response instead of receiving no bot reply.  Keep the existing setting
+    # available for other bot logic, but do not gate this handler with it.
+    return await auto_filter(client, message)
 
 
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def group_search(client, message):
     # await message.react(emoji=random.choice(REACTIONS))
-    await mdb.update_top_messages(message.from_user.id, message.text)
+    try:
+        await mdb.update_top_messages(message.from_user.id, message.text)
+    except Exception:
+        pass
     user_id = message.from_user.id if message.from_user else None
     chat_id = message.chat.id
     settings = await get_settings(chat_id)
@@ -178,7 +164,10 @@ async def group_search(client, message):
         except Exception as e:
             print(f"{e}")
             await bot.send_message(LOG_CHANNEL, f"Error - {e}")
-    if settings["auto_filter"]:
+    # A normal movie query must always reach the existing auto_filter path.
+    # Keep admin/link/special-command guards below, but do not silently swallow
+    # movie searches when the saved auto_filter toggle is disabled/missing.
+    if True:
         if not user_id:
             return
 
