@@ -32,7 +32,7 @@ from utils import (
     formate_file_name,
 )
 from database.users_chats_db import db
-from language import get_user_language, has_saved_language, tr, core_tr, home_tr, page_tr, search_tr, display_movie_name
+from language import get_user_language, has_saved_language, tr, core_tr, home_tr, page_tr
 from database.ia_filterdb import (
     Media,
     get_search_results,
@@ -108,31 +108,45 @@ logger.setLevel(logging.ERROR)
 
 @Client.on_message(filters.private & filters.text & filters.incoming)
 async def pm_search(client, message):
-    try:
-        await mdb.update_top_messages(message.from_user.id, message.text)
-    except Exception:
-        pass
+    await mdb.update_top_messages(message.from_user.id, message.text)
     bot_id = client.me.id
     user_id = message.from_user.id
-    # Do not block movie search for users who have not explicitly selected a language.
-    # get_user_language() falls back to Telegram's language code (then English).
+    # First-time private users must choose the global UI language before search.
+    if not await has_saved_language(user_id):
+        await message.reply_text(
+            tr("en", "language_title") + "\n\n" + tr("en", "language_body"),
+            reply_markup=__import__("language").language_markup(),
+            parse_mode=enums.ParseMode.HTML,
+        )
+        return
     #   if user_id in ADMINS: return
     if str(message.text).startswith("/"):
         return
-    # Always run the private movie search handler.  The PM-search setting is
-    # not allowed to swallow a normal movie query; users must get the search
-    # response instead of receiving no bot reply.  Keep the existing setting
-    # available for other bot logic, but do not gate this handler with it.
-    return await auto_filter(client, message)
+    if await db.get_pm_search_status(bot_id):
+        if (
+            "hindi" in message.text.lower()
+            or "tamil" in message.text.lower()
+            or "telugu" in message.text.lower()
+            or "malayalam" in message.text.lower()
+            or "kannada" in message.text.lower()
+            or "english" in message.text.lower()
+            or "gujarati" in message.text.lower()
+        ):
+            return await auto_filter(client, message)
+        await auto_filter(client, message)
+    else:
+        await message.reply_text(
+            "<b><i>ɪ ᴀᴍ ɴᴏᴛ ᴡᴏʀᴋɪɴɢ ʜᴇʀᴇ. ꜱᴇᴀʀᴄʜ ᴍᴏᴠɪᴇꜱ ɪɴ ᴏᴜʀ ᴍᴏᴠɪᴇ ꜱᴇᴀʀᴄʜ ɢʀᴏᴜᴘ.</i></b>",
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton("📝 ᴍᴏᴠɪᴇ ꜱᴇᴀʀᴄʜ ɢʀᴏᴜᴘ ", url=MOVIE_GROUP_LINK)]]
+            ),
+        )
 
 
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def group_search(client, message):
     # await message.react(emoji=random.choice(REACTIONS))
-    try:
-        await mdb.update_top_messages(message.from_user.id, message.text)
-    except Exception:
-        pass
+    await mdb.update_top_messages(message.from_user.id, message.text)
     user_id = message.from_user.id if message.from_user else None
     chat_id = message.chat.id
     settings = await get_settings(chat_id)
@@ -164,10 +178,7 @@ async def group_search(client, message):
         except Exception as e:
             print(f"{e}")
             await bot.send_message(LOG_CHANNEL, f"Error - {e}")
-    # A normal movie query must always reach the existing auto_filter path.
-    # Keep admin/link/special-command guards below, but do not silently swallow
-    # movie searches when the saved auto_filter toggle is disabled/missing.
-    if True:
+    if settings["auto_filter"]:
         if not user_id:
             return
 
@@ -2139,7 +2150,7 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
             max_results = max(1, min(20, int(settings.get("max_results", MAX_BTN))))
         except (TypeError, ValueError):
             max_results = int(MAX_BTN)
-        searching_msg = await msg.reply_text(search_tr(ui_lang, "searching", search))
+        searching_msg = await msg.reply_text(f"🎯 sᴇᴀʀᴄʜɪɴɢ {search}")
         files, offset, total_results = await get_search_results(search, max_results=max_results)
         await searching_msg.delete()
         if not files:
@@ -2197,7 +2208,9 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
     else:
         pass
     if spoll:
-        m = await msg.message.edit(search_tr(ui_lang, "found", search))
+        m = await msg.message.edit(
+            f"<b><code>{search}</code> ɪs ꜰᴏᴜɴᴅ ᴘʟᴇᴀsᴇ ᴡᴀɪᴛ ꜰᴏʀ ꜰɪʟᴇs 📫</b>"
+        )
         await asyncio.sleep(1.2)
         await m.delete()
     if offset != "":
@@ -2241,8 +2254,8 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
     TEMPLATE = settings["template"]
     if imdb:
         cap = TEMPLATE.format(
-            query=display_movie_name(ui_lang, search),
-            search=display_movie_name(ui_lang, search),
+            query=search,
+            search=search,
             mention=message.from_user.mention if message.from_user else "",
             group=message.chat.title or str(message.chat.id),
             title=imdb["title"],
@@ -2272,9 +2285,10 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
             plot=imdb["plot"],
             rating=imdb["rating"],
             url=imdb["url"],
+            **locals(),
         )
     else:
-        cap = search_tr(ui_lang, "found", search)
+        cap = f"<b>📂 ʜᴇʀᴇ ɪ ꜰᴏᴜɴᴅ ꜰᴏʀ ʏᴏᴜʀ sᴇᴀʀᴄʜ {search}</b>"
 
     ads, ads_name, _ = await mdb.get_advirtisment()
     ads_text = ""
