@@ -2283,7 +2283,6 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
             plot=imdb["plot"],
             rating=imdb["rating"],
             url=imdb["url"],
-            **locals(),
         )
     else:
         cap = search_tr(ui_lang, "found", search)
