@@ -377,24 +377,6 @@ I18N["as"].update({"progress_title":"🔎 <b>Payment Screenshot পোৱা গ
 I18N["ne"].update({"progress_title":"🔎 <b>Payment Screenshot प्राप्त भयो</b>","progress_body":"⏳ तपाईंको payment सुरक्षित रूपमा जाँच भइरहेको छ। यसलाई <b>१–२ मिनेट</b> लाग्न सक्छ। Screenshot फेरि नपठाउनुहोस् र menu बन्द नगर्नुहोस्।\n\n✅ जाँच पूरा भएपछि परिणाम आफैं आउनेछ।","no_order_title":"⚠️ <b>Premium Order भेटिएन</b>","no_order_body":"पहिले Premium Plan छान्नुहोस्, payment पूरा गर्नुहोस् र त्यसपछि screenshot पठाउनुहोस्।\n\n🧹 यो सन्देश ५ मिनेटपछि आफैं हट्नेछ।"})
 I18N["hinglish"].update({"progress_title":"🔎 <b>Payment Screenshot Mil Gaya</b>","progress_body":"⏳ Aapka payment safely check ho raha hai. Isme <b>1–2 minutes</b> lag sakte hain. Screenshot dobara mat bhejo aur menu close mat karo.\n\n✅ Check complete hone ke baad result automatically mil jayega.","no_order_title":"⚠️ <b>Premium Order Nahi Mila</b>","no_order_body":"Pehle Premium Plan choose karo, payment complete karo aur phir screenshot bhejo.\n\n🧹 Ye message 5 minutes baad automatically delete ho jayega."})
 
-for _c in GLOBAL_LANGUAGES:
-    I18N.setdefault(_c, dict(I18N["en"]))
-    I18N[_c].setdefault("processing_wait", I18N["en"].get("processing_wait", "🛑 <b>Do not resend • Please wait</b>"))
-I18N["en"]["processing_wait"] = "🛑 <b>DO NOT RESEND • DO NOT CLOSE THE MENU • PLEASE WAIT</b>"
-I18N["hi"]["processing_wait"] = "🛑 <b>दोबारा screenshot न भेजें • कृपया प्रतीक्षा करें</b>"
-I18N["ta"]["processing_wait"] = "🛑 <b>மீண்டும் screenshot அனுப்ப வேண்டாம் • காத்திருக்கவும்</b>"
-I18N["te"]["processing_wait"] = "🛑 <b>Screenshot మళ్లీ పంపవద్దు • దయచేసి వేచి ఉండండి</b>"
-I18N["kn"]["processing_wait"] = "🛑 <b>Screenshot ಮತ್ತೆ ಕಳುಹಿಸಬೇಡಿ • ದಯವಿಟ್ಟು ಕಾಯಿರಿ</b>"
-I18N["ml"]["processing_wait"] = "🛑 <b>Screenshot വീണ്ടും അയക്കരുത് • കാത്തിരിക്കുക</b>"
-I18N["bn"]["processing_wait"] = "🛑 <b>Screenshot আবার পাঠাবেন না • অপেক্ষা করুন</b>"
-I18N["mr"]["processing_wait"] = "🛑 <b>Screenshot पुन्हा पाठवू नका • कृपया थांबा</b>"
-I18N["gu"]["processing_wait"] = "🛑 <b>Screenshot ફરી મોકલશો નહીં • કૃપા કરીને રાહ જુઓ</b>"
-I18N["pa"]["processing_wait"] = "🛑 <b>Screenshot ਦੁਬਾਰਾ ਨਾ ਭੇਜੋ • ਕਿਰਪਾ ਕਰਕੇ ਉਡੀਕ ਕਰੋ</b>"
-I18N["ur"]["processing_wait"] = "🛑 <b>Screenshot دوبارہ نہ بھیجیں • براہ کرم انتظار کریں</b>"
-I18N["as"]["processing_wait"] = "🛑 <b>Screenshot পুনৰ নপঠাব • অপেক্ষা কৰক</b>"
-I18N["ne"]["processing_wait"] = "🛑 <b>Screenshot फेरि नपठाउनुहोस् • कृपया पर्खनुहोस्</b>"
-I18N["hinglish"]["processing_wait"] = "🛑 <b>Screenshot dobara mat bhejo • Please wait</b>"
-
 def _premium_flow_text(lang, key, **values):
     text = PREMIUM_FLOW_I18N.get(lang, PREMIUM_FLOW_I18N["en"]).get(key, PREMIUM_FLOW_I18N["en"].get(key, key))
     return text.format(**values) if values else text
@@ -1240,9 +1222,9 @@ async def _process_payment_submission_impl(payment_client, message):
     try:
         processing_message = await _reply_temp(
             message,
-            _tr(lang, "progress_title") + "\n\n" +
+            "⏳ <b>🔄 PAYMENT SCREENSHOT PROCESSING...</b>\n\n" +
             _tr(lang, "progress_body") +
-            "\n\n" + _tr(lang, "processing_wait"),
+            "\n\n🛑 <b>DO NOT RESEND • DO NOT CLOSE THE MENU • PLEASE WAIT</b>",
             parse_mode=enums.ParseMode.HTML,
         )
     except Exception:
@@ -1359,17 +1341,16 @@ async def _process_payment_submission_impl(payment_client, message):
         ])
         for admin_id in _admins():
             try:
-                copied = await payment_client.copy_message(
+                await payment_client.send_message(
+                    admin_id,
+                    review_text,
+                    parse_mode=enums.ParseMode.HTML,
+                    reply_markup=review_buttons,
+                )
+                await payment_client.copy_message(
                     admin_id,
                     message.chat.id,
                     message.id,
-                )
-                await payment_client.edit_message_caption(
-                    admin_id,
-                    copied.id,
-                    caption=review_text[:1024],
-                    reply_markup=review_buttons,
-                    parse_mode=enums.ParseMode.HTML,
                 )
             except Exception as exc:
                 LOGGER.warning("Could not send manual payment review to %s: %s", admin_id, exc)
@@ -1461,17 +1442,16 @@ async def _process_payment_submission_impl(payment_client, message):
     ])
     for admin_id in _admins():
         try:
-            copied = await payment_client.copy_message(
+            await payment_client.send_message(
+                admin_id,
+                detected_report,
+                parse_mode=enums.ParseMode.HTML,
+                reply_markup=auto_reject_buttons,
+            )
+            await payment_client.copy_message(
                 admin_id,
                 message.chat.id,
                 message.id,
-            )
-            await payment_client.edit_message_caption(
-                admin_id,
-                copied.id,
-                caption=detected_report[:1024],
-                reply_markup=auto_reject_buttons,
-                parse_mode=enums.ParseMode.HTML,
             )
         except Exception as exc:
             LOGGER.warning("Could not send auto-approved payment review to %s: %s", admin_id, exc)
