@@ -352,18 +352,19 @@ async def next_page(bot, query):
         else ""
     )
     reqnxt = query.from_user.id if query.from_user else 0
-    temp.CHAT[query.from_user.id] = query.message.chat.id
+    if query.message.chat.type != enums.ChatType.PRIVATE:
+        temp.CHAT[query.from_user.id] = query.message.chat.id
     links = ""
     if settings["link"]:
         btn = []
         for file_num, file in enumerate(files, start=offset + 1):
-            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{query.message.chat.id}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
+            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
     else:
         btn = [
             [
                 InlineKeyboardButton(
                     text=f"📁 {get_size(file.file_size)}≽ {formate_file_name(file.file_name)}",
-                    url=f"https://telegram.dog/{temp.U_NAME}?start=file_{query.message.chat.id}_{file.file_id}",
+                    url=f"https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}",
                 ),
             ]
             for file in files
@@ -423,7 +424,7 @@ async def next_page(bot, query):
     if settings["link"]:
         links = ""
         for file_num, file in enumerate(files, start=offset + 1):
-            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{query.message.chat.id}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
+            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
         await query.message.edit_text(
             cap + links + del_msg + js_ads,
             disable_web_page_preview=True,
@@ -527,7 +528,8 @@ async def season_search(client: Client, query: CallbackQuery):
     temp.FILES_ID[key] = files
     reqnxt = query.from_user.id if query.from_user else 0
     settings = await get_settings(await _group_id_for_query(query))
-    temp.CHAT[query.from_user.id] = query.message.chat.id
+    if query.message.chat.type != enums.ChatType.PRIVATE:
+        temp.CHAT[query.from_user.id] = query.message.chat.id
     ads, ads_name, _ = await mdb.get_advirtisment()
     ads_text = ""
     if ads is not None and ads_name is not None:
@@ -542,7 +544,7 @@ async def season_search(client: Client, query: CallbackQuery):
     if settings["link"]:
         btn = []
         for file_num, file in enumerate(files, start=offset + 1):
-            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{query.message.chat.id}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
+            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
     else:
         btn = [
             [
@@ -710,7 +712,8 @@ async def year_search(client: Client, query: CallbackQuery):
     temp.FILES_ID[key] = files
     reqnxt = query.from_user.id if query.from_user else 0
     settings = await get_settings(await _group_id_for_query(query))
-    temp.CHAT[query.from_user.id] = query.message.chat.id
+    if query.message.chat.type != enums.ChatType.PRIVATE:
+        temp.CHAT[query.from_user.id] = query.message.chat.id
     ads, ads_name, _ = await mdb.get_advirtisment()
     ads_text = ""
     if ads is not None and ads_name is not None:
@@ -725,7 +728,7 @@ async def year_search(client: Client, query: CallbackQuery):
     if settings["link"]:
         btn = []
         for file_num, file in enumerate(files, start=offset + 1):
-            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{query.message.chat.id}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
+            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
     else:
         btn = [
             [
@@ -897,8 +900,10 @@ async def quality_search(client: Client, query: CallbackQuery):
         f"\n\n<blockquote>⚠️ <b>THIS MESSAGE WILL BE AUTO DELETE AFTER {_delete_time_text(int(settings.get('delete_time', DELETE_TIME)))} TO AVOID COPYRIGHT ISSUES 🗑</b></blockquote>"
         if settings.get("auto_delete") else ""
     )
-    temp.CHAT[query.from_user.id] = query.message.chat.id
-    temp.CHAT[query.from_user.id] = query.message.chat.id
+    if query.message.chat.type != enums.ChatType.PRIVATE:
+        temp.CHAT[query.from_user.id] = query.message.chat.id
+    if query.message.chat.type != enums.ChatType.PRIVATE:
+        temp.CHAT[query.from_user.id] = query.message.chat.id
     ads, ads_name, _ = await mdb.get_advirtisment()
     ads_text = ""
     if ads is not None and ads_name is not None:
@@ -913,7 +918,7 @@ async def quality_search(client: Client, query: CallbackQuery):
     if settings["link"]:
         btn = []
         for file_num, file in enumerate(files, start=offset + 1):
-            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{query.message.chat.id}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
+            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
     else:
         btn = [
             [
@@ -1105,9 +1110,11 @@ async def lang_search(client: Client, query: CallbackQuery):
         f"\n\n<blockquote>⚠️ <b>THIS MESSAGE WILL BE AUTO DELETE AFTER {_delete_time_text(int(settings.get('delete_time', DELETE_TIME)))} TO AVOID COPYRIGHT ISSUES 🗑</b></blockquote>"
         if settings.get("auto_delete") else ""
     )
-    temp.CHAT[query.from_user.id] = query.message.chat.id
+    if query.message.chat.type != enums.ChatType.PRIVATE:
+        temp.CHAT[query.from_user.id] = query.message.chat.id
     group_id = query.message.chat.id
-    temp.CHAT[query.from_user.id] = query.message.chat.id
+    if query.message.chat.type != enums.ChatType.PRIVATE:
+        temp.CHAT[query.from_user.id] = query.message.chat.id
     ads, ads_name, _ = await mdb.get_advirtisment()
     ads_text = ""
     if ads is not None and ads_name is not None:
@@ -1123,7 +1130,7 @@ async def lang_search(client: Client, query: CallbackQuery):
     if settings["link"]:
         btn = []
         for file_num, file in enumerate(files, start=offset + 1):
-            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{query.message.chat.id}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
+            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
     else:
         btn = [
             [
@@ -1258,7 +1265,7 @@ async def pmfile_cb(client, query):
         return
 
     await query.answer(
-        f"https://telegram.dog/{temp.U_NAME}?start=file_{query.message.chat.id}_{fileid}"
+        f"https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{fileid}"
     )
     return
 
@@ -1311,7 +1318,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             )
             return
         await query.answer(
-            url=f"https://t.me/{temp.U_NAME}?start=allfiles_{query.message.chat.id}_{key}"
+            url=f"https://t.me/{temp.U_NAME}?start=allfiles_{await _group_id_for_query(query)}_{key}"
         )
 
     elif query.data == "give_trial":
