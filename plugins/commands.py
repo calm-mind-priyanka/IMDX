@@ -42,7 +42,7 @@ from utils import (
 import re
 import base64
 from info import *
-from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr
+from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr, verify_tr
 
 logger = logging.getLogger(__name__)
 movie_series_db = JsTopDB(DATABASE_URI)
@@ -120,7 +120,7 @@ async def global_language_callback(client: Client, query):
             )
         else:
             await query.message.edit_text(
-                core_tr(value, "start", mention=query.from_user.mention, status=get_status()).format(query.from_user.mention, get_status(), query.from_user.id),
+                core_tr(value, "start", mention=query.from_user.mention, status=get_status()),
                 reply_markup=markup, parse_mode=enums.ParseMode.HTML,
             )
     except Exception:
@@ -187,14 +187,13 @@ async def start(client: Client, message):
             num = 3
         else:
             num = 2 if key == "second_time_verified" else 1
-        if key == "third_time_verified":
-            msg = script.THIRDT_VERIFY_COMPLETE_TEXT
-        else:
-            msg = (
-                script.SECOND_VERIFY_COMPLETE_TEXT
-                if key == "second_time_verified"
-                else script.VERIFY_COMPLETE_TEXT
-            )
+        msg = verify_tr(
+            await get_user_language(user_id, message.from_user),
+            "done",
+            mention=message.from_user.mention,
+            num=num,
+            duration=get_readable_time(TWO_VERIFY_GAP),
+        )
         if message.command[1].startswith("jisshu"):
             verifiedfiles = (
                 f"https://telegram.me/{temp.U_NAME}?start=allfiles_{grp_id}_{file_id}"
@@ -212,17 +211,16 @@ async def start(client: Client, message):
                 num,
             ),
         )
+        ui_lang = await get_user_language(user_id, message.from_user)
         btn = [
             [
-                InlineKeyboardButton("‼️ ᴄʟɪᴄᴋ ʜᴇʀᴇ ᴛᴏ ɢᴇᴛ ꜰɪʟᴇ ‼️", url=verifiedfiles),
+                InlineKeyboardButton(tr(ui_lang, "send_all"), url=verifiedfiles),
             ]
         ]
         reply_markup = InlineKeyboardMarkup(btn)
         await m.reply_photo(
             photo=(VERIFY_IMG),
-            caption=msg.format(
-                message.from_user.mention, get_readable_time(TWO_VERIFY_GAP)
-            ),
+            caption=msg,
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML,
         )
@@ -485,26 +483,75 @@ async def start(client: Client, message):
                 settings.get("file_mode", False)
                 and settings.get("file_mode_type", "verify") == "shortlink"
             )
-            verify_button_text = "🔗 ɢᴇᴛ ꜱʜᴏʀᴛʟɪɴᴋ 🔗" if shortlink_mode else "✅ ᴠᴇʀɪꜰʏ ✅"
-            how_button_text = "ʜᴏᴡ ᴛᴏ ᴅᴏᴡɴʟᴏᴀᴅ ❓" if shortlink_mode else "ʜᴏᴡ ᴛᴏ ᴠᴇʀɪꜰʏ❓"
+            verify_labels = {
+                "en": ("GET SHORTLINK" if shortlink_mode else "VERIFY"),
+                "hi": ("शॉर्टलिंक लें" if shortlink_mode else "सत्यापित करें"),
+                "ta": ("SHORTLINK பெறுக" if shortlink_mode else "சரிபார்க்கவும்"),
+                "te": ("SHORTLINK పొందండి" if shortlink_mode else "వెరిఫై చేయండి"),
+                "kn": ("SHORTLINK ಪಡೆಯಿರಿ" if shortlink_mode else "ಪರಿಶೀಲಿಸಿ"),
+                "ml": ("SHORTLINK നേടുക" if shortlink_mode else "പരിശോധിക്കുക"),
+                "bn": ("SHORTLINK নিন" if shortlink_mode else "ভেরিফাই করুন"),
+                "mr": ("SHORTLINK घ्या" if shortlink_mode else "पडताळा"),
+                "gu": ("SHORTLINK મેળવો" if shortlink_mode else "ચકાસો"),
+                "pa": ("SHORTLINK ਲਵੋ" if shortlink_mode else "ਵੇਰੀਫਾਈ ਕਰੋ"),
+                "ur": ("SHORTLINK حاصل کریں" if shortlink_mode else "تصدیق کریں"),
+                "as": ("SHORTLINK লওক" if shortlink_mode else "ভেৰিফাই কৰক"),
+                "ne": ("SHORTLINK लिनुहोस्" if shortlink_mode else "VERIFY गर्नुहोस्"),
+                "hinglish": ("SHORTLINK LO" if shortlink_mode else "VERIFY KARO"),
+            }
+            how_labels = {
+                "en": "ʜᴏᴡ ᴛᴏ ᴅᴏᴡɴʟᴏᴀᴅ ❓" if shortlink_mode else "ʜᴏᴡ ᴛᴏ ᴠᴇʀɪғʏ❓",
+                "hi": "डाउनलोड कैसे करें ❓" if shortlink_mode else "वेरीफाई कैसे करें ❓",
+                "ta": "எப்படி பதிவிறக்குவது ❓" if shortlink_mode else "எப்படி சரிபார்ப்பது ❓",
+                "te": "ఎలా డౌన్‌లోడ్ చేయాలి ❓" if shortlink_mode else "ఎలా వెరిఫై చేయాలి ❓",
+                "kn": "ಡೌನ್‌ಲೋಡ್ ಮಾಡುವುದು ಹೇಗೆ ❓" if shortlink_mode else "ಪರಿಶೀಲಿಸುವುದು ಹೇಗೆ ❓",
+                "ml": "എങ്ങനെ ഡൗൺലോഡ് ചെയ്യാം ❓" if shortlink_mode else "എങ്ങനെ പരിശോധിക്കാം ❓",
+                "bn": "ডাউনলোড কীভাবে করবেন ❓" if shortlink_mode else "ভেরিফাই কীভাবে করবেন ❓",
+                "mr": "डाउनलोड कसे करावे ❓" if shortlink_mode else "व्हेरिफाय कसे करावे ❓",
+                "gu": "ડાઉનલોડ કેવી રીતે કરવું ❓" if shortlink_mode else "વેરિફાય કેવી રીતે કરવું ❓",
+                "pa": "ਡਾਊਨਲੋਡ ਕਿਵੇਂ ਕਰਨਾ ਹੈ ❓" if shortlink_mode else "ਵੇਰੀਫਾਈ ਕਿਵੇਂ ਕਰਨਾ ਹੈ ❓",
+                "ur": "ڈاؤن لوڈ کیسے کریں ❓" if shortlink_mode else "تصدیق کیسے کریں ❓",
+                "as": "ডাউনলোড কেনেকৈ কৰিব ❓" if shortlink_mode else "ভেৰিফাই কেনেকৈ কৰিব ❓",
+                "ne": "डाउनलोड कसरी गर्ने ❓" if shortlink_mode else "VERIFY कसरी गर्ने ❓",
+                "hinglish": "DOWNLOAD KAISE KARE ❓" if shortlink_mode else "VERIFY KAISE KARE ❓",
+            }
+            premium_labels = {
+                "en":"😁 ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ — ɴᴏ ᴠᴇʀɪғɪᴄᴀᴛɪᴏɴ 😁",
+                "hi":"😁 Premium खरीदें — verification की जरूरत नहीं 😁",
+                "ta":"😁 Premium வாங்குங்கள் — verification தேவையில்லை 😁",
+                "te":"😁 Premium కొనండి — verification అవసరం లేదు 😁",
+                "kn":"😁 Premium ಖರೀದಿಸಿ — verification ಅಗತ್ಯವಿಲ್ಲ 😁",
+                "ml":"😁 Premium വാങ്ങുക — verification ആവശ്യമില്ല 😁",
+                "bn":"😁 Premium কিনুন — verification লাগবে না 😁",
+                "mr":"😁 Premium घ्या — verification ची गरज नाही 😁",
+                "gu":"😁 Premium ખરીદો — verification જરૂરી નથી 😁",
+                "pa":"😁 Premium ਲਵੋ — verification ਦੀ ਲੋੜ ਨਹੀਂ 😁",
+                "ur":"😁 Premium خریدیں — verification کی ضرورت نہیں 😁",
+                "as":"😁 Premium ক্ৰয় কৰক — verificationৰ প্ৰয়োজন নাই 😁",
+                "ne":"😁 Premium किन्नुहोस् — verification आवश्यक छैन 😁",
+                "hinglish":"😁 PREMIUM LO — VERIFICATION KI ZAROORAT NAHI 😁",
+            }
+            verify_button_text = f"🔗 {verify_labels.get(ui_lang, verify_labels['en'])} 🔗" if shortlink_mode else f"✅ {verify_labels.get(ui_lang, verify_labels['en'])} ✅"
+            how_button_text = how_labels.get(ui_lang, how_labels["en"])
             buttons = [
                 [InlineKeyboardButton(text=verify_button_text, url=verify), InlineKeyboardButton(text=how_button_text, url=howtodownload)],
-                [InlineKeyboardButton(text="😁 ʙᴜʏ sᴜʙsᴄʀɪᴘᴛɪᴏɴ - ɴᴏ ɴᴇᴇᴅ ᴛᴏ ᴠᴇʀɪғʏ 😁", callback_data="getpremium")],
+                [InlineKeyboardButton(text=premium_labels.get(ui_lang, premium_labels["en"]), callback_data="getpremium")],
             ]
             reply_markup = InlineKeyboardMarkup(buttons)
+            ui_lang = await get_user_language(user_id, message.from_user)
             if shortlink_mode:
-                if await db.user_verified(user_id):
-                    msg = script.SHORTLINK_THIRD_VERIFICATION_TEXT
-                else:
-                    msg = (
-                        script.SHORTLINK_SECOND_VERIFICATION_TEXT
-                        if is_second_shortener
-                        else script.SHORTLINK_VERIFICATION_TEXT
-                    )
-            elif await db.user_verified(user_id):
-                msg = script.THIRDT_VERIFICATION_TEXT
+                verify_key = "short3" if await db.user_verified(user_id) else ("short2" if is_second_shortener else "short1")
             else:
-                msg = script.SECOND_VERIFICATION_TEXT if is_second_shortener else script.VERIFICATION_TEXT
+                verify_key = "verify3" if await db.user_verified(user_id) else ("verify2" if is_second_shortener else "verify1")
+            msg = verify_tr(
+                ui_lang,
+                verify_key,
+                mention=message.from_user.mention,
+                status=get_status(),
+                greeting=_file_mode_greeting(),
+                name=formate_file_name((await get_file_details(file_id) or [None])[0].file_name) if (await get_file_details(file_id) or [None])[0] else "File",
+                size=get_size((await get_file_details(file_id) or [None])[0].file_size) if (await get_file_details(file_id) or [None])[0] else "N/A",
+            )
             if shortlink_mode:
                 # Shortlink mode shows the same dynamic movie/file information
                 # as the File Mode caption, while keeping the Shortlink 1/3 →
