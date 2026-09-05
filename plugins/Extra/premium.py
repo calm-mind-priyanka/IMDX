@@ -251,8 +251,9 @@ async def plan(client, message):
         )
     else:
         lang = await _user_language(user_id, message.from_user)
+        # Language is selected from Home/global language. Do not duplicate the
+        # language button on the Premium plan/order screen.
         btn = [
-            [InlineKeyboardButton(_language_button_text(lang), callback_data="paylang:menu")],
             [InlineKeyboardButton(_premium_flow_text(lang, "continue"), callback_data="free")],
             [InlineKeyboardButton(_premium_flow_text(lang, "close"), callback_data="close_data")],
         ]
