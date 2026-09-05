@@ -32,7 +32,7 @@ from utils import (
     formate_file_name,
 )
 from database.users_chats_db import db
-from language import get_user_language, has_saved_language, tr, core_tr, home_tr, page_tr
+from language import get_user_language, has_saved_language, tr, core_tr, home_tr, page_tr, small_caps
 from database.ia_filterdb import (
     Media,
     get_search_results,
@@ -2150,7 +2150,15 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
             max_results = max(1, min(20, int(settings.get("max_results", MAX_BTN))))
         except (TypeError, ValueError):
             max_results = int(MAX_BTN)
-        searching_msg = await msg.reply_text(f"🎯 sᴇᴀʀᴄʜɪɴɢ {search}")
+        searching_labels = {
+            "en":"sᴇᴀʀᴄʜɪɴɢ","hi":"खोजा जा रहा है","ta":"தேடப்படுகிறது","te":"వెతుకుతోంది",
+            "kn":"ಹುಡುಕಲಾಗುತ್ತಿದೆ","ml":"തിരയുന്നു","bn":"খোঁজা হচ্ছে","mr":"शोधत आहे",
+            "gu":"શોધી રહ્યા છીએ","pa":"ਖੋਜਿਆ ਜਾ ਰਿਹਾ ਹੈ","ur":"تلاش جاری ہے","as":"বিচৰা হৈছে",
+            "ne":"खोजिँदैछ","hinglish":"SEARCH HO RAHA HAI"
+        }
+        searching_msg = await msg.reply_text(
+            f"🎯 {searching_labels.get(ui_lang, searching_labels['en'])} {search}"
+        )
         files, offset, total_results = await get_search_results(search, max_results=max_results)
         await searching_msg.delete()
         if not files:
@@ -2208,8 +2216,24 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
     else:
         pass
     if spoll:
+        found_labels = {
+            "en":"ɪs ꜰᴏᴜɴᴅ ᴘʟᴇᴀsᴇ ᴡᴀɪᴛ ꜰᴏʀ ꜰɪʟᴇs",
+            "hi":"मिला है, कृपया files के लिए wait करें",
+            "ta":"கிடைத்தது, files க்காக காத்திருக்கவும்",
+            "te":"కనుగొనబడింది, files కోసం వేచి ఉండండి",
+            "kn":"ಸಿಕ್ಕಿದೆ, files ಗಾಗಿ ಕಾಯಿರಿ",
+            "ml":"കണ്ടെത്തി, files ലഭിക്കാൻ കാത്തിരിക്കുക",
+            "bn":"পাওয়া গেছে, files-এর জন্য অপেক্ষা করুন",
+            "mr":"सापडले आहे, files साठी थांबा",
+            "gu":"મળ્યું છે, files માટે રાહ જુઓ",
+            "pa":"ਮਿਲ ਗਿਆ ਹੈ, files ਲਈ ਉਡੀਕ ਕਰੋ",
+            "ur":"مل گیا ہے، files کے لیے انتظار کریں",
+            "as":"পোৱা গ'ল, filesৰ বাবে অপেক্ষা কৰক",
+            "ne":"भेटियो, files का लागि पर्खनुहोस्",
+            "hinglish":"MIL GAYA HAI, FILES KE LIYE WAIT KARO",
+        }
         m = await msg.message.edit(
-            f"<b><code>{search}</code> ɪs ꜰᴏᴜɴᴅ ᴘʟᴇᴀsᴇ ᴡᴀɪᴛ ꜰᴏʀ ꜰɪʟᴇs 📫</b>"
+            f"<b><code>{search}</code> {found_labels.get(ui_lang, found_labels['en'])} 📫</b>"
         )
         await asyncio.sleep(1.2)
         await m.delete()
@@ -2288,7 +2312,23 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
             **locals(),
         )
     else:
-        cap = f"<b>📂 ʜᴇʀᴇ ɪ ꜰᴏᴜɴᴅ ꜰᴏʀ ʏᴏᴜʀ sᴇᴀʀᴄʜ {search}</b>"
+        found_caps = {
+            "en":"📂 ʜᴇʀᴇ ɪ ꜰᴏᴜɴᴅ ғᴏʀ ʏᴏᴜʀ sᴇᴀʀᴄʜ",
+            "hi":"📂 आपकी search के लिए files मिली हैं",
+            "ta":"📂 உங்கள் search-க்கு files கிடைத்துள்ளன",
+            "te":"📂 మీ search కోసం files కనుగొనబడ్డాయి",
+            "kn":"📂 ನಿಮ್ಮ searchಗಾಗಿ files ಸಿಕ್ಕಿವೆ",
+            "ml":"📂 നിങ്ങളുടെ search-ന് files കണ്ടെത്തി",
+            "bn":"📂 আপনার search-এর জন্য files পাওয়া গেছে",
+            "mr":"📂 तुमच्या search साठी files सापडल्या",
+            "gu":"📂 તમારી search માટે files મળી છે",
+            "pa":"📂 ਤੁਹਾਡੀ search ਲਈ files ਮਿਲ ਗਈਆਂ ਹਨ",
+            "ur":"📂 آپ کی search کے لیے files مل گئی ہیں",
+            "as":"📂 আপোনাৰ searchৰ বাবে files পোৱা গ'ল",
+            "ne":"📂 तपाईंको search का लागि files भेटिए",
+            "hinglish":"📂 AAPKI SEARCH KE LIYE FILES MIL GAYI HAIN",
+        }
+        cap = f"<b>{found_caps.get(ui_lang, found_caps['en'])} {search}</b>"
 
     ads, ads_name, _ = await mdb.get_advirtisment()
     ads_text = ""
