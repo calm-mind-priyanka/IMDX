@@ -94,7 +94,7 @@ def _admins():
     return set(ADMINS) | set(PAYMENT_ADMIN_IDS)
 
 
-TEMP_MESSAGE_DELETE_SECONDS = 300  # 5 minutes after the bot sends the message
+TEMP_MESSAGE_DELETE_SECONDS = 300  # normal temporary bot notices remain 5 minutes unless overridden
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +269,64 @@ _RESULT_I18N = {
     "hinglish": {"activated_title":"Premium Successfully Activate Ho Gaya!","renewed_title":"Premium Successfully Renew Ho Gaya!","plan":"Plan","duration":"Duration","added":"Added","activated_at":"Activated","expires":"Expires","new_expiry":"New Expiry","status":"Status: Active","thanks_purchase":"Premium purchase karne ke liye thank you!","thanks_renew":"Premium renew karne ke liye thank you!","rejected_title":"Payment Reject Ho Gaya","rejected_body":"Is payment se mila Premium access remove kar diya gaya hai. Agar aapko lagta hai ye mistake hai, Admin se contact karo."},
 }
 
+_NO_ORDER_WARNING_I18N = {
+    "en": "We could not find an active Premium order linked to your account.\nPlease select a Premium plan first, complete the payment, and then send the screenshot here.\n\n🧹 This notice will disappear automatically after 10 seconds.",
+    "hi": "आपके खाते से कोई सक्रिय Premium Order नहीं मिला।\nपहले Premium Plan चुनें, payment पूरा करें और फिर screenshot भेजें।\n\n🧹 यह संदेश 10 सेकंड बाद अपने आप हट जाएगा।",
+    "ta": "உங்கள் கணக்குடன் செயலில் உள்ள Premium Order எதுவும் இல்லை.\nமுதலில் Premium Plan தேர்வு செய்து payment முடித்து screenshot அனுப்பவும்.\n\n🧹 இந்த செய்தி 10 விநாடிகளில் தானாக நீக்கப்படும்.",
+    "te": "మీ ఖాతాతో active Premium Order కనుగొనబడలేదు.\nముందుగా Premium Plan ఎంచుకుని payment పూర్తి చేసి screenshot పంపండి.\n\n🧹 ఈ సందేశం 10 సెకన్లలో ఆటోమేటిక్‌గా తొలగించబడుతుంది.",
+    "kn": "ನಿಮ್ಮ ಖಾತೆಗೆ ಸಕ್ರಿಯ Premium Order ಕಂಡುಬಂದಿಲ್ಲ.\nಮೊದಲು Premium Plan ಆಯ್ಕೆ ಮಾಡಿ payment ಪೂರ್ಣಗೊಳಿಸಿ screenshot ಕಳುಹಿಸಿ.\n\n🧹 ಈ ಸಂದೇಶ 10 ಸೆಕೆಂಡುಗಳಲ್ಲಿ ಅಳಿಸಲಾಗುತ್ತದೆ.",
+    "ml": "നിങ്ങളുടെ അക്കൗണ്ടുമായി സജീവമായ Premium Order കണ്ടെത്തിയില്ല.\nആദ്യം Premium Plan തിരഞ്ഞെടുക്കുക, payment പൂർത്തിയാക്കി screenshot അയയ്ക്കുക.\n\n🧹 ഈ സന്ദേശം 10 സെക്കൻഡിൽ സ്വയം നീക്കും.",
+    "bn": "আপনার অ্যাকাউন্টের সঙ্গে কোনো সক্রিয় Premium Order পাওয়া যায়নি।\nপ্রথমে Premium Plan বেছে payment সম্পূর্ণ করে screenshot পাঠান।\n\n🧹 এই বার্তাটি ১০ সেকেন্ড পরে নিজে থেকে মুছে যাবে।",
+    "mr": "तुमच्या खात्याशी कोणताही सक्रिय Premium Order सापडला नाही.\nआधी Premium Plan निवडा, payment पूर्ण करा आणि screenshot पाठवा.\n\n🧹 हा संदेश 10 सेकंदांनी आपोआप हटेल.",
+    "gu": "તમારા ખાતા સાથે કોઈ active Premium Order મળ્યો નથી.\nપહેલા Premium Plan પસંદ કરો, payment પૂર્ણ કરો અને screenshot મોકલો.\n\n🧹 આ સંદેશ 10 સેકન્ડમાં આપમેળે દૂર થશે.",
+    "pa": "ਤੁਹਾਡੇ ਖਾਤੇ ਨਾਲ ਕੋਈ active Premium Order ਨਹੀਂ ਮਿਲਿਆ।\nਪਹਿਲਾਂ Premium Plan ਚੁਣੋ, payment ਪੂਰਾ ਕਰੋ ਅਤੇ screenshot ਭੇਜੋ।\n\n🧹 ਇਹ message 10 ਸਕਿੰਟ ਬਾਅਦ ਆਪਣੇ ਆਪ delete ਹੋ ਜਾਵੇਗਾ।",
+    "ur": "آپ کے اکاؤنٹ کے ساتھ کوئی فعال Premium Order نہیں ملا۔\nپہلے Premium Plan منتخب کریں، payment مکمل کریں اور screenshot بھیجیں۔\n\n🧹 یہ پیغام 10 سیکنڈ بعد خود حذف ہو جائے گا۔",
+    "as": "আপোনাৰ একাউণ্টৰ সৈতে কোনো সক্ৰিয় Premium Order পোৱা নগ'ল।\nআগতে Premium Plan বাছি payment সম্পূৰ্ণ কৰি screenshot পঠাওক।\n\n🧹 এই বাৰ্তা ১০ ছেকেণ্ড পিছত নিজে মচি যাব।",
+    "ne": "तपाईंको खातासँग सक्रिय Premium Order भेटिएन।\nपहिले Premium Plan छान्नुहोस्, payment पूरा गरेर screenshot पठाउनुहोस्।\n\n🧹 यो सन्देश १० सेकेन्डपछि आफैं हट्नेछ।",
+    "hinglish": "Aapke account se koi active Premium Order nahi mila.\nPehle Premium Plan choose karo, payment complete karo aur phir screenshot bhejo.\n\n🧹 Ye message 10 seconds baad automatically delete ho jayega.",
+}
+
+def _no_order_warning(lang):
+    title = _tr(lang, "no_order_title")
+    body = _NO_ORDER_WARNING_I18N.get(lang, _NO_ORDER_WARNING_I18N["en"])
+    return title + "\n\n" + body
+
+_PROCESSING_ERROR_I18N = {
+    "en":"⚠️ Your screenshot was received, but processing failed temporarily. Please try again later or contact the admin.",
+    "hi":"⚠️ आपका screenshot मिल गया, लेकिन processing में अस्थायी समस्या हुई। बाद में फिर कोशिश करें या Admin से संपर्क करें।",
+    "ta":"⚠️ உங்கள் screenshot பெறப்பட்டது, ஆனால் processing-ல் தற்காலிக சிக்கல் ஏற்பட்டது. பின்னர் மீண்டும் முயற்சிக்கவும் அல்லது Admin-ஐ தொடர்புகொள்ளவும்.",
+    "te":"⚠️ మీ screenshot అందింది, కానీ processingలో తాత్కాలిక సమస్య వచ్చింది. తర్వాత మళ్లీ ప్రయత్నించండి లేదా Admin‌ను సంప్రదించండి.",
+    "kn":"⚠️ ನಿಮ್ಮ screenshot ಬಂದಿದೆ, ಆದರೆ processing ನಲ್ಲಿ ತಾತ್ಕಾಲಿಕ ಸಮಸ್ಯೆ ಉಂಟಾಗಿದೆ. ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ ಅಥವಾ Admin ಸಂಪರ್ಕಿಸಿ.",
+    "ml":"⚠️ നിങ്ങളുടെ screenshot ലഭിച്ചു, പക്ഷേ processing-ൽ താൽക്കാലിക പ്രശ്നമുണ്ടായി. പിന്നീട് വീണ്ടും ശ്രമിക്കുക അല്ലെങ്കിൽ Admin-നെ ബന്ധപ്പെടുക.",
+    "bn":"⚠️ আপনার screenshot পাওয়া গেছে, কিন্তু processing-এ সাময়িক সমস্যা হয়েছে। পরে আবার চেষ্টা করুন বা Admin-এর সঙ্গে যোগাযোগ করুন।",
+    "mr":"⚠️ तुमचा screenshot मिळाला, पण processing मध्ये तात्पुरती अडचण आली. नंतर पुन्हा प्रयत्न करा किंवा Admin शी संपर्क करा.",
+    "gu":"⚠️ તમારો screenshot મળ્યો, પરંતુ processingમાં તાત્કાલિક સમસ્યા આવી. પછી ફરી પ્રયાસ કરો અથવા Adminનો સંપર્ક કરો.",
+    "pa":"⚠️ ਤੁਹਾਡਾ screenshot ਮਿਲ ਗਿਆ, ਪਰ processing ਵਿੱਚ ਅਸਥਾਈ ਸਮੱਸਿਆ ਆਈ। ਬਾਅਦ ਵਿੱਚ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ ਜਾਂ Admin ਨਾਲ ਸੰਪਰਕ ਕਰੋ।",
+    "ur":"⚠️ آپ کا screenshot موصول ہو گیا، لیکن processing میں عارضی مسئلہ آیا۔ بعد میں دوبارہ کوشش کریں یا Admin سے رابطہ کریں۔",
+    "as":"⚠️ আপোনাৰ screenshot পোৱা গ'ল, কিন্তু processing-ত সাময়িক সমস্যা হৈছে। পিছত পুনৰ চেষ্টা কৰক বা Admin-ৰ সৈতে যোগাযোগ কৰক।",
+    "ne":"⚠️ तपाईंको screenshot प्राप्त भयो, तर processing मा अस्थायी समस्या भयो। पछि फेरि प्रयास गर्नुहोस् वा Admin लाई सम्पर्क गर्नुहोस्।",
+    "hinglish":"⚠️ Aapka screenshot mil gaya, lekin processing mein temporary problem hui. Baad mein dobara try karo ya Admin se contact karo.",
+}
+
+_EXPIRY_LABELS = {
+    "en": ("Status: Expired", "4 days or less"),
+    "hi": ("स्थिति: समाप्त", "4 दिन या कम"),
+    "ta": ("நிலை: காலாவதி", "4 நாட்கள் அல்லது குறைவு"),
+    "te": ("స్థితి: గడువు ముగిసింది", "4 రోజులు లేదా తక్కువ"),
+    "kn": ("ಸ್ಥಿತಿ: ಅವಧಿ ಮುಗಿದಿದೆ", "4 ದಿನಗಳು ಅಥವಾ ಕಡಿಮೆ"),
+    "ml": ("സ്ഥിതി: കാലാവധി കഴിഞ്ഞു", "4 ദിവസമോ അതിൽ കുറവോ"),
+    "bn": ("স্ট্যাটাস: মেয়াদ শেষ", "৪ দিন বা কম"),
+    "mr": ("स्थिती: समाप्त", "4 दिवस किंवा कमी"),
+    "gu": ("સ્થિતિ: સમાપ્ત", "4 દિવસ અથવા ઓછા"),
+    "pa": ("ਸਥਿਤੀ: ਸਮਾਪਤ", "4 ਦਿਨ ਜਾਂ ਘੱਟ"),
+    "ur": ("حیثیت: میعاد ختم", "4 دن یا کم"),
+    "as": ("স্থিতি: ম্যাদ শেষ", "৪ দিন বা কম"),
+    "ne": ("स्थिति: म्याद सकियो", "४ दिन वा कम"),
+    "hinglish": ("Status: Expired", "4 days ya usse kam"),
+}
+def _expiry_label(lang, kind):
+    return small_caps(_EXPIRY_LABELS.get(lang, _EXPIRY_LABELS["en"])[0 if kind == "status" else 1])
+
 def _result_text(lang, key):
     return small_caps(_RESULT_I18N.get(lang, _RESULT_I18N["en"]).get(key, _RESULT_I18N["en"][key]))
 
@@ -433,23 +491,23 @@ def _schedule_temp_delete(sent_message, delay=TEMP_MESSAGE_DELETE_SECONDS):
     return sent_message
 
 
-async def _reply_temp(message, text, **kwargs):
+async def _reply_temp(message, text, delay=TEMP_MESSAGE_DELETE_SECONDS, **kwargs):
     sent = await message.reply_text(text, **kwargs)
-    return _schedule_temp_delete(sent)
+    return _schedule_temp_delete(sent, delay)
 
 
-async def _send_user_temp(client, user_id, text, **kwargs):
+async def _send_user_temp(client, user_id, text, delay=TEMP_MESSAGE_DELETE_SECONDS, **kwargs):
     sent = await client.send_message(user_id, text, **kwargs)
-    return _schedule_temp_delete(sent)
+    return _schedule_temp_delete(sent, delay)
 
 
-def _contact_admin_markup():
+def _contact_admin_markup(lang="en"):
     """Return a direct Telegram contact button using the configured owner username."""
     username = (OWNER_USERNAME or "").strip().lstrip("@")
     if not username:
         return None
     return InlineKeyboardMarkup(
-        [[InlineKeyboardButton("💬 CONTACT ADMIN", url=f"https://t.me/{username}")]]
+        [[InlineKeyboardButton(_tr(lang, "contact"), url=f"https://t.me/{username}")]]
     )
 
 
@@ -1211,8 +1269,9 @@ async def _process_payment_submission_impl(payment_client, message):
         try:
             await _reply_temp(
                 message,
-                _tr(lang, "no_order_title") + "\n\n" + _tr(lang, "no_order_body"),
+                _no_order_warning(lang),
                 parse_mode=enums.ParseMode.HTML,
+                delay=10,
             )
         except Exception:
             pass
@@ -1222,9 +1281,8 @@ async def _process_payment_submission_impl(payment_client, message):
     try:
         processing_message = await _reply_temp(
             message,
-            "⏳ <b>🔄 PAYMENT SCREENSHOT PROCESSING...</b>\n\n" +
-            _tr(lang, "progress_body") +
-            "\n\n🛑 <b>DO NOT RESEND • DO NOT CLOSE THE MENU • PLEASE WAIT</b>",
+            _tr(lang, "progress_title") + "\n\n" +
+            _tr(lang, "progress_body"),
             parse_mode=enums.ParseMode.HTML,
         )
     except Exception:
@@ -1341,16 +1399,13 @@ async def _process_payment_submission_impl(payment_client, message):
         ])
         for admin_id in _admins():
             try:
-                await payment_client.send_message(
-                    admin_id,
-                    review_text,
-                    parse_mode=enums.ParseMode.HTML,
-                    reply_markup=review_buttons,
-                )
                 await payment_client.copy_message(
                     admin_id,
                     message.chat.id,
                     message.id,
+                    caption=review_text,
+                    parse_mode=enums.ParseMode.HTML,
+                    reply_markup=review_buttons,
                 )
             except Exception as exc:
                 LOGGER.warning("Could not send manual payment review to %s: %s", admin_id, exc)
@@ -1361,11 +1416,11 @@ async def _process_payment_submission_impl(payment_client, message):
             lang = await _user_language(user_id, sender)
             user_text = (
                 _tr(lang, "manual_title") + "\n\n"
-                f"📦 Plan: {escape(str(plan.get('name') or order.get('plan_duration', 'N/A')))}\n"
-                f"⏳ Duration: {escape(str(plan.get('duration') or order.get('plan_duration', 'N/A')))}\n"
-                f"📅 Activated: {_fmt_dt(activated_at)}\n"
-                f"⏳ Expires: {_fmt_dt(review_expiry)}\n"
-                "🟢 Status: Active\n\n" +
+                f"📦 {_result_text(lang, 'plan')}: <b>{escape(str(plan.get('name') or order.get('plan_duration', 'N/A')))}</b>\n"
+                f"⏳ {_result_text(lang, 'duration')}: <b>{escape(str(plan.get('duration') or order.get('plan_duration', 'N/A')))}</b>\n"
+                f"📅 {_result_text(lang, 'activated_at')}: {_fmt_dt(activated_at)}\n"
+                f"⏳ {_result_text(lang, 'expires')}: {_fmt_dt(review_expiry)}\n"
+                f"🟢 {_result_text(lang, 'status')}\n\n" +
                 _tr(lang, "manual_body")
             )
             if processing_message:
@@ -1373,11 +1428,13 @@ async def _process_payment_submission_impl(payment_client, message):
                     await processing_message.delete()
                 except Exception:
                     pass
-            await _reply_temp(
-                message,
+            await _send_payment_result_with_screenshot(
+                payment_client,
+                user_id,
+                message.id,
                 user_text,
-                parse_mode=enums.ParseMode.HTML,
-                reply_markup=_contact_admin_markup(),
+                order=order,
+                reply_markup=_contact_admin_markup(lang),
             )
         except Exception:
             pass
@@ -1442,16 +1499,13 @@ async def _process_payment_submission_impl(payment_client, message):
     ])
     for admin_id in _admins():
         try:
-            await payment_client.send_message(
-                admin_id,
-                detected_report,
-                parse_mode=enums.ParseMode.HTML,
-                reply_markup=auto_reject_buttons,
-            )
             await payment_client.copy_message(
                 admin_id,
                 message.chat.id,
                 message.id,
+                caption=detected_report,
+                parse_mode=enums.ParseMode.HTML,
+                reply_markup=auto_reject_buttons,
             )
         except Exception as exc:
             LOGGER.warning("Could not send auto-approved payment review to %s: %s", admin_id, exc)
@@ -1790,10 +1844,11 @@ async def run_expiry_check(client, notify=True):
                 await _send_user_temp(
                     client,
                     user_id,
-                    _tr(await _user_language(user_id), "expired") + "\n\n"
-                    f"📦 Plan: {escape(order.get('plan_duration', 'Premium'))}\n"
-                    f"📅 Expired: {_fmt_dt(order.get('expires_at') or now)}\n"
-                    "🔴 Status: Expired",
+                    (lambda lang: _tr(lang, "expired") + "\n\n"
+                     f"📦 {_result_text(lang, 'plan')}: {escape(order.get('plan_duration', 'Premium'))}\n"
+                     f"📅 {_result_text(lang, 'expires')}: {_fmt_dt(order.get('expires_at') or now)}\n"
+                     f"🔴 {_expiry_label(lang, "status")}"
+                    )(await _user_language(user_id)),
                     parse_mode=enums.ParseMode.HTML,
                 )
             except Exception as exc:
@@ -1817,10 +1872,11 @@ async def run_expiry_check(client, notify=True):
                 await _send_user_temp(
                     client,
                     user_id,
-                    _tr(await _user_language(user_id), "expiring") + "\n\n"
-                    f"📦 Plan: {escape(order.get('plan_duration', 'Premium'))}\n"
-                    "⏳ Remaining: 4 Days or less\n"
-                    f"📅 Expiry: {_fmt_dt(expires_at)}",
+                    (lambda lang: _tr(lang, "expiring") + "\n\n"
+                     f"📦 {_result_text(lang, 'plan')}: {escape(order.get('plan_duration', 'Premium'))}\n"
+                     f"⏳ {_result_text(lang, 'duration')}: {_expiry_label(lang, "remaining")}\n"
+                     f"📅 {_result_text(lang, 'expires')}: {_fmt_dt(expires_at)}"
+                    )(await _user_language(user_id)),
                     parse_mode=enums.ParseMode.HTML,
                 )
             except Exception as exc:
@@ -1844,11 +1900,7 @@ async def run_expiry_check(client, notify=True):
                 await _send_user_temp(
                     client,
                     user_id,
-                    f"<b>ʜᴇʏ {target.mention},\n\n"
-                    "ʏᴏᴜʀ ᴘʀᴇᴍɪᴜᴍ ᴀᴄᴄᴇss ʜᴀs ᴇxᴘɪʀᴇᴅ, "
-                    "ᴛʜᴀɴᴋ ʏᴏᴜ ꜰᴏʀ ᴜsɪɴɢ ᴏᴜʀ sᴇʀᴠɪᴄᴇ 😊\n\n"
-                    "ɪꜰ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴛᴀᴋᴇ ᴛʜᴇ ᴘʀᴇᴍɪᴜᴍ ᴀɢᴀɪɴ, "
-                    "ᴛʜᴇɴ ᴄʟɪᴄᴋ ᴏɴ ᴛʜᴇ /plan ꜰᴏʀ ᴛʜᴇ ᴅᴇᴛᴀɪʟs ᴏꜰ ᴛʜᴇ ᴘʟᴀɴs...</b>",
+                    (lambda lang: f"<b>{target.mention}</b>\n\n" + _tr(lang, "expired"))(await _user_language(user_id, target)),
                     parse_mode=enums.ParseMode.HTML,
                 )
                 await client.send_message(
@@ -2022,7 +2074,7 @@ def register_payment_bot_handlers(payment_client):
                     f"❌ <b>{_result_text(await _user_language(user_id), 'rejected_title')}</b>\n\n"
                     f"{_result_text(await _user_language(user_id), 'rejected_body')}",
                     order=order,
-                    reply_markup=_contact_admin_markup(),
+                    reply_markup=_contact_admin_markup(await _user_language(user_id),),
                 )
             except Exception:
                 pass
@@ -2058,7 +2110,7 @@ def register_payment_bot_handlers(payment_client):
             LOGGER.exception("Payment screenshot processing failed.")
             try:
                 await _reply_temp(message,
-                    _tr(await _user_language(message.from_user.id, message.from_user), "processing_error")
+                    _PROCESSING_ERROR_I18N.get(await _user_language(message.from_user.id, message.from_user), _PROCESSING_ERROR_I18N["en"])
                 )
             except Exception:
                 pass
