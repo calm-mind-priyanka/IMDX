@@ -1874,7 +1874,7 @@ async def run_expiry_check(client, notify=True):
                     user_id,
                     (lambda lang: _tr(lang, "expiring") + "\n\n"
                      f"📦 {_result_text(lang, 'plan')}: {escape(order.get('plan_duration', 'Premium'))}\n"
-                     f"⏳ {_result_text(lang, 'duration')}: {_expiry_label(lang, "remaining")}\n"
+                     f"⏳ {_result_text(lang, 'duration')}: {_expiry_label(lang, 'remaining')}\n"
                      f"📅 {_result_text(lang, 'expires')}: {_fmt_dt(expires_at)}"
                     )(await _user_language(user_id)),
                     parse_mode=enums.ParseMode.HTML,
