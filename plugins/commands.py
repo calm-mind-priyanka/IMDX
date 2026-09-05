@@ -440,6 +440,11 @@ async def start(client: Client, message):
         print(f"Id Settings - {settings}")
         verification_enabled = bool(settings.get("is_verify", IS_VERIFY))
 
+        # The verification gate only runs when a real shortener is configured.
+        # Deleting/disabling the shortener must restore the original direct-file
+        # path for non-premium users; Premium already bypasses this block above.
+        primary_shortener_available = bool(settings.get("shortner") and settings.get("api"))
+
         # File Mode VERIFY and SHORTLINK use the SAME verification state.
         # The selected file mode must never reset the user's 1/3 -> 2/3 -> 3/3
         # progress or bypass the existing verification-gap logic.
@@ -454,14 +459,21 @@ async def start(client: Client, message):
         # master Verification switch is OFF.
         is_second_shortener = (
             await db.use_second_shortener(user_id, settings.get("verify_time", TWO_VERIFY_GAP))
-            if verification_enabled else False
+            if verification_enabled and primary_shortener_available else False
         )
         is_third_shortener = (
             await db.use_third_shortener(user_id, settings.get("third_verify_time", THREE_VERIFY_GAP))
-            if verification_enabled else False
+            if verification_enabled and primary_shortener_available else False
         )
 
-        if (not file_mode_completed) and verification_enabled and ((not user_verified) or is_second_shortener or is_third_shortener):
+        # If the selected secondary/third shortener was removed, don't send a
+        # broken shortlink. Fall back to the configured primary shortener.
+        if is_second_shortener and not (settings.get("shortner_two") and settings.get("api_two")):
+            is_second_shortener = False
+        if is_third_shortener and not (settings.get("shortner_three") and settings.get("api_three")):
+            is_third_shortener = False
+
+        if (not file_mode_completed) and verification_enabled and primary_shortener_available and ((not user_verified) or is_second_shortener or is_third_shortener):
             verify_id = "".join(random.choices(string.ascii_uppercase + string.digits, k=7))
             await db.create_verify_id(user_id, verify_id)
             temp.CHAT[user_id] = grp_id
@@ -483,6 +495,7 @@ async def start(client: Client, message):
                 settings.get("file_mode", False)
                 and settings.get("file_mode_type", "verify") == "shortlink"
             )
+            ui_lang = await get_user_language(user_id, message.from_user)
             verify_labels = {
                 "en": ("GET SHORTLINK" if shortlink_mode else "VERIFY"),
                 "hi": ("शॉर्टलिंक लें" if shortlink_mode else "सत्यापित करें"),
@@ -538,7 +551,6 @@ async def start(client: Client, message):
                 [InlineKeyboardButton(text=premium_labels.get(ui_lang, premium_labels["en"]), callback_data="getpremium")],
             ]
             reply_markup = InlineKeyboardMarkup(buttons)
-            ui_lang = await get_user_language(user_id, message.from_user)
             if shortlink_mode:
                 verify_key = "short3" if await db.user_verified(user_id) else ("short2" if is_second_shortener else "short1")
             else:
