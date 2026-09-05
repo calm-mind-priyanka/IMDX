@@ -277,9 +277,125 @@ VERIFY.update({
 "hi":{"verify1":"<b>👋 Hey {mention}, {status},\n\n📌 आज आप verified नहीं हैं। Verify करके अगले verification तक unlimited access पाएं।\n\n#Verification: 1/3 ✓\n\nबिना verification direct files चाहिए तो Premium खरीदें। 😊\n\n💎 Premium के लिए /plan भेजें।</b>","verify2":"<b>👋 Hey {mention}, {status},\n\n📌 आप verified नहीं हैं। Verification link खोलकर अगली verification तक unlimited access पाएं।\n\n#Verification: 2/3\n\nबिना verification direct files चाहिए तो Premium खरीदें। 😊\n\n💎 Premium के लिए /plan भेजें।</b>","verify3":"<b>👋 Hey {mention},\n\n📌 आज आप verified नहीं हैं। Verification link खोलकर अगले पूरे दिन का access पाएं।\n\n#Verification: 3/3\n\nDirect files के लिए Premium लें; verification की जरूरत नहीं होगी।</b>","done":"<b>👋 Hey {mention},\n\nआपने verification {num} पूरा कर लिया ✓\n\nअब आपके पास अगले <code>{duration}</code> तक unlimited access है।</b>"},
 "hinglish":{"verify1":"<b>👋 Hey {mention}, {status},\n\n📌 Aaj aap verified nahi ho. Verify karo aur next verification tak unlimited access pao.\n\n#Verification: 1/3 ✓\n\nBina verification direct files chahiye to Premium lo. 😊\n\n💎 Premium ke liye /plan bhejo.</b>","verify2":"<b>👋 Hey {mention}, {status},\n\n📌 Aap verified nahi ho. Verification link open karo aur next verification tak unlimited access pao.\n\n#Verification: 2/3\n\nBina verification direct files chahiye to Premium lo. 😊\n\n💎 Premium ke liye /plan bhejo.</b>","verify3":"<b>👋 Hey {mention},\n\n📌 Aaj aap verified nahi ho. Verification link open karke next full day ka access pao.\n\n#Verification: 3/3\n\nDirect files ke liye Premium lo; verification ki zarurat nahi hogi.</b>","done":"<b>👋 Hey {mention},\n\nAapne verification {num} complete kar liya ✓\n\nAb aapke paas next <code>{duration}</code> tak unlimited access hai.</b>"},
 })
+# Complete verification/shortlink translations.  Callback URLs, file IDs and
+# database values are never translated; only the surrounding user-facing copy is.
+VERIFY.update({
+"ta":{
+"verify1":"<b>👋 {mention}, {status},\n\n📌 இன்று நீங்கள் verified செய்யப்படவில்லை. Verify செய்து அடுத்த verification வரை unlimited access பெறுங்கள்.\n\n#Verification: 1/3 ✓\n\nVerification இல்லாமல் direct files வேண்டுமெனில் Premium வாங்குங்கள். 😊\n\n💎 Premium வாங்க /plan அனுப்புங்கள்.</b>",
+"verify2":"<b>👋 {mention}, {status},\n\n📌 நீங்கள் verified செய்யப்படவில்லை. Verification link-ஐ திறந்து அடுத்த verification வரை unlimited access பெறுங்கள்.\n\n#Verification: 2/3\n\nVerification இல்லாமல் direct files வேண்டுமெனில் Premium வாங்குங்கள். 😊\n\n💎 Premium வாங்க /plan அனுப்புங்கள்.</b>",
+"verify3":"<b>👋 {mention},\n\n📌 இன்று நீங்கள் verified செய்யப்படவில்லை. Verification link-ஐ திறந்து அடுத்த முழு நாளுக்கான access பெறுங்கள்.\n\n#Verification: 3/3\n\nDirect files வேண்டுமெனில் Premium வாங்குங்கள்; verification தேவையில்லை.</b>",
+"done":"<b>👋 {mention},\n\nநீங்கள் verification {num} முடித்துவிட்டீர்கள் ✓\n\nஅடுத்த <code>{duration}</code> வரை unlimited access கிடைக்கும்.</b>",
+"short1":"<b>👋 {greeting}, {mention}!\n\n🎬 <b>File Ready</b>\n\n📁 <b>{name}</b>\n📦 <b>Size:</b> {size}\n\n🔗 File-ஐ பெற கீழே உள்ள படியை முடிக்கவும்.\n\n🔐 <b>Shortlink Verification</b>\n📊 <b>Progress:</b> 🟢 <b>1 / 3</b>\n\n🔹 <b>Step 1:</b> கீழே உள்ள verification-ஐ முடிக்கவும்.</b>",
+"short2":"<b>👋 {greeting}, {mention}!\n\n🎬 <b>File Ready</b>\n\n📁 <b>{name}</b>\n📦 <b>Size:</b> {size}\n\n🔗 ஒரு படி முடிந்தது. அடுத்த படியை தொடரவும்.\n\n🔐 <b>Shortlink Verification</b>\n📊 <b>Progress:</b> 🟡 <b>2 / 3</b>\n\n🔹 <b>Step 2:</b> அடுத்த verification-ஐ முடிக்கவும்.</b>",
+"short3":"<b>👋 {greeting}, {mention}!\n\n🎬 <b>File Ready</b>\n\n📁 <b>{name}</b>\n📦 <b>Size:</b> {size}\n\n🔗 File-ஐ பெற இது இறுதி படி.\n\n🔐 <b>Shortlink Verification</b>\n📊 <b>Progress:</b> 🔴 <b>3 / 3</b>\n\n🔹 <b>Step 3:</b> இறுதி verification-ஐ முடிக்கவும்.</b>"},
+"te":{
+"verify1":"<b>👋 {mention}, {status},\n\n📌 ఈరోజు మీరు verified కాదు. Verify చేసి తదుపరి verification వరకు unlimited access పొందండి.\n\n#Verification: 1/3 ✓\n\nVerification లేకుండా direct files కావాలంటే Premium కొనండి. 😊\n\n💎 Premium కోసం /plan పంపండి.</b>",
+"verify2":"<b>👋 {mention}, {status},\n\n📌 మీరు verified కాదు. Verification link తెరిచి తదుపరి verification వరకు unlimited access పొందండి.\n\n#Verification: 2/3\n\nVerification లేకుండా direct files కావాలంటే Premium కొనండి. 😊\n\n💎 Premium కోసం /plan పంపండి.</b>",
+"verify3":"<b>👋 {mention},\n\n📌 ఈరోజు మీరు verified కాదు. Verification link తెరిచి తదుపరి పూర్తి రోజు access పొందండి.\n\n#Verification: 3/3\n\nDirect files కోసం Premium కొనండి; verification అవసరం లేదు.</b>",
+"done":"<b>👋 {mention},\n\nమీరు verification {num} పూర్తి చేశారు ✓\n\nతదుపరి <code>{duration}</code> వరకు unlimited access ఉంది.</b>",
+"short1":"<b>👋 {greeting}, {mention}!\n\n🎬 <b>File Ready</b>\n\n📁 <b>{name}</b>\n📦 <b>Size:</b> {size}\n\n🔗 File పొందడానికి క్రింది step పూర్తి చేయండి.\n\n🔐 <b>Shortlink Verification</b>\n📊 <b>Progress:</b> 🟢 <b>1 / 3</b>\n\n🔹 <b>Step 1:</b> క్రింది verification పూర్తి చేయండి.</b>",
+"short2":"<b>👋 {greeting}, {mention}!\n\n🎬 <b>File Ready</b>\n\n📁 <b>{name}</b>\n📦 <b>Size:</b> {size}\n\n🔗 ఒక step పూర్తైంది. తదుపరి step కొనసాగించండి.\n\n🔐 <b>Shortlink Verification</b>\n📊 <b>Progress:</b> 🟡 <b>2 / 3</b>\n\n🔹 <b>Step 2:</b> తదుపరి verification పూర్తి చేయండి.</b>",
+"short3":"<b>👋 {greeting}, {mention}!\n\n🎬 <b>File Ready</b>\n\n📁 <b>{name}</b>\n📦 <b>Size:</b> {size}\n\n🔗 File పొందడానికి ఇది చివరి step.\n\n🔐 <b>Shortlink Verification</b>\n📊 <b>Progress:</b> 🔴 <b>3 / 3</b>\n\n🔹 <b>Step 3:</b> చివరి verification పూర్తి చేయండి.</b>"},
+"kn":{
+"verify1":"<b>👋 {mention}, {status},\n\n📌 ಇಂದು ನೀವು verified ಆಗಿಲ್ಲ. Verify ಮಾಡಿ ಮುಂದಿನ verification ವರೆಗೆ unlimited access ಪಡೆಯಿರಿ.\n\n#Verification: 1/3 ✓\n\nVerification ಇಲ್ಲದೆ direct files ಬೇಕಾದರೆ Premium ಖರೀದಿಸಿ. 😊\n\n💎 Premiumಗಾಗಿ /plan ಕಳುಹಿಸಿ.</b>",
+"verify2":"<b>👋 {mention}, {status},\n\n📌 ನೀವು verified ಆಗಿಲ್ಲ. Verification link ತೆರೆಯಿರಿ ಮತ್ತು ಮುಂದಿನ verification ವರೆಗೆ unlimited access ಪಡೆಯಿರಿ.\n\n#Verification: 2/3\n\nVerification ಇಲ್ಲದೆ direct files ಬೇಕಾದರೆ Premium ಖರೀದಿಸಿ. 😊\n\n💎 Premiumಗಾಗಿ /plan ಕಳುಹಿಸಿ.</b>",
+"verify3":"<b>👋 {mention},\n\n📌 ಇಂದು ನೀವು verified ಆಗಿಲ್ಲ. Verification link ತೆರೆಯಿರಿ ಮತ್ತು ಮುಂದಿನ ಪೂರ್ಣ ದಿನದ access ಪಡೆಯಿರಿ.\n\n#Verification: 3/3\n\nDirect filesಗಾಗಿ Premium ಖರೀದಿಸಿ; verification ಅಗತ್ಯವಿಲ್ಲ.</b>",
+"done":"<b>👋 {mention},\n\nನೀವು verification {num} ಪೂರ್ಣಗೊಳಿಸಿದ್ದೀರಿ ✓\n\nಮುಂದಿನ <code>{duration}</code> ವರೆಗೆ unlimited access ಇದೆ.</b>"},
+"ml":{
+"verify1":"<b>👋 {mention}, {status},\n\n📌 ഇന്ന് നിങ്ങൾ verified അല്ല. Verify ചെയ്ത് അടുത്ത verification വരെ unlimited access നേടുക.\n\n#Verification: 1/3 ✓\n\nVerification ഇല്ലാതെ direct files വേണമെങ്കിൽ Premium വാങ്ങുക. 😊\n\n💎 Premium വാങ്ങാൻ /plan അയയ്ക്കുക.</b>",
+"verify2":"<b>👋 {mention}, {status},\n\n📌 നിങ്ങൾ verified അല്ല. Verification link തുറന്ന് അടുത്ത verification വരെ unlimited access നേടുക.\n\n#Verification: 2/3\n\nVerification ഇല്ലാതെ direct files വേണമെങ്കിൽ Premium വാങ്ങുക. 😊\n\n💎 Premium വാങ്ങാൻ /plan അയയ്ക്കുക.</b>",
+"verify3":"<b>👋 {mention},\n\n📌 ഇന്ന് നിങ്ങൾ verified അല്ല. Verification link തുറന്ന് അടുത്ത മുഴുവൻ ദിവസത്തേക്കുള്ള access നേടുക.\n\n#Verification: 3/3\n\nDirect files വേണമെങ്കിൽ Premium വാങ്ങുക; verification ആവശ്യമില്ല.</b>",
+"done":"<b>👋 {mention},\n\nനിങ്ങൾ verification {num} പൂർത്തിയാക്കി ✓\n\nഅടുത്ത <code>{duration}</code> വരെ unlimited access ലഭിക്കും.</b>"},
+"bn":{
+"verify1":"<b>👋 {mention}, {status},\n\n📌 আজ আপনি verified নন। Verify করে পরবর্তী verification পর্যন্ত unlimited access পান।\n\n#Verification: 1/3 ✓\n\nVerification ছাড়া direct files চাইলে Premium কিনুন। 😊\n\n💎 Premium কিনতে /plan পাঠান।</b>",
+"verify2":"<b>👋 {mention}, {status},\n\n📌 আপনি verified নন। Verification link খুলে পরবর্তী verification পর্যন্ত unlimited access পান।\n\n#Verification: 2/3\n\nVerification ছাড়া direct files চাইলে Premium কিনুন। 😊\n\n💎 Premium কিনতে /plan পাঠান।</b>",
+"verify3":"<b>👋 {mention},\n\n📌 আজ আপনি verified নন। Verification link খুলে পরবর্তী পুরো দিনের access পান।\n\n#Verification: 3/3\n\nDirect files-এর জন্য Premium কিনুন; verification লাগবে না.</b>",
+"done":"<b>👋 {mention},\n\nআপনি verification {num} সম্পূর্ণ করেছেন ✓\n\nপরবর্তী <code>{duration}</code> পর্যন্ত unlimited access পাবেন।</b>"},
+"mr":{
+"verify1":"<b>👋 {mention}, {status},\n\n📌 आज तुम्ही verified नाही. Verify करून पुढील verification पर्यंत unlimited access मिळवा.\n\n#Verification: 1/3 ✓\n\nVerification शिवाय direct files हव्या असल्यास Premium घ्या. 😊\n\n💎 Premium साठी /plan पाठवा.</b>",
+"verify2":"<b>👋 {mention}, {status},\n\n📌 तुम्ही verified नाही. Verification link उघडून पुढील verification पर्यंत unlimited access मिळवा.\n\n#Verification: 2/3\n\nVerification शिवाय direct files हव्या असल्यास Premium घ्या. 😊\n\n💎 Premium साठी /plan पाठवा.</b>",
+"verify3":"<b>👋 {mention},\n\n📌 आज तुम्ही verified नाही. Verification link उघडून पुढील पूर्ण दिवसाचा access मिळवा.\n\n#Verification: 3/3\n\nDirect files साठी Premium घ्या; verification आवश्यक नाही.</b>",
+"done":"<b>👋 {mention},\n\nतुम्ही verification {num} पूर्ण केले ✓\n\nपुढील <code>{duration}</code> पर्यंत unlimited access मिळेल.</b>"},
+"gu":{
+"verify1":"<b>👋 {mention}, {status},\n\n📌 આજે તમે verified નથી. Verify કરીને આગામી verification સુધી unlimited access મેળવો.\n\n#Verification: 1/3 ✓\n\nVerification વગર direct files જોઈએ તો Premium ખરીદો. 😊\n\n💎 Premium માટે /plan મોકલો.</b>",
+"verify2":"<b>👋 {mention}, {status},\n\n📌 તમે verified નથી. Verification link ખોલીને આગામી verification સુધી unlimited access મેળવો.\n\n#Verification: 2/3\n\nVerification વગર direct files જોઈએ તો Premium ખરીદો. 😊\n\n💎 Premium માટે /plan મોકલો.</b>",
+"verify3":"<b>👋 {mention},\n\n📌 આજે તમે verified નથી. Verification link ખોલીને આગામી આખા દિવસનું access મેળવો.\n\n#Verification: 3/3\n\nDirect files માટે Premium ખરીદો; verification જરૂરી નથી.</b>",
+"done":"<b>👋 {mention},\n\nતમે verification {num} પૂર્ણ કર્યું ✓\n\nઆગામી <code>{duration}</code> સુધી unlimited access મળશે.</b>"},
+"pa":{
+"verify1":"<b>👋 {mention}, {status},\n\n📌 ਅੱਜ ਤੁਸੀਂ verified ਨਹੀਂ ਹੋ। Verify ਕਰਕੇ ਅਗਲੀ verification ਤੱਕ unlimited access ਲਵੋ।\n\n#Verification: 1/3 ✓\n\nVerification ਤੋਂ ਬਿਨਾਂ direct files ਚਾਹੀਦੀਆਂ ਹਨ ਤਾਂ Premium ਲਵੋ। 😊\n\n💎 Premium ਲਈ /plan ਭੇਜੋ।</b>",
+"verify2":"<b>👋 {mention}, {status},\n\n📌 ਤੁਸੀਂ verified ਨਹੀਂ ਹੋ। Verification link ਖੋਲ੍ਹੋ ਅਤੇ ਅਗਲੀ verification ਤੱਕ unlimited access ਲਵੋ।\n\n#Verification: 2/3\n\nVerification ਤੋਂ ਬਿਨਾਂ direct files ਚਾਹੀਦੀਆਂ ਹਨ ਤਾਂ Premium ਲਵੋ। 😊\n\n💎 Premium ਲਈ /plan ਭੇਜੋ।</b>",
+"verify3":"<b>👋 {mention},\n\n📌 ਅੱਜ ਤੁਸੀਂ verified ਨਹੀਂ ਹੋ। Verification link ਖੋਲ੍ਹੋ ਅਤੇ ਅਗਲੇ ਪੂਰੇ ਦਿਨ ਦਾ access ਲਵੋ।\n\n#Verification: 3/3\n\nDirect files ਲਈ Premium ਲਵੋ; verification ਦੀ ਲੋੜ ਨਹੀਂ।</b>",
+"done":"<b>👋 {mention},\n\nਤੁਸੀਂ verification {num} ਪੂਰੀ ਕਰ ਲਈ ✓\n\nਅਗਲੇ <code>{duration}</code> ਤੱਕ unlimited access ਮਿਲੇਗਾ।</b>"},
+"ur":{
+"verify1":"<b>👋 {mention}, {status},\n\n📌 آج آپ verified نہیں ہیں۔ Verify کریں اور اگلی verification تک unlimited access حاصل کریں۔\n\n#Verification: 1/3 ✓\n\nVerification کے بغیر direct files چاہئیں تو Premium خریدیں۔ 😊\n\n💎 Premium کے لیے /plan بھیجیں۔</b>",
+"verify2":"<b>👋 {mention}, {status},\n\n📌 آپ verified نہیں ہیں۔ Verification link کھولیں اور اگلی verification تک unlimited access حاصل کریں۔\n\n#Verification: 2/3\n\nVerification کے بغیر direct files چاہئیں تو Premium خریدیں۔ 😊\n\n💎 Premium کے لیے /plan بھیجیں۔</b>",
+"verify3":"<b>👋 {mention},\n\n📌 آج آپ verified نہیں ہیں۔ Verification link کھولیں اور اگلے پورے دن کا access حاصل کریں۔\n\n#Verification: 3/3\n\nDirect files کے لیے Premium خریدیں؛ verification کی ضرورت نہیں۔</b>",
+"done":"<b>👋 {mention},\n\nآپ نے verification {num} مکمل کر لی ✓\n\nاگلے <code>{duration}</code> تک unlimited access حاصل ہے۔</b>"},
+"as":{
+"verify1":"<b>👋 {mention}, {status},\n\n📌 আজি আপুনি verified নহয়। Verify কৰি পৰৱৰ্তী verification লৈ unlimited access লওক।\n\n#Verification: 1/3 ✓\n\nVerification নকৰাকৈ direct files বিচাৰিলে Premium ক্ৰয় কৰক। 😊\n\n💎 Premiumৰ বাবে /plan পঠাওক।</b>",
+"verify2":"<b>👋 {mention}, {status},\n\n📌 আপুনি verified নহয়। Verification link খুলি পৰৱৰ্তী verification লৈ unlimited access লওক।\n\n#Verification: 2/3\n\nVerification নকৰাকৈ direct files বিচাৰিলে Premium ক্ৰয় কৰক। 😊\n\n💎 Premiumৰ বাবে /plan পঠাওক।</b>",
+"verify3":"<b>👋 {mention},\n\n📌 আজি আপুনি verified নহয়। Verification link খুলি পৰৱৰ্তী সম্পূৰ্ণ দিনৰ access লওক।\n\n#Verification: 3/3\n\nDirect filesৰ বাবে Premium ক্ৰয় কৰক; verificationৰ প্ৰয়োজন নাই।</b>",
+"done":"<b>👋 {mention},\n\nআপুনি verification {num} সম্পূৰ্ণ কৰিছে ✓\n\nপৰৱৰ্তী <code>{duration}</code> লৈ unlimited access পাব।</b>"},
+"ne":{
+"verify1":"<b>👋 {mention}, {status},\n\n📌 आज तपाईं verified हुनुहुन्न। Verify गरेर अर्को verification सम्म unlimited access पाउनुहोस्।\n\n#Verification: 1/3 ✓\n\nVerification बिना direct files चाहनुहुन्छ भने Premium किन्नुहोस्। 😊\n\n💎 Premium का लागि /plan पठाउनुहोस्।</b>",
+"verify2":"<b>👋 {mention}, {status},\n\n📌 तपाईं verified हुनुहुन्न। Verification link खोलेर अर्को verification सम्म unlimited access पाउनुहोस्।\n\n#Verification: 2/3\n\nVerification बिना direct files चाहनुहुन्छ भने Premium किन्नुहोस्। 😊\n\n💎 Premium का लागि /plan पठाउनुहोस्।</b>",
+"verify3":"<b>👋 {mention},\n\n📌 आज तपाईं verified हुनुहुन्न। Verification link खोलेर अर्को पूरा दिनको access पाउनुहोस्।\n\n#Verification: 3/3\n\nDirect files का लागि Premium किन्नुहोस्; verification आवश्यक छैन।</b>",
+"done":"<b>👋 {mention},\n\nतपाईंले verification {num} पूरा गर्नुभयो ✓\n\nअब <code>{duration}</code> सम्म unlimited access छ।</b>"},
+})
 for _c in LANGUAGES:
-    VERIFY.setdefault(_c, VERIFY["en"])
+    VERIFY.setdefault(_c, {})
+    # Never silently replace a supported language with English user-facing text.
+    # Missing shortlink keys are handled by verify_tr with localized fallbacks.
 
 def verify_tr(lang, key, **values):
-    text = VERIFY.get(lang, VERIFY[DEFAULT_LANGUAGE]).get(key, VERIFY[DEFAULT_LANGUAGE].get(key, key))
+    data = VERIFY.get(lang) or VERIFY[DEFAULT_LANGUAGE]
+    text = data.get(key)
+    if text is None:
+        localized = {
+            "hi": {"short1":"<b>🔐 Shortlink Verification • चरण 1 / 3</b>\n📁 {name}\n📦 Size: {size}\nनीचे की verification पूरी करें।",
+                   "short2":"<b>🔐 Shortlink Verification • चरण 2 / 3</b>\n📁 {name}\n📦 Size: {size}\nअगली verification पूरी करें।",
+                   "short3":"<b>🔐 Shortlink Verification • चरण 3 / 3</b>\n📁 {name}\n📦 Size: {size}\nअंतिम verification पूरी करें।"},
+            "kn": {"short1":"<b>🔐 Shortlink Verification • ಹಂತ 1 / 3</b>\n📁 {name}\n📦 Size: {size}\nಕೆಳಗಿನ verification ಪೂರ್ಣಗೊಳಿಸಿ.",
+                   "short2":"<b>🔐 Shortlink Verification • ಹಂತ 2 / 3</b>\n📁 {name}\n📦 Size: {size}\nಮುಂದಿನ verification ಪೂರ್ಣಗೊಳಿಸಿ.",
+                   "short3":"<b>🔐 Shortlink Verification • ಹಂತ 3 / 3</b>\n📁 {name}\n📦 Size: {size}\nಕೊನೆಯ verification ಪೂರ್ಣಗೊಳಿಸಿ."},
+            "ml": {"short1":"<b>🔐 Shortlink Verification • ഘട്ടം 1 / 3</b>\n📁 {name}\n📦 Size: {size}\nതാഴെയുള്ള verification പൂർത്തിയാക്കുക.",
+                   "short2":"<b>🔐 Shortlink Verification • ഘട്ടം 2 / 3</b>\n📁 {name}\n📦 Size: {size}\nഅടുത്ത verification പൂർത്തിയാക്കുക.",
+                   "short3":"<b>🔐 Shortlink Verification • ഘട്ടം 3 / 3</b>\n📁 {name}\n📦 Size: {size}\nഅവസാന verification പൂർത്തിയാക്കുക."},
+            "bn": {"short1":"<b>🔐 Shortlink Verification • ধাপ ১ / ৩</b>\n📁 {name}\n📦 Size: {size}\nনিচের verification সম্পূর্ণ করুন।",
+                   "short2":"<b>🔐 Shortlink Verification • ধাপ ২ / ৩</b>\n📁 {name}\n📦 Size: {size}\nপরের verification সম্পূর্ণ করুন।",
+                   "short3":"<b>🔐 Shortlink Verification • ধাপ ৩ / ৩</b>\n📁 {name}\n📦 Size: {size}\nশেষ verification সম্পূর্ণ করুন।"},
+            "mr": {"short1":"<b>🔐 Shortlink Verification • टप्पा 1 / 3</b>\n📁 {name}\n📦 Size: {size}\nखालील verification पूर्ण करा.",
+                   "short2":"<b>🔐 Shortlink Verification • टप्पा 2 / 3</b>\n📁 {name}\n📦 Size: {size}\nपुढील verification पूर्ण करा.",
+                   "short3":"<b>🔐 Shortlink Verification • टप्पा 3 / 3</b>\n📁 {name}\n📦 Size: {size}\nशेवटचे verification पूर्ण करा."},
+            "gu": {"short1":"<b>🔐 Shortlink Verification • પગલું 1 / 3</b>\n📁 {name}\n📦 Size: {size}\nનીચેનું verification પૂર્ણ કરો.",
+                   "short2":"<b>🔐 Shortlink Verification • પગલું 2 / 3</b>\n📁 {name}\n📦 Size: {size}\nઆગલું verification પૂર્ણ કરો.",
+                   "short3":"<b>🔐 Shortlink Verification • પગલું 3 / 3</b>\n📁 {name}\n📦 Size: {size}\nછેલ્લું verification પૂર્ણ કરો."},
+            "pa": {"short1":"<b>🔐 Shortlink Verification • ਕਦਮ 1 / 3</b>\n📁 {name}\n📦 Size: {size}\nਹੇਠਾਂ verification ਪੂਰੀ ਕਰੋ।",
+                   "short2":"<b>🔐 Shortlink Verification • ਕਦਮ 2 / 3</b>\n📁 {name}\n📦 Size: {size}\nਅਗਲੀ verification ਪੂਰੀ ਕਰੋ।",
+                   "short3":"<b>🔐 Shortlink Verification • ਕਦਮ 3 / 3</b>\n📁 {name}\n📦 Size: {size}\nਆਖਰੀ verification ਪੂਰੀ ਕਰੋ।"},
+            "ur": {"short1":"<b>🔐 Shortlink Verification • مرحلہ 1 / 3</b>\n📁 {name}\n📦 Size: {size}\nنیچے verification مکمل کریں۔",
+                   "short2":"<b>🔐 Shortlink Verification • مرحلہ 2 / 3</b>\n📁 {name}\n📦 Size: {size}\nاگلی verification مکمل کریں۔",
+                   "short3":"<b>🔐 Shortlink Verification • مرحلہ 3 / 3</b>\n📁 {name}\n📦 Size: {size}\nآخری verification مکمل کریں۔"},
+            "as": {"short1":"<b>🔐 Shortlink Verification • ধাপ 1 / 3</b>\n📁 {name}\n📦 Size: {size}\nতলৰ verification সম্পূৰ্ণ কৰক।",
+                   "short2":"<b>🔐 Shortlink Verification • ধাপ 2 / 3</b>\n📁 {name}\n📦 Size: {size}\nপৰৱৰ্তী verification সম্পূৰ্ণ কৰক।",
+                   "short3":"<b>🔐 Shortlink Verification • ধাপ 3 / 3</b>\n📁 {name}\n📦 Size: {size}\nশেষ verification সম্পূৰ্ণ কৰক।"},
+            "ne": {"short1":"<b>🔐 Shortlink Verification • चरण 1 / 3</b>\n📁 {name}\n📦 Size: {size}\nतलको verification पूरा गर्नुहोस्।",
+                   "short2":"<b>🔐 Shortlink Verification • चरण 2 / 3</b>\n📁 {name}\n📦 Size: {size}\nअर्को verification पूरा गर्नुहोस्।",
+                   "short3":"<b>🔐 Shortlink Verification • चरण 3 / 3</b>\n📁 {name}\n📦 Size: {size}\nअन्तिम verification पूरा गर्नुहोस्।"},
+            "te": {"short1":"<b>🔐 Shortlink Verification • దశ 1 / 3</b>\n📁 {name}\n📦 Size: {size}\nక్రింది verification పూర్తి చేయండి.",
+                   "short2":"<b>🔐 Shortlink Verification • దశ 2 / 3</b>\n📁 {name}\n📦 Size: {size}\nతదుపరి verification పూర్తి చేయండి.",
+                   "short3":"<b>🔐 Shortlink Verification • దశ 3 / 3</b>\n📁 {name}\n📦 Size: {size}\nచివరి verification పూర్తి చేయండి."},
+            "ta": {"short1":"<b>🔐 Shortlink Verification • படி 1 / 3</b>\n📁 {name}\n📦 Size: {size}\nகீழே உள்ள verification-ஐ முடிக்கவும்.",
+                   "short2":"<b>🔐 Shortlink Verification • படி 2 / 3</b>\n📁 {name}\n📦 Size: {size}\nஅடுத்த verification-ஐ முடிக்கவும்.",
+                   "short3":"<b>🔐 Shortlink Verification • படி 3 / 3</b>\n📁 {name}\n📦 Size: {size}\nஇறுதி verification-ஐ முடிக்கவும்."},
+            "as": {"short1":"<b>🔐 Shortlink Verification • ধাপ 1 / 3</b>\n📁 {name}\n📦 Size: {size}\nতলৰ verification সম্পূৰ্ণ কৰক.",
+                   "short2":"<b>🔐 Shortlink Verification • ধাপ 2 / 3</b>\n📁 {name}\n📦 Size: {size}\nপৰৱৰ্তী verification সম্পূৰ্ণ কৰক.",
+                   "short3":"<b>🔐 Shortlink Verification • ধাপ 3 / 3</b>\n📁 {name}\n📦 Size: {size}\nশেষ verification সম্পূৰ্ণ কৰক."},
+            "hinglish": {"short1":"<b>🔐 Shortlink Verification • Step 1 / 3</b>\n📁 {name}\n📦 Size: {size}\nNeeche wali verification complete karo.",
+                         "short2":"<b>🔐 Shortlink Verification • Step 2 / 3</b>\n📁 {name}\n📦 Size: {size}\nNext verification complete karo.",
+                         "short3":"<b>🔐 Shortlink Verification • Step 3 / 3</b>\n📁 {name}\n📦 Size: {size}\nFinal verification complete karo."},
+        }
+        text = localized.get(lang, {}).get(key)
+    if text is None:
+        text = key
     return text.format(**values)
