@@ -144,17 +144,9 @@ async def start(client: Client, message):
     await message.react(emoji=random.choice(REACTIONS))
     m = message
     user_id = m.from_user.id
-    # Global language is the first private-chat step, including deep links.
-    # This prevents file/verification/payment flows from silently reverting
-    # to English for a user who has never selected a language.
-    if message.chat.type == enums.ChatType.PRIVATE and not await has_saved_language(user_id):
-        await db.update_user({"id": int(user_id), "name": message.from_user.first_name})
-        await message.reply_text(
-            tr("en", "language_title") + "\n\n" + tr("en", "language_body"),
-            reply_markup=language_markup(),
-            parse_mode=enums.ParseMode.HTML,
-        )
-        return
+    # IMPORTANT: verification/shortlink deep-links are handled before the
+    # first-time language picker. A shortener return is also a /start link;
+    # blocking it here leaves the user stuck at /start.
     if message.chat.type == enums.ChatType.PRIVATE and len(m.command) == 2 and m.command[1].startswith("settings_"):
         from plugins.advanced_settings import show_group_list, show_group_settings
         try:
@@ -163,9 +155,17 @@ async def start(client: Client, message):
             return await show_group_list(client, message)
         return await show_group_settings(client, message, grp_id)
     if len(m.command) == 2 and m.command[1].startswith(("notcopy_", "jisshu_")):
-        _, userid, verify_id, file_id = m.command[1].split("_", 3)
+        parts = m.command[1].split("_", 4)
+        # New links include grp_id, making the verification return independent
+        # of temp.CHAT (which is cleared when the bot restarts). Old links remain
+        # supported for backward compatibility.
+        if len(parts) == 5:
+            _, userid, verify_id, grp_id, file_id = parts
+        else:
+            _, userid, verify_id, file_id = m.command[1].split("_", 3)
+            grp_id = temp.CHAT.get(int(userid), 0)
         user_id = int(userid)
-        grp_id = temp.CHAT.get(user_id, 0)
+        grp_id = int(grp_id or 0)
         settings = await get_settings(grp_id)
         verify_id_info = await db.get_verify_id_info(user_id, verify_id)
         if not verify_id_info or verify_id_info["verified"]:
@@ -222,6 +222,17 @@ async def start(client: Client, message):
             photo=(VERIFY_IMG),
             caption=msg,
             reply_markup=reply_markup,
+            parse_mode=enums.ParseMode.HTML,
+        )
+        return
+
+    # Normal private /start still requires a language selection. The verification
+    # deep-link above is deliberately exempt so shortener returns always run.
+    if message.chat.type == enums.ChatType.PRIVATE and not await has_saved_language(user_id):
+        await db.update_user({"id": int(user_id), "name": message.from_user.first_name})
+        await message.reply_text(
+            tr("en", "language_title") + "\n\n" + tr("en", "language_body"),
+            reply_markup=language_markup(),
             parse_mode=enums.ParseMode.HTML,
         )
         return
@@ -394,7 +405,7 @@ async def start(client: Client, message):
                     btn.append([[InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", url=f"https://t.me/{temp.U_NAME}?start={message.command[1]}")]][0])
                 await client.send_photo(
                     chat_id=message.from_user.id, photo=FORCESUB_IMG, caption=script.FORCESUB_TEXT,
-                    reply_markup=reply_markup, parse_mode=enums.ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML,
                 )
                 return
         else:
@@ -428,7 +439,7 @@ async def start(client: Client, message):
             if btn:
                 await client.send_photo(
                     chat_id=message.from_user.id, photo=FORCESUB_IMG, caption=script.FORCESUB_TEXT,
-                    reply_markup=reply_markup, parse_mode=enums.ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML,
                 )
                 return
 
@@ -479,14 +490,22 @@ async def start(client: Client, message):
             temp.CHAT[user_id] = grp_id
             if message.command[1].startswith("allfiles"):
                 verify = await get_shortlink(
-                    f"https://telegram.me/{temp.U_NAME}?start=jisshu_{user_id}_{verify_id}_{file_id}",
+                    f"https://telegram.me/{temp.U_NAME}?start=jisshu_{user_id}_{verify_id}_{grp_id}_{file_id}",
                     grp_id, is_second_shortener, is_third_shortener,
                 )
             else:
                 verify = await get_shortlink(
-                    f"https://telegram.me/{temp.U_NAME}?start=notcopy_{user_id}_{verify_id}_{file_id}",
+                    f"https://telegram.me/{temp.U_NAME}?start=notcopy_{user_id}_{verify_id}_{grp_id}_{file_id}",
                     grp_id, is_second_shortener, is_third_shortener,
                 )
+            if not verify:
+                # Do not create a message with a dead/None URL when the
+                # shortener API is down. The user gets a clear retry instead
+                # of the handler silently failing.
+                await m.reply_text(
+                    "<b>⚠️ ᴛʜᴇ sʜᴏʀᴛʟɪɴᴋ sᴇʀᴠɪᴄᴇ ɪs ᴛᴇᴍᴘᴏʀᴀʀɪʟʏ ᴜɴᴀᴠᴀɪʟᴀʙʟᴇ. ᴘʟᴇᴀsᴇ ᴛʀʏ ᴀɢᴀɪɴ ʟᴀᴛᴇʀ.</b>"
+                )
+                return
             if is_third_shortener:
                 howtodownload = settings.get("tutorial_3", TUTORIAL_3)
             else:
