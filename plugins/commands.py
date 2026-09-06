@@ -42,7 +42,7 @@ from utils import (
 import re
 import base64
 from info import *
-from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr, verify_tr
+from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr, verify_tr, small_caps
 
 logger = logging.getLogger(__name__)
 movie_series_db = JsTopDB(DATABASE_URI)
@@ -516,58 +516,64 @@ async def start(client: Client, message):
             )
             ui_lang = await get_user_language(user_id, message.from_user)
             verify_labels = {
-                "en": ("GET SHORTLINK" if shortlink_mode else "VERIFY"),
-                "hi": ("शॉर्टलिंक लें" if shortlink_mode else "सत्यापित करें"),
-                "ta": ("SHORTLINK பெறுக" if shortlink_mode else "சரிபார்க்கவும்"),
-                "te": ("SHORTLINK పొందండి" if shortlink_mode else "వెరిఫై చేయండి"),
-                "kn": ("SHORTLINK ಪಡೆಯಿರಿ" if shortlink_mode else "ಪರಿಶೀಲಿಸಿ"),
-                "ml": ("SHORTLINK നേടുക" if shortlink_mode else "പരിശോധിക്കുക"),
-                "bn": ("SHORTLINK নিন" if shortlink_mode else "ভেরিফাই করুন"),
-                "mr": ("SHORTLINK घ्या" if shortlink_mode else "पडताळा"),
-                "gu": ("SHORTLINK મેળવો" if shortlink_mode else "ચકાસો"),
-                "pa": ("SHORTLINK ਲਵੋ" if shortlink_mode else "ਵੇਰੀਫਾਈ ਕਰੋ"),
-                "ur": ("SHORTLINK حاصل کریں" if shortlink_mode else "تصدیق کریں"),
-                "as": ("SHORTLINK লওক" if shortlink_mode else "ভেৰিফাই কৰক"),
-                "ne": ("SHORTLINK लिनुहोस्" if shortlink_mode else "VERIFY गर्नुहोस्"),
-                "hinglish": ("SHORTLINK LO" if shortlink_mode else "VERIFY KARO"),
+                "en": ("SHORTLINK" if shortlink_mode else "VERIFY"),
+                "hi": ("शॉर्टलिंक" if shortlink_mode else "सत्यापित"),
+                "ta": ("SHORTLINK" if shortlink_mode else "சரிபார்"),
+                "te": ("SHORTLINK" if shortlink_mode else "వెరిఫై"),
+                "kn": ("SHORTLINK" if shortlink_mode else "ಪರಿಶೀಲಿಸಿ"),
+                "ml": ("SHORTLINK" if shortlink_mode else "പരിശോധിക്കുക"),
+                "bn": ("SHORTLINK" if shortlink_mode else "ভেরিফাই"),
+                "mr": ("SHORTLINK" if shortlink_mode else "पडताळा"),
+                "gu": ("SHORTLINK" if shortlink_mode else "ચકાસો"),
+                "pa": ("SHORTLINK" if shortlink_mode else "ਵੇਰੀਫਾਈ"),
+                "ur": ("SHORTLINK" if shortlink_mode else "تصدیق"),
+                "as": ("SHORTLINK" if shortlink_mode else "ভেৰিফাই"),
+                "ne": ("SHORTLINK" if shortlink_mode else "VERIFY"),
+                "hinglish": ("SHORTLINK" if shortlink_mode else "VERIFY"),
             }
             how_labels = {
-                "en": "ʜᴏᴡ ᴛᴏ ᴅᴏᴡɴʟᴏᴀᴅ ❓" if shortlink_mode else "ʜᴏᴡ ᴛᴏ ᴠᴇʀɪғʏ❓",
-                "hi": "डाउनलोड कैसे करें ❓" if shortlink_mode else "वेरीफाई कैसे करें ❓",
-                "ta": "எப்படி பதிவிறக்குவது ❓" if shortlink_mode else "எப்படி சரிபார்ப்பது ❓",
-                "te": "ఎలా డౌన్‌లోడ్ చేయాలి ❓" if shortlink_mode else "ఎలా వెరిఫై చేయాలి ❓",
-                "kn": "ಡೌನ್‌ಲೋಡ್ ಮಾಡುವುದು ಹೇಗೆ ❓" if shortlink_mode else "ಪರಿಶೀಲಿಸುವುದು ಹೇಗೆ ❓",
-                "ml": "എങ്ങനെ ഡൗൺലോഡ് ചെയ്യാം ❓" if shortlink_mode else "എങ്ങനെ പരിശോധിക്കാം ❓",
-                "bn": "ডাউনলোড কীভাবে করবেন ❓" if shortlink_mode else "ভেরিফাই কীভাবে করবেন ❓",
-                "mr": "डाउनलोड कसे करावे ❓" if shortlink_mode else "व्हेरिफाय कसे करावे ❓",
-                "gu": "ડાઉનલોડ કેવી રીતે કરવું ❓" if shortlink_mode else "વેરિફાય કેવી રીતે કરવું ❓",
-                "pa": "ਡਾਊਨਲੋਡ ਕਿਵੇਂ ਕਰਨਾ ਹੈ ❓" if shortlink_mode else "ਵੇਰੀਫਾਈ ਕਿਵੇਂ ਕਰਨਾ ਹੈ ❓",
-                "ur": "ڈاؤن لوڈ کیسے کریں ❓" if shortlink_mode else "تصدیق کیسے کریں ❓",
-                "as": "ডাউনলোড কেনেকৈ কৰিব ❓" if shortlink_mode else "ভেৰিফাই কেনেকৈ কৰিব ❓",
-                "ne": "डाउनलोड कसरी गर्ने ❓" if shortlink_mode else "VERIFY कसरी गर्ने ❓",
-                "hinglish": "DOWNLOAD KAISE KARE ❓" if shortlink_mode else "VERIFY KAISE KARE ❓",
+                "en": "ʟᴇᴀʀɴ ʜᴏᴡ" if shortlink_mode else "ᴠᴇʀɪғʏ ɢᴜɪᴅᴇ",
+                "hi": "कैसे करें" if shortlink_mode else "वेरीफाई गाइड",
+                "ta": "எப்படி" if shortlink_mode else "சரிபார்ப்பு வழி",
+                "te": "ఎలా" if shortlink_mode else "వెరిఫై గైడ్",
+                "kn": "ಹೇಗೆ" if shortlink_mode else "ಪರಿಶೀಲನೆ ಮಾರ್ಗದರ್ಶಿ",
+                "ml": "എങ്ങനെ" if shortlink_mode else "പരിശോധന ഗൈഡ്",
+                "bn": "কীভাবে" if shortlink_mode else "ভেরিফাই গাইড",
+                "mr": "कसे?" if shortlink_mode else "व्हेरिफाय गाइड",
+                "gu": "કેવી રીતે" if shortlink_mode else "વેરિફાય ગાઇડ",
+                "pa": "ਕਿਵੇਂ?" if shortlink_mode else "ਵੇਰੀਫਾਈ ਗਾਈਡ",
+                "ur": "کیسے؟" if shortlink_mode else "تصدیق گائیڈ",
+                "as": "কেনেকৈ" if shortlink_mode else "ভেৰিফাই গাইড",
+                "ne": "कसरी?" if shortlink_mode else "VERIFY गाइड",
+                "hinglish": "KAISE?" if shortlink_mode else "VERIFY GUIDE",
             }
             premium_labels = {
-                "en":"😁 ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ — ɴᴏ ᴠᴇʀɪғɪᴄᴀᴛɪᴏɴ 😁",
-                "hi":"😁 Premium खरीदें — verification की जरूरत नहीं 😁",
-                "ta":"😁 Premium வாங்குங்கள் — verification தேவையில்லை 😁",
-                "te":"😁 Premium కొనండి — verification అవసరం లేదు 😁",
-                "kn":"😁 Premium ಖರೀದಿಸಿ — verification ಅಗತ್ಯವಿಲ್ಲ 😁",
-                "ml":"😁 Premium വാങ്ങുക — verification ആവശ്യമില്ല 😁",
-                "bn":"😁 Premium কিনুন — verification লাগবে না 😁",
-                "mr":"😁 Premium घ्या — verification ची गरज नाही 😁",
-                "gu":"😁 Premium ખરીદો — verification જરૂરી નથી 😁",
-                "pa":"😁 Premium ਲਵੋ — verification ਦੀ ਲੋੜ ਨਹੀਂ 😁",
-                "ur":"😁 Premium خریدیں — verification کی ضرورت نہیں 😁",
-                "as":"😁 Premium ক্ৰয় কৰক — verificationৰ প্ৰয়োজন নাই 😁",
-                "ne":"😁 Premium किन्नुहोस् — verification आवश्यक छैन 😁",
-                "hinglish":"😁 PREMIUM LO — VERIFICATION KI ZAROORAT NAHI 😁",
+                "en": "ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ",
+                "hi": "Premium खरीदें",
+                "ta": "Premium வாங்க",
+                "te": "Premium కొనండి",
+                "kn": "Premium ಖರೀದಿಸಿ",
+                "ml": "Premium വാങ്ങുക",
+                "bn": "Premium কিনুন",
+                "mr": "Premium घ्या",
+                "gu": "Premium ખરીદો",
+                "pa": "Premium ਲਵੋ",
+                "ur": "Premium خریدیں",
+                "as": "Premium ক্ৰয় কৰক",
+                "ne": "Premium किन्नुहोस्",
+                "hinglish": "PREMIUM LO",
             }
-            verify_button_text = f"🔗 {verify_labels.get(ui_lang, verify_labels['en'])} 🔗" if shortlink_mode else f"✅ {verify_labels.get(ui_lang, verify_labels['en'])} ✅"
-            how_button_text = how_labels.get(ui_lang, how_labels["en"])
+            # Compact visible labels only. URLs, callbacks, shortener
+            # generation, verification state and payment logic are untouched.
+            verify_button_text = small_caps(
+                f"🔗 {verify_labels.get(ui_lang, verify_labels['en'])} 🔗"
+                if shortlink_mode
+                else f"✅ {verify_labels.get(ui_lang, verify_labels['en'])} ✅"
+            )
+            how_button_text = small_caps(how_labels.get(ui_lang, how_labels["en"]))
             buttons = [
                 [InlineKeyboardButton(text=verify_button_text, url=verify), InlineKeyboardButton(text=how_button_text, url=howtodownload)],
-                [InlineKeyboardButton(text=premium_labels.get(ui_lang, premium_labels["en"]), callback_data="getpremium")],
+                [InlineKeyboardButton(text=small_caps(premium_labels.get(ui_lang, premium_labels["en"])), callback_data="getpremium")],
             ]
             reply_markup = InlineKeyboardMarkup(buttons)
             if shortlink_mode:
