@@ -27,8 +27,11 @@ BANNED = {}
 imdb = Cinemagoer()
 
 
-def premium_plan_buttons():
-    """Build Premium plan buttons from the single PREMIUM_PLANS source."""
+def premium_plan_buttons(lang="en"):
+    """Build Premium plan buttons from the single PREMIUM_PLANS source.
+
+    Button labels follow the user's existing global language preference.
+    """
     rows = []
     items = list(PREMIUM_PLANS.items())
     for i in range(0, len(items), 2):
@@ -40,7 +43,14 @@ def premium_plan_buttons():
                 callback_data=f"buyplan_{key}",
             ))
         rows.append(row)
-    rows.append([InlineKeyboardButton("💎 ᴄᴜsᴛᴏᴍ ᴘʟᴀɴ 💎", callback_data="other")])
+    custom_labels = {
+        "en":"💎 ᴄᴜsᴛᴏᴍ ᴘʟᴀɴ 💎", "hi":"💎 ᴄᴜsᴛᴏᴍ ᴘʟᴀɴ 💎", "ta":"💎 ᴄᴜsᴛᴏᴍ ᴘʟᴀɴ 💎",
+        "te":"💎 ᴄᴜsᴛᴏᴍ ᴘʟᴀɴ 💎", "kn":"💎 ᴄᴜsᴛᴏᴍ ᴘʟᴀɴ 💎", "ml":"💎 ᴄᴜsᴛᴏᴍ ᴘʟᴀɴ 💎",
+        "bn":"💎 কাস্টম প্ল্যান 💎", "mr":"💎 कस्टम प्लॅन 💎", "gu":"💎 કસ્ટમ પ્લાન 💎",
+        "pa":"💎 ਕਸਟਮ ਪਲਾਨ 💎", "ur":"💎 کسٹم پلان 💎", "as":"💎 কাষ্টম প্লেন 💎",
+        "ne":"💎 कस्टम प्लान 💎", "hinglish":"💎 Custom Plan 💎",
+    }
+    rows.append([InlineKeyboardButton(custom_labels.get(lang, custom_labels["en"]), callback_data="other")])
     return rows
 
 
