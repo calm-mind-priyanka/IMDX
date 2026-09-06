@@ -124,13 +124,33 @@ _SMALL_CAPS = str.maketrans({
 })
 
 def small_caps(text):
-    """Apply the bot's single requested Unicode Small-Caps style to Latin text.
-    Native-script text is left untouched; URLs, IDs and callback data are never
-    passed through this helper.
+    """Apply Unicode small-caps to ordinary visible text.
+
+    This helper intentionally does not know about Telegram/HTML markup. Use
+    ``small_caps_html`` for any Telegram HTML message so tag names, attributes,
+    URLs, IDs and placeholders are never modified.
     """
     if text is None:
         return text
     return str(text).lower().translate(_SMALL_CAPS)
+
+
+def small_caps_html(text):
+    """Safely style visible Latin text while preserving Telegram HTML.
+
+    Only text outside HTML tags is transformed. Attribute values (including
+    ``href``/``tg://user`` links), tag names, placeholders and entities remain
+    untouched, preventing malformed Telegram HTML.
+    """
+    if text is None:
+        return text
+    value = str(text)
+    parts = re.split(r"(<[^>]*>)", value)
+    for i, part in enumerate(parts):
+        if not part or part.startswith("<"):
+            continue
+        parts[i] = part.lower().translate(_SMALL_CAPS)
+    return "".join(parts)
 
 
 def tr(lang, key):
@@ -209,9 +229,9 @@ def core_tr(lang, key, **values):
     data = CORE.get(lang) or CORE[DEFAULT_LANGUAGE]
     text = data.get(key) or CORE[DEFAULT_LANGUAGE].get(key, key)
     try:
-        return small_caps(text.format(**values))
+        return small_caps_html(text.format(**values))
     except Exception:
-        return small_caps(text)
+        return small_caps_html(text)
 
 
 # Unified Premium plan-page template.  The layout/benefit structure is kept
@@ -464,4 +484,4 @@ def verify_tr(lang, key, **values):
         text = localized.get(lang, {}).get(key)
     if text is None:
         text = VERIFY.get("en", {}).get(key, key)
-    return text.format(**values)
+    return small_caps_html(text.format(**values))
