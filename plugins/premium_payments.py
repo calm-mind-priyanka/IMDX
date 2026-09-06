@@ -38,7 +38,7 @@ from info import (
     API_HASH,
 )
 from database.users_chats_db import db
-from language import LANGUAGES as GLOBAL_LANGUAGES, get_user_language as _global_user_language, small_caps
+from language import LANGUAGES as GLOBAL_LANGUAGES, get_user_language as _global_user_language, small_caps, premium_plan_tr
 
 LOGGER = logging.getLogger(__name__)
 
@@ -481,8 +481,8 @@ async def _delete_message_later(sent_message, delay=TEMP_MESSAGE_DELETE_SECONDS)
     try:
         await asyncio.sleep(delay)
         await sent_message.delete()
-    except Exception:
-        pass
+    except Exception as exc:
+        LOGGER.debug("Temporary message cleanup failed: %s", exc)
 
 
 def _schedule_temp_delete(sent_message, delay=TEMP_MESSAGE_DELETE_SECONDS):
@@ -1279,13 +1279,15 @@ async def _process_payment_submission_impl(payment_client, message):
                 message.id, user_id,
             )
         except Exception:
-            pass
+            LOGGER.exception("Could not send unmatched-payment 10-second notice to user %s", user_id)
         return
 
     processing_message = None
     try:
-        processing_message = await _reply_temp(
-            message,
+        # Processing is a meaningful status message.  It is intentionally NOT
+        # scheduled for the 10-second cleanup; only unmatched/meaningless
+        # warnings use that short lifetime.
+        processing_message = await message.reply_text(
             _tr(lang, "progress_title") + "\n\n" +
             _tr(lang, "progress_body"),
             parse_mode=enums.ParseMode.HTML,
@@ -1442,7 +1444,7 @@ async def _process_payment_submission_impl(payment_client, message):
                 reply_markup=_contact_admin_markup(lang),
             )
         except Exception:
-            pass
+            LOGGER.exception("Could not send manual-review Premium result to user %s", user_id)
         return
 
     await db.update_payment_submission(
@@ -1638,15 +1640,13 @@ async def user_plan_command(client, message):
             parse_mode=enums.ParseMode.HTML,
         )
     lang = await _user_language(user.id, user)
-    rows = []
-    keys = list(PREMIUM_PLANS)
-    for i in range(0, len(keys), 2):
-        row = []
-        for key in keys[i:i + 2]:
-            plan = PREMIUM_PLANS[key]
-            row.append(InlineKeyboardButton(f"💳 {plan['name']} ₹{plan['price']}", callback_data=f"buyplan_{key}"))
-        rows.append(row)
-    await message.reply_text(_premium_flow_text(lang, "plans"), reply_markup=InlineKeyboardMarkup(rows), parse_mode=enums.ParseMode.HTML)
+    rows = [[InlineKeyboardButton(_premium_flow_text(lang, "continue"), callback_data="free")],
+            [InlineKeyboardButton(_tr(lang, "language_button",), callback_data="global_lang:menu")]]
+    await message.reply_text(
+        premium_plan_tr(lang, user.mention),
+        reply_markup=InlineKeyboardMarkup(rows),
+        parse_mode=enums.ParseMode.HTML,
+    )
 
 
 @Client.on_message(filters.command("pending"))
