@@ -435,6 +435,45 @@ I18N["as"].update({"progress_title":"🔎 <b>Payment Screenshot পোৱা গ
 I18N["ne"].update({"progress_title":"🔎 <b>Payment Screenshot प्राप्त भयो</b>","progress_body":"⏳ तपाईंको payment सुरक्षित रूपमा जाँच भइरहेको छ। यसलाई <b>१–२ मिनेट</b> लाग्न सक्छ। Screenshot फेरि नपठाउनुहोस् र menu बन्द नगर्नुहोस्।\n\n✅ जाँच पूरा भएपछि परिणाम आफैं आउनेछ।","no_order_title":"⚠️ <b>Premium Order भेटिएन</b>","no_order_body":"पहिले Premium Plan छान्नुहोस्, payment पूरा गर्नुहोस् र त्यसपछि screenshot पठाउनुहोस्।\n\n🧹 यो सन्देश १० सेकेन्डपछि आफैं हट्नेछ।"})
 I18N["hinglish"].update({"progress_title":"🔎 <b>Payment Screenshot Mil Gaya</b>","progress_body":"⏳ Aapka payment safely check ho raha hai. Isme <b>1–2 minutes</b> lag sakte hain. Screenshot dobara mat bhejo aur menu close mat karo.\n\n✅ Check complete hone ke baad result automatically mil jayega.","no_order_title":"⚠️ <b>Premium Order Nahi Mila</b>","no_order_body":"Pehle Premium Plan choose karo, payment complete karo aur phir screenshot bhejo.\n\n🧹 Ye message 10 seconds baad automatically delete ho jayega."})
 
+def premium_plan_buttons(lang="en"):
+    """Build the one canonical Premium plan selector from PREMIUM_PLANS.
+
+    The /plan command and the Home -> Disable Ads -> Buy Premium flow must
+    always expose the same plan keys, names, durations and prices. Keeping the
+    buttons generated from info.PREMIUM_PLANS prevents the two entry points
+    from drifting apart again.
+    """
+    def label(key):
+        item = PREMIUM_PLANS[key]
+        return f"💳 {item['name']} {item['price']}" if key != "lifetime" else f"💎 {item['name']} {item['price']}"
+
+    rows = []
+    keys = ["week", "month", "3month", "6month", "year", "lifetime"]
+    for i in range(0, len(keys), 2):
+        row = []
+        for key in keys[i:i + 2]:
+            row.append(InlineKeyboardButton(label(key), callback_data=f"buyplan_{key}"))
+        rows.append(row)
+    rows.append([InlineKeyboardButton("💎 ᴄᴜsᴛᴏᴍ ᴘʟᴀɴ 💎", callback_data="other")])
+    return rows
+
+
+def premium_plan_pricing_text(lang, mention):
+    """Return the same plan page for every Premium entry point."""
+    lines = []
+    for key in ("week", "month", "3month", "6month", "year", "lifetime"):
+        item = PREMIUM_PLANS[key]
+        lines.append(f"• <b>{escape(item['name'])}</b> — <b>{escape(item['duration'])}</b> — <b>{escape(item['price'])}</b>")
+    return premium_plan_tr(lang, mention) + "\n\n<b>💳 ᴀᴠᴀɪʟᴀʙʟᴇ ᴘʟᴀɴs &amp; ᴘʀɪᴄᴇs:</b>\n" + "\n".join(lines)
+
+
+def premium_plan_markup(lang="en", include_back=True):
+    rows = premium_plan_buttons(lang)
+    if include_back:
+        rows.append([InlineKeyboardButton("• ʙᴀᴄᴋ •", callback_data="seeplans"), InlineKeyboardButton("• ᴄʟᴏsᴇ •", callback_data="close_data")])
+    return InlineKeyboardMarkup(rows)
+
+
 def _premium_flow_text(lang, key, **values):
     text = PREMIUM_FLOW_I18N.get(lang, PREMIUM_FLOW_I18N["en"]).get(key, PREMIUM_FLOW_I18N["en"].get(key, key))
     return text.format(**values) if values else text
@@ -1056,7 +1095,7 @@ async def _send_payment_result_with_screenshot(client, user_id, screenshot_messa
         )
     except Exception as exc:
         LOGGER.warning("Could not send final payment result with screenshot for %s: %s", user_id, exc)
-        return await _send_user_temp(client, user_id, text, parse_mode=enums.ParseMode.HTML, reply_markup=reply_markup)
+        return await client.send_message(user_id, text, parse_mode=enums.ParseMode.HTML, reply_markup=reply_markup)
 
 
 async def _activate_order(client, order, screenshot_message_id):
@@ -1640,10 +1679,10 @@ async def user_plan_command(client, message):
             parse_mode=enums.ParseMode.HTML,
         )
     lang = await _user_language(user.id, user)
-    rows = [[InlineKeyboardButton(_premium_flow_text(lang, "continue"), callback_data="free")],
-            [InlineKeyboardButton(_tr(lang, "language_button",), callback_data="global_lang:menu")]]
+    rows = premium_plan_buttons(lang)
+    rows.append([InlineKeyboardButton(_tr(lang, "language_button"), callback_data="global_lang:menu")])
     await message.reply_text(
-        premium_plan_tr(lang, user.mention),
+        premium_plan_pricing_text(lang, user.mention),
         reply_markup=InlineKeyboardMarkup(rows),
         parse_mode=enums.ParseMode.HTML,
     )
