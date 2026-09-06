@@ -96,7 +96,8 @@ async def Jisshu_start():
             await payment_bot_client.start()
             payment_me = await payment_bot_client.get_me()
             logging.info(
-                "Payment screenshot bot started: @%s", payment_me.username
+                "Payment screenshot bot started: @%s | OCR enabled=%s | OCR timeout=%ss",
+                payment_me.username, PAYMENT_OCR_ENABLED, PAYMENT_OCR_JOB_TIMEOUT_SECONDS,
             )
         except Exception:
             logging.exception("Failed to start PAYMENT_BOT_TOKEN client.")
