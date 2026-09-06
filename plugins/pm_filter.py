@@ -32,7 +32,7 @@ from utils import (
     formate_file_name,
 )
 from database.users_chats_db import db
-from language import get_user_language, has_saved_language, tr, core_tr, home_tr, page_tr, small_caps
+from language import get_user_language, has_saved_language, tr, core_tr, home_tr, page_tr, small_caps, premium_plan_tr
 from database.ia_filterdb import (
     Media,
     get_search_results,
@@ -1273,6 +1273,10 @@ async def pmfile_cb(client, query):
 @Client.on_callback_query()
 async def cb_handler(client: Client, query: CallbackQuery):
     ui_lang = await get_user_language(query.from_user.id, query.from_user)
+    # Premium payment callbacks are handled by premium_payments.py (group=1).
+    # Do not let this legacy catch-all callback handler consume or mutate them.
+    if query.data and (query.data.startswith("buyplan_") or query.data.startswith("payapprove:") or query.data.startswith("payreject:")):
+        return
     if query.data == "close_data":
         try:
             user = query.message.reply_to_message.from_user.id
@@ -1426,7 +1430,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         ]
         reply_markup = InlineKeyboardMarkup(btn)
         await query.message.edit_text(
-            text=script.JISSHUPREMIUM_TXT,
+            text=premium_plan_tr(ui_lang, query.from_user.mention),
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML,
         )
@@ -1480,7 +1484,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             query.message.chat.id, query.message.id, InputMediaPhoto(SUBSCRIPTION)
         )
         await query.message.edit_text(
-            text=script.PREPLANS_TXT.format(query.from_user.mention),
+            text=premium_plan_tr(ui_lang, query.from_user.mention),
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML,
         )
@@ -1501,7 +1505,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         await m.delete()
         await query.message.reply_photo(
             photo=(SUBSCRIPTION),
-            caption=script.PREPLANS_TXT.format(query.from_user.mention),
+            caption=premium_plan_tr(ui_lang, query.from_user.mention),
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML,
         )
@@ -2452,7 +2456,7 @@ async def advantage_spell_chok(message):
             pass
         return
     if not movies:
-        google = search.replace(" ", "+")
+        google = quote_plus(search)
         button = [
             [
                 InlineKeyboardButton(
