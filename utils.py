@@ -6,10 +6,10 @@ from pyrogram.errors import (
     UserIsBlocked,
     PeerIdInvalid,
 )
-from info import AUTH_CHANNEL, LONG_IMDB_DESCRIPTION, START_IMG
+from info import AUTH_CHANNEL, LONG_IMDB_DESCRIPTION, START_IMG, PREMIUM_PLANS
 from imdb import Cinemagoer
 import asyncio
-from pyrogram.types import Message
+from pyrogram.types import Message, InlineKeyboardButton
 from pyrogram import enums
 import pytz
 import re
@@ -25,6 +25,23 @@ logger.setLevel(logging.INFO)
 
 BANNED = {}
 imdb = Cinemagoer()
+
+
+def premium_plan_buttons():
+    """Build Premium plan buttons from the single PREMIUM_PLANS source."""
+    rows = []
+    items = list(PREMIUM_PLANS.items())
+    for i in range(0, len(items), 2):
+        row = []
+        for key, plan in items[i:i + 2]:
+            icon = "💎" if key == "lifetime" else "💳"
+            row.append(InlineKeyboardButton(
+                f"{icon} {plan['name']} {plan['price']}",
+                callback_data=f"buyplan_{key}",
+            ))
+        rows.append(row)
+    rows.append([InlineKeyboardButton("💎 ᴄᴜsᴛᴏᴍ ᴘʟᴀɴ 💎", callback_data="other")])
+    return rows
 
 
 class temp(object):
@@ -287,7 +304,7 @@ def get_file_id(message: "Message") -> Any:
 
 
 def get_status():
-    tz = pytz.timezone("Asia/Kolkata")
+    tz = pytz.timezone("Asia/Colombo")
     hour = datetime.now(tz).time().hour
     if 5 <= hour < 12:
         sts = "ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ"
