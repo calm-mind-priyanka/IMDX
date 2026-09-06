@@ -39,7 +39,12 @@ from info import (
     API_HASH,
 )
 from database.users_chats_db import db
-from language import LANGUAGES as GLOBAL_LANGUAGES, get_user_language as get_global_user_language
+from language import (
+    LANGUAGES as GLOBAL_LANGUAGES,
+    get_user_language as get_global_user_language,
+    small_caps,
+    small_caps_html,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -246,11 +251,14 @@ async def _user_language(user_id, telegram_user=None):
 
 def _tr(lang, key, **values):
     text = I18N.get(lang, I18N["en"]).get(key, I18N["en"].get(key, key))
-    return text.format(**values) if values else text
+    text = text.format(**values) if values else text
+    return small_caps_html(text)
 
 
 # Premium UI text is keyed to the user's GLOBAL bot language.  The Premium
 # screen never asks for a second language choice.
+PREMIUM_PROOF_URL = "https://t.me/+hJg4bVnzCNZiOTE1"
+
 _PREMIUM_FLOW = {
     "en": {"intro": "<b>👋 ʜᴇʏ {mention},</b>\n\n<b>🎁 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴs</b>\n\nChoose a Premium plan below to continue.", "continue": "🍁 ᴄʜᴇᴄᴋ ᴀʟʟ ᴘʟᴀɴs & ᴘʀɪᴄᴇs 🍁", "close": "• ᴄʟᴏsᴇ •", "plans": "<b>👋 ʜᴇʏ {mention}</b>\n\n<blockquote>🎖️ <b>AVAILABLE PREMIUM PLANS</b></blockquote>\n\n🆔 UPI ID ➩ <code>lamasandeep821@okicici</code> [TAP TO COPY]\n\n⛽️ Check your active plan: /myplan\n\n🏷️ Premium proof\n\n‼️ Send the screenshot after payment.\n‼️ Please allow a little time for verification."},
     "hi": {"intro": "<b>👋 नमस्ते {mention},</b>\n\n<b>🎁 Premium Plans</b>\n\nनीचे Premium plan चुनकर आगे बढ़ें।", "continue": "🍁 सभी Premium Plans और कीमतें देखें 🍁", "close": "• बंद करें •", "plans": "<b>👋 नमस्ते {mention}</b>\n\n<blockquote>🎖️ <b>उपलब्ध Premium Plans</b></blockquote>\n\n🆔 UPI ID ➩ <code>lamasandeep821@okicici</code> [कॉपी करने के लिए टैप करें]\n\n⛽️ अपना active plan देखें: /myplan\n\n‼️ Payment के बाद screenshot भेजें।\n‼️ Verification के लिए थोड़ा समय दें।"},
@@ -272,10 +280,15 @@ _PREMIUM_FLOW.update({
 def _premium_flow_text(lang, key, **values):
     data = _PREMIUM_FLOW.get(lang, _PREMIUM_FLOW["en"])
     text = data.get(key, _PREMIUM_FLOW["en"].get(key, key))
-    return text.format(**values) if values else text
+    text = text.format(**values) if values else text
+    if key == "plans":
+        # Keep the proof destination as a real Telegram link in every language.
+        text = re.sub(r"\n?\s*🏷️\s*(?:<[^>]+>)?Premium proof(?:</[^>]+>)?", "", text, flags=re.IGNORECASE)
+        text += f"\n\n🏷️ <a href=\"{PREMIUM_PROOF_URL}\">ᴘʀᴇᴍɪᴜᴍ ᴘʀᴏᴏғ</a>"
+    return small_caps_html(text)
 
 def _language_button_text(lang):
-    return "🌐 LANGUAGE"
+    return small_caps("🌐 LANGUAGE")
 
 # Extra plan/order labels used by the existing Premium screen.
 for _code in list(_PREMIUM_FLOW):
@@ -1126,6 +1139,9 @@ async def process_payment_submission(payment_client, message):
             )
         except Exception:
             pass
+        # The incoming screenshot itself is temporary too; keep it visible for
+        # the same 10-second window as the unmatched-order warning/admin copy.
+        _schedule_temp_delete(message, TEMP_MESSAGE_DELETE_SECONDS)
         return
 
     # Working baseline preserved: only matched Premium orders enter OCR.
