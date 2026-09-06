@@ -5,7 +5,7 @@ from info import ADMINS, LOG_CHANNEL
 from utils import get_seconds
 from database.users_chats_db import db
 from plugins.premium_payments import (
-    _premium_flow_text, _user_language, _tr, _language_markup, LANGUAGES
+    _premium_flow_text, _user_language
 )
 from pyrogram import Client, filters
 from pyrogram.errors.exceptions.bad_request_400 import MessageTooLong
@@ -227,37 +227,17 @@ async def reset_trial(client, message):
         await message.reply_text(f"An error occurred: {e}")
 
 
-async def _saved_language(user_id):
-    try:
-        data = await db.get_user(int(user_id))
-        saved = (data or {}).get("language") or (data or {}).get("language_code")
-        return saved if saved in LANGUAGES else None
-    except Exception:
-        return None
-
-
 @Client.on_message(filters.command("plan"))
 async def plan(client, message):
     user_id = message.from_user.id
-    saved_lang = await _saved_language(user_id)
-
-    # First visit: language selection is the first step. The user chooses once,
-    # and that saved choice controls the rest of the Premium/payment flow.
-    if not saved_lang:
-        btn = _language_markup()
-        caption = (
-            _tr("en", "language_title") + "\n\n"
-            + _tr("en", "language_first_guide")
-        )
-    else:
-        lang = await _user_language(user_id, message.from_user)
-        # Language is selected from Home/global language. Do not duplicate the
-        # language button on the Premium plan/order screen.
-        btn = [
-            [InlineKeyboardButton(_premium_flow_text(lang, "continue"), callback_data="free")],
-            [InlineKeyboardButton(_premium_flow_text(lang, "close"), callback_data="close_data")],
-        ]
-        caption = _premium_flow_text(lang, "intro")
+    # Premium uses the SAME global language selected from /start/Home.
+    # There is intentionally no Premium-specific language button or picker.
+    lang = await _user_language(user_id, message.from_user)
+    btn = [
+        [InlineKeyboardButton(_premium_flow_text(lang, "continue"), callback_data="free")],
+        [InlineKeyboardButton(_premium_flow_text(lang, "close"), callback_data="close_data")],
+    ]
+    caption = _premium_flow_text(lang, "intro", mention=message.from_user.mention)
 
     await message.reply_photo(
         photo="https://graph.org/file/55a5392f88ec5a4bd3379.jpg",
