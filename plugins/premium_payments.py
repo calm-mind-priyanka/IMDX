@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import time
 from html import escape
+from Script import script
 
 import pytz
 from pyrogram import Client, filters, enums
@@ -38,6 +39,7 @@ from info import (
     API_HASH,
 )
 from database.users_chats_db import db
+from utils import premium_plan_buttons
 from language import LANGUAGES as GLOBAL_LANGUAGES, get_user_language as _global_user_language, small_caps, premium_plan_tr
 
 LOGGER = logging.getLogger(__name__)
@@ -435,45 +437,6 @@ I18N["as"].update({"progress_title":"🔎 <b>Payment Screenshot পোৱা গ
 I18N["ne"].update({"progress_title":"🔎 <b>Payment Screenshot प्राप्त भयो</b>","progress_body":"⏳ तपाईंको payment सुरक्षित रूपमा जाँच भइरहेको छ। यसलाई <b>१–२ मिनेट</b> लाग्न सक्छ। Screenshot फेरि नपठाउनुहोस् र menu बन्द नगर्नुहोस्।\n\n✅ जाँच पूरा भएपछि परिणाम आफैं आउनेछ।","no_order_title":"⚠️ <b>Premium Order भेटिएन</b>","no_order_body":"पहिले Premium Plan छान्नुहोस्, payment पूरा गर्नुहोस् र त्यसपछि screenshot पठाउनुहोस्।\n\n🧹 यो सन्देश १० सेकेन्डपछि आफैं हट्नेछ।"})
 I18N["hinglish"].update({"progress_title":"🔎 <b>Payment Screenshot Mil Gaya</b>","progress_body":"⏳ Aapka payment safely check ho raha hai. Isme <b>1–2 minutes</b> lag sakte hain. Screenshot dobara mat bhejo aur menu close mat karo.\n\n✅ Check complete hone ke baad result automatically mil jayega.","no_order_title":"⚠️ <b>Premium Order Nahi Mila</b>","no_order_body":"Pehle Premium Plan choose karo, payment complete karo aur phir screenshot bhejo.\n\n🧹 Ye message 10 seconds baad automatically delete ho jayega."})
 
-def premium_plan_buttons(lang="en"):
-    """Build the one canonical Premium plan selector from PREMIUM_PLANS.
-
-    The /plan command and the Home -> Disable Ads -> Buy Premium flow must
-    always expose the same plan keys, names, durations and prices. Keeping the
-    buttons generated from info.PREMIUM_PLANS prevents the two entry points
-    from drifting apart again.
-    """
-    def label(key):
-        item = PREMIUM_PLANS[key]
-        return f"💳 {item['name']} {item['price']}" if key != "lifetime" else f"💎 {item['name']} {item['price']}"
-
-    rows = []
-    keys = ["week", "month", "3month", "6month", "year", "lifetime"]
-    for i in range(0, len(keys), 2):
-        row = []
-        for key in keys[i:i + 2]:
-            row.append(InlineKeyboardButton(label(key), callback_data=f"buyplan_{key}"))
-        rows.append(row)
-    rows.append([InlineKeyboardButton("💎 ᴄᴜsᴛᴏᴍ ᴘʟᴀɴ 💎", callback_data="other")])
-    return rows
-
-
-def premium_plan_pricing_text(lang, mention):
-    """Return the same plan page for every Premium entry point."""
-    lines = []
-    for key in ("week", "month", "3month", "6month", "year", "lifetime"):
-        item = PREMIUM_PLANS[key]
-        lines.append(f"• <b>{escape(item['name'])}</b> — <b>{escape(item['duration'])}</b> — <b>{escape(item['price'])}</b>")
-    return premium_plan_tr(lang, mention) + "\n\n<b>💳 ᴀᴠᴀɪʟᴀʙʟᴇ ᴘʟᴀɴs &amp; ᴘʀɪᴄᴇs:</b>\n" + "\n".join(lines)
-
-
-def premium_plan_markup(lang="en", include_back=True):
-    rows = premium_plan_buttons(lang)
-    if include_back:
-        rows.append([InlineKeyboardButton("• ʙᴀᴄᴋ •", callback_data="seeplans"), InlineKeyboardButton("• ᴄʟᴏsᴇ •", callback_data="close_data")])
-    return InlineKeyboardMarkup(rows)
-
-
 def _premium_flow_text(lang, key, **values):
     text = PREMIUM_FLOW_I18N.get(lang, PREMIUM_FLOW_I18N["en"]).get(key, PREMIUM_FLOW_I18N["en"].get(key, key))
     return text.format(**values) if values else text
@@ -496,7 +459,17 @@ async def _user_language(user_id, telegram_user=None):
 
 
 def _tr(lang, key, **values):
-    text = I18N.get(lang, I18N["en"]).get(key, I18N["en"].get(key, key))
+    text = I18N.get(lang, I18N["en"]).get(key)
+    if text is None:
+        text = I18N["en"].get(key)
+    if text is None:
+        # Never expose an internal translation key to a user.
+        text = {
+            "manual_title": "⚠️ <b>Premium — Payment Under Review</b>",
+            "manual_body": "Your payment screenshot has been sent to the admin for manual review.",
+            "progress_title": "🔎 <b>Payment screenshot received</b>",
+            "progress_body": "⏳ Your payment is being analyzed. Please wait for the result.",
+        }.get(key, "")
     return text.format(**values) if values else text
 
 
@@ -1258,7 +1231,13 @@ async def _process_payment_submission_impl(payment_client, message):
     lang = await _user_language(user_id, sender)
     order = await db.get_premium_order(user_id)
     if order and not order.get("selected_plan"):
+        LOGGER.warning("Premium order for user %s exists but has no selected_plan; treating screenshot as unmatched", user_id)
         order = None
+    LOGGER.info(
+        "Payment screenshot %s from user %s: order_found=%s selected_plan=%s payment_status=%s",
+        message.id, user_id, bool(order),
+        (order or {}).get("selected_plan"), (order or {}).get("payment_status"),
+    )
 
     # Once the current order has already consumed a screenshot, require the
     # user to select a Premium plan again before another screenshot can enter
@@ -1302,26 +1281,56 @@ async def _process_payment_submission_impl(payment_client, message):
     }
     await db.record_payment_submission(submission)
 
+    processing_message = None
     if not order:
-        # Unmatched screenshots are NEVER sent to admins/log channels and do
-        # not enter the Premium review pipeline. The only response is a
-        # temporary user-facing notice which is deleted after 10 seconds.
+        # An unmatched screenshot must never activate Premium, but it can still
+        # be OCR-audited so the admin can diagnose a real payment/order mismatch.
         try:
-            notice = await _reply_temp(
+            processing_message = await message.reply_text(
+                _tr(lang, "progress_title") + "\n\n" + _tr(lang, "progress_body"),
+                parse_mode=enums.ParseMode.HTML,
+            )
+        except Exception:
+            LOGGER.exception("Could not send unmatched-payment processing notice")
+
+        ocr_text, ocr_status, file_sha256, perceptual_hash = await _ocr_payment_message(payment_client, message)
+        # Keep the user's response simple and short-lived.
+        try:
+            await _reply_temp(
                 message,
                 _no_order_warning(lang),
                 parse_mode=enums.ParseMode.HTML,
                 delay=10,
             )
-            LOGGER.info(
-                "Unmatched payment screenshot %s from %s: user-only 10-second notice sent",
-                message.id, user_id,
-            )
         except Exception:
             LOGGER.exception("Could not send unmatched-payment 10-second notice to user %s", user_id)
+
+        admin_text = (
+            "⚠️ <b>Unmatched payment screenshot</b>\n\n"
+            f"👤 User ID: <code>{user_id}</code>\n"
+            f"👤 Username: @{escape(sender.username) if sender.username else 'none'}\n"
+            f"🆔 Message ID: <code>{message.id}</code>\n\n"
+            "<b>🔎 Automatic analysis report</b>\n"
+            f"• OCR engine: {escape(str(ocr_status or 'unknown').replace('_', ' ').title())}\n"
+            "• Analysis result: <b>NOT APPROVED — no pending Premium order</b>\n"
+            f"• OCR text read: <code>{escape((ocr_text[:1200] if ocr_text else 'NO TEXT READ'))}</code>\n\n"
+            "⚠️ Premium was NOT activated. The user must select a Premium plan first."
+        )
+        for admin_id in _admins():
+            try:
+                await payment_client.copy_message(
+                    admin_id, message.chat.id, message.id,
+                    caption=admin_text, parse_mode=enums.ParseMode.HTML,
+                )
+            except Exception as exc:
+                LOGGER.warning("Could not send unmatched OCR report to %s: %s", admin_id, exc)
+        if processing_message:
+            try:
+                await processing_message.delete()
+            except Exception:
+                pass
         return
 
-    processing_message = None
     try:
         # Processing is a meaningful status message.  It is intentionally NOT
         # scheduled for the 10-second cleanup; only unmatched/meaningless
@@ -1679,10 +1688,10 @@ async def user_plan_command(client, message):
             parse_mode=enums.ParseMode.HTML,
         )
     lang = await _user_language(user.id, user)
-    rows = premium_plan_buttons(lang)
+    rows = premium_plan_buttons()
     rows.append([InlineKeyboardButton(_tr(lang, "language_button"), callback_data="global_lang:menu")])
     await message.reply_text(
-        premium_plan_pricing_text(lang, user.mention),
+        script.FREE_TXT.format(user.mention),
         reply_markup=InlineKeyboardMarkup(rows),
         parse_mode=enums.ParseMode.HTML,
     )
