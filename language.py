@@ -214,6 +214,43 @@ def core_tr(lang, key, **values):
         return small_caps(text)
 
 
+# Unified Premium plan-page template.  The layout/benefit structure is kept
+# identical for every user; only the language is selected from that user's
+# saved global language preference.
+PREMIUM_PLAN_PAGE = {
+    "en": """<b>👋 ʜᴇʏ {mention},</b>\n\n<b>🎁 ᴘʀᴇᴍɪᴜᴍ ғᴇᴀᴛᴜʀᴇ ʙᴇɴɪꜰɪᴛs:</b>\n<b>❏ ɴᴏ ɴᴇᴇᴅ ᴛᴏ ᴏᴘᴇɴ ʟɪɴᴋꜱ
+❏ ɢᴇᴛ ᴅɪʀᴇᴄᴛ ғɪʟᴇs
+❏ ᴀᴅ-ғʀᴇᴇ ᴇxᴘᴇʀɪᴇɴᴄᴇ
+❏ ʜɪɢʜ-sᴘᴇᴇᴅ ᴅᴏᴡɴʟᴏᴀᴅ ʟɪɴᴋ
+❏ ᴍᴜʟᴛɪ-ᴘʟᴀʏᴇʀ sᴛʀᴇᴀᴍɪɴɢ ʟɪɴᴋs
+❏ ᴜɴʟɪᴍɪᴛᴇᴅ ᴍᴏᴠɪᴇs ᴀɴᴅ sᴇʀɪᴇs
+❏ ꜰᴜʟʟ ᴀᴅᴍɪɴ sᴜᴘᴘᴏʀᴛ
+❏ ʀᴇǫᴜᴇsᴛ ᴡɪʟʟ ʙᴇ ᴄᴏᴍᴘʟᴇᴛᴇᴅ ɪɴ 𝟷ʜ [ ɪꜰ ᴀᴠᴀɪʟᴀʙʟᴇ ]</b>\n\n<b>⛽️ ᴄʜᴇᴄᴋ ʏᴏᴜʀ ᴀᴄᴛɪᴠᴇ ᴘʟᴀɴ: /myplan</b>""",
+    "hi": """<b>👋 ʜᴇʏ {mention},</b>\n\n<b>🎁 ᴘʀᴇᴍɪᴜᴍ ғᴇᴀᴛᴜʀᴇ ʙᴇɴᴇғɪᴛs:</b>\n<b>❏ ʟɪɴᴋ ᴋʜᴏʟɴᴇ ᴋɪ ᴢᴀʀᴜʀᴀᴛ ɴᴀʜɪ
+❏ ᴅɪʀᴇᴄᴛ ғɪʟᴇs ᴍɪʟᴇɴɢɪ
+❏ ᴀᴅ-ғʀᴇᴇ ᴇxᴘᴇʀɪᴇɴᴄᴇ
+❏ ʜɪɢʜ-sᴘᴇᴇᴅ ᴅᴏᴡɴʟᴏᴀᴅ ʟɪɴᴋ
+❏ ᴍᴜʟᴛɪ-ᴘʟᴀʏᴇʀ sᴛʀᴇᴀᴍɪɴɢ ʟɪɴᴋs
+❏ ᴜɴʟɪᴍɪᴛᴇᴅ ᴍᴏᴠɪᴇs ᴀᴜʀ sᴇʀɪᴇs
+❏ ꜰᴜʟʟ ᴀᴅᴍɪɴ sᴜᴘᴘᴏʀᴛ
+❏ ʀᴇǫᴜᴇsᴛ 𝟷ʜ ᴍᴇɪɴ ᴄᴏᴍᴘʟᴇᴛᴇ ʜᴏɢɪ [ ɪғ ᴀᴠᴀɪʟᴀʙʟᴇ ]</b>\n\n<b>⛽️ ᴀᴘɴᴀ ᴀᴄᴛɪᴠᴇ ᴘʟᴀɴ ᴄʜᴇᴄᴋ ᴋᴀʀᴇɴ: /myplan</b>""",
+    "hinglish": """<b>👋 ʜᴇʏ {mention},</b>\n\n<b>🎁 ᴘʀᴇᴍɪᴜᴍ ғᴇᴀᴛᴜʀᴇ ʙᴇɴᴇғɪᴛs:</b>\n<b>❏ ʟɪɴᴋ ᴋʜᴏʟɴᴇ ᴋɪ ɴᴇᴇᴅ ɴᴀʜɪ
+❏ ᴅɪʀᴇᴄᴛ ғɪʟᴇs ᴍɪʟᴇɴɢɪ
+❏ ᴀᴅ-ғʀᴇᴇ ᴇxᴘᴇʀɪᴇɴᴄᴇ
+❏ ʜɪɢʜ-sᴘᴇᴇᴅ ᴅᴏᴡɴʟᴏᴀᴅ ʟɪɴᴋ
+❏ ᴍᴜʟᴛɪ-ᴘʟᴀʏᴇʀ sᴛʀᴇᴀᴍɪɴɢ ʟɪɴᴋs
+❏ ᴜɴʟɪᴍɪᴛᴇᴅ ᴍᴏᴠɪᴇs ᴀᴜʀ sᴇʀɪᴇs
+❏ ꜰᴜʟʟ ᴀᴅᴍɪɴ sᴜᴘᴘᴏʀᴛ
+❏ ʀᴇǫᴜᴇsᴛ 𝟷ʜ ᴍᴇɪɴ ᴄᴏᴍᴘʟᴇᴛᴇ ʜᴏɢᴀ [ ɪғ ᴀᴠᴀɪʟᴀʙʟᴇ ]</b>\n\n<b>⛽️ ᴀᴘɴᴀ ᴀᴄᴛɪᴠᴇ ᴘʟᴀɴ ᴄʜᴇᴄᴋ ᴋᴀʀᴏ: /myplan</b>""",
+}
+for _code in LANGUAGES:
+    PREMIUM_PLAN_PAGE.setdefault(_code, PREMIUM_PLAN_PAGE["en"])
+
+def premium_plan_tr(lang, mention):
+    text = PREMIUM_PLAN_PAGE.get(lang, PREMIUM_PLAN_PAGE["en"])
+    return text.format(mention=mention)
+
+
 # User-facing pages that are shown when navigating back from Home.  These are
 # deliberately separate from admin/settings text; the selected language belongs
 # to the Telegram user and never changes another user's UI.
