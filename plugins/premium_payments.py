@@ -14,7 +14,6 @@ import shutil
 import subprocess
 import time
 from html import escape
-from Script import script
 
 import pytz
 from pyrogram import Client, filters, enums
@@ -33,14 +32,13 @@ from info import (
     PAYMENT_OCR_ENABLED,
     PAYMENT_MAX_DELAY_MINUTES,
     PAYMENT_FUTURE_TOLERANCE_MINUTES,
+    PAYMENT_TIME_APPROVAL_ENABLED,
     PAYMENT_OCR_PASS_TIMEOUT,
     PAYMENT_OCR_JOB_TIMEOUT_SECONDS,
     API_ID,
     API_HASH,
 )
 from database.users_chats_db import db
-from utils import premium_plan_buttons
-from language import LANGUAGES as GLOBAL_LANGUAGES, get_user_language as _global_user_language, small_caps, premium_plan_tr
 
 LOGGER = logging.getLogger(__name__)
 
@@ -96,21 +94,17 @@ def _admins():
     return set(ADMINS) | set(PAYMENT_ADMIN_IDS)
 
 
-TEMP_MESSAGE_DELETE_SECONDS = 300  # normal temporary bot notices remain 5 minutes unless overridden
-
-
-# ---------------------------------------------------------------------------
-# User-facing language system
-# ---------------------------------------------------------------------------
-# Admin analysis/review reports intentionally remain in English for consistent
-# moderation. Only normal user-facing Premium/payment messages are localized.
-LANGUAGES = GLOBAL_LANGUAGES
+LANGUAGES = {
+    "en": "🇬🇧 English", "hi": "🇮🇳 हिन्दी", "ta": "🇮🇳 தமிழ்",
+    "te": "🇮🇳 తెలుగు", "kn": "🇮🇳 ಕನ್ನಡ", "ml": "🇮🇳 മലയാളം",
+    "bn": "🇮🇳 বাংলা", "mr": "🇮🇳 मराठी", "gu": "🇮🇳 ગુજરાતી",
+    "pa": "🇮🇳 ਪੰਜਾਬੀ", "ur": "🇮🇳 اردو",
+}
 
 LANGUAGE_ALIASES = {
     "en": "en", "en-us": "en", "en-gb": "en",
     "hi": "hi", "ta": "ta", "te": "te", "kn": "kn", "ml": "ml",
     "bn": "bn", "mr": "mr", "gu": "gu", "pa": "pa", "ur": "ur",
-    "as": "as", "ne": "ne", "hinglish": "hinglish", "hi-latn": "hinglish",
 }
 
 I18N = {
@@ -118,7 +112,7 @@ I18N = {
         "progress_title": "🔎 <b>Payment screenshot received</b>",
         "progress_body": "⏳ Your payment is being securely analyzed.\nThis may take <b>1–2 minutes</b>. Please do not resend the screenshot or switch to another bot.\n\n✅ You will receive the final result automatically.",
         "no_order_title": "⚠️ <b>No Premium order found</b>",
-        "no_order_body": "We could not find an active Premium order linked to your account.\nPlease select a Premium plan first, complete the payment, and then send the screenshot here.\n\n🧹 This notice will disappear automatically after 10 seconds.",
+        "no_order_body": "We could not find an active Premium order linked to your account.\nPlease select a Premium plan first, complete the payment, and then send the screenshot here.\n\n🧹 This notice will disappear automatically after 5 minutes.",
         "manual_title": "⚠️ <b>Premium Activated — Payment Under Review</b>",
         "manual_body": "Your payment screenshot could not be automatically approved and has been sent to the admin for manual review. Your selected Premium plan is already active temporarily. If the payment or screenshot is found to be invalid or misleading, this access may be removed.",
         "activated": "Thank you for purchasing Premium!",
@@ -136,7 +130,7 @@ I18N = {
         "progress_title": "🔎 <b>भुगतान स्क्रीनशॉट प्राप्त हुआ</b>",
         "progress_body": "⏳ आपके भुगतान की सुरक्षित जाँच की जा रही है।\nइसमें <b>1–2 मिनट</b> लग सकते हैं। कृपया स्क्रीनशॉट दोबारा न भेजें और दूसरा बॉट न खोलें।\n\n✅ जाँच पूरी होने पर आपको परिणाम अपने आप मिल जाएगा।",
         "no_order_title": "⚠️ <b>कोई Premium Order नहीं मिला</b>",
-        "no_order_body": "आपके खाते से कोई सक्रिय Premium Order जुड़ा नहीं मिला।\nकृपया पहले Premium Plan चुनें, भुगतान पूरा करें और फिर स्क्रीनशॉट भेजें।\n\n🧹 यह संदेश 10 सेकंड बाद अपने आप हट जाएगा।",
+        "no_order_body": "आपके खाते से कोई सक्रिय Premium Order जुड़ा नहीं मिला।\nकृपया पहले Premium Plan चुनें, भुगतान पूरा करें और फिर स्क्रीनशॉट भेजें।\n\n🧹 यह संदेश 5 मिनट बाद अपने आप हट जाएगा।",
         "manual_title": "⚠️ <b>Premium सक्रिय — भुगतान जाँच में</b>",
         "manual_body": "आपका भुगतान स्क्रीनशॉट अपने आप स्वीकृत नहीं हो सका और इसे Admin की मैनुअल जाँच के लिए भेज दिया गया है। आपका चुना हुआ Premium Plan अस्थायी रूप से सक्रिय है। भुगतान गलत या भ्रामक मिलने पर यह access हटाया जा सकता है।",
         "activated": "Premium खरीदने के लिए धन्यवाद!",
@@ -154,7 +148,7 @@ I18N = {
         "progress_title": "🔎 <b>Payment Screenshot பெறப்பட்டது</b>",
         "progress_body": "⏳ உங்கள் payment பாதுகாப்பாக சரிபார்க்கப்படுகிறது.\nஇதற்கு <b>1–2 நிமிடங்கள்</b> ஆகலாம். Screenshot-ஐ மீண்டும் அனுப்ப வேண்டாம்; வேறு bot-க்கு மாற வேண்டாம்.\n\n✅ சரிபார்ப்பு முடிந்ததும் முடிவு தானாக வரும்.",
         "no_order_title": "⚠️ <b>Premium Order கிடைக்கவில்லை</b>",
-        "no_order_body": "உங்கள் கணக்குடன் செயலில் உள்ள Premium Order எதுவும் இணைக்கப்படவில்லை.\nமுதலில் Premium Plan-ஐ தேர்வு செய்து payment முடித்த பிறகு screenshot அனுப்பவும்.\n\n🧹 இந்த செய்தி 10 விநாடிகளில் தானாக நீக்கப்படும்.",
+        "no_order_body": "உங்கள் கணக்குடன் செயலில் உள்ள Premium Order எதுவும் இணைக்கப்படவில்லை.\nமுதலில் Premium Plan-ஐ தேர்வு செய்து payment முடித்த பிறகு screenshot அனுப்பவும்.\n\n🧹 இந்த செய்தி 5 நிமிடங்களில் தானாக நீக்கப்படும்.",
         "manual_title": "⚠️ <b>Premium செயல்படுத்தப்பட்டது — Payment சரிபார்ப்பில்</b>",
         "manual_body": "உங்கள் payment screenshot தானாக approve செய்யப்படவில்லை; Admin manual review-க்கு அனுப்பப்பட்டுள்ளது. உங்கள் தேர்ந்தெடுத்த Premium Plan தற்காலிகமாக active-ஆக உள்ளது. Payment தவறானது என கண்டறியப்பட்டால் access நீக்கப்படலாம்.",
         "activated": "Premium வாங்கியதற்கு நன்றி!", "renewed": "Premium renew செய்ததற்கு நன்றி!",
@@ -172,13 +166,13 @@ I18N = {
     },
     "kn": {
         "progress_title": "🔎 <b>Payment Screenshot ಸ್ವೀಕರಿಸಲಾಗಿದೆ</b>", "progress_body": "⏳ ನಿಮ್ಮ payment ಅನ್ನು ಸುರಕ್ಷಿತವಾಗಿ ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ.\nಇದಕ್ಕೆ <b>1–2 ನಿಮಿಷಗಳು</b> ಬೇಕಾಗಬಹುದು. Screenshot ಅನ್ನು ಮತ್ತೆ ಕಳುಹಿಸಬೇಡಿ ಮತ್ತು ಬೇರೆ bot ಗೆ ಬದಲಾಯಿಸಬೇಡಿ.\n\n✅ ಪರಿಶೀಲನೆ ಮುಗಿದ ನಂತರ ಫಲಿತಾಂಶ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಬರುತ್ತದೆ.",
-        "no_order_title": "⚠️ <b>Premium Order ಕಂಡುಬಂದಿಲ್ಲ</b>", "no_order_body": "ನಿಮ್ಮ ಖಾತೆಗೆ ಯಾವುದೇ active Premium Order ಕಂಡುಬಂದಿಲ್ಲ.\nಮೊದಲು Premium Plan ಆಯ್ಕೆ ಮಾಡಿ, payment ಪೂರ್ಣಗೊಳಿಸಿ, ನಂತರ screenshot ಕಳುಹಿಸಿ.\n\n🧹 ಈ ಸಂದೇಶ 10 ಸೆಕೆಂಡುಗಳ ನಂತರ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಅಳಿಸಲಾಗುತ್ತದೆ.",
+        "no_order_title": "⚠️ <b>Premium Order ಕಂಡುಬಂದಿಲ್ಲ</b>", "no_order_body": "ನಿಮ್ಮ ಖಾತೆಗೆ ಯಾವುದೇ active Premium Order ಕಂಡುಬಂದಿಲ್ಲ.\nಮೊದಲು Premium Plan ಆಯ್ಕೆ ಮಾಡಿ, payment ಪೂರ್ಣಗೊಳಿಸಿ, ನಂತರ screenshot ಕಳುಹಿಸಿ.\n\n🧹 ಈ ಸಂದೇಶ 5 ನಿಮಿಷಗಳ ನಂತರ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಅಳಿಸಲಾಗುತ್ತದೆ.",
         "manual_title": "⚠️ <b>Premium ಸಕ್ರಿಯ — Payment ಪರಿಶೀಲನೆಯಲ್ಲಿದೆ</b>", "manual_body": "ನಿಮ್ಮ payment screenshot ಸ್ವಯಂಚಾಲಿತವಾಗಿ approve ಆಗಲಿಲ್ಲ; Admin manual review ಗೆ ಕಳುಹಿಸಲಾಗಿದೆ. ನೀವು ಆಯ್ಕೆ ಮಾಡಿದ Premium Plan ತಾತ್ಕಾಲಿಕವಾಗಿ active ಆಗಿದೆ. Payment ತಪ್ಪಾಗಿದೆ ಎಂದು ಕಂಡುಬಂದರೆ access ತೆಗೆದುಹಾಕಬಹುದು.",
         "activated": "Premium ಖರೀದಿಸಿದ್ದಕ್ಕಾಗಿ ಧನ್ಯವಾದಗಳು!", "renewed": "Premium renew ಮಾಡಿದ್ದಕ್ಕಾಗಿ ಧನ್ಯವಾದಗಳು!", "approved": "ನಿಮ್ಮ payment ದೃಢೀಕರಿಸಲಾಗಿದೆ. Premium access active ಆಗಿದೆ.", "rejected": "ಈ payment ಮೂಲಕ ನೀಡಿದ Premium access ತೆಗೆದುಹಾಕಲಾಗಿದೆ. ಇದು ತಪ್ಪು ಎಂದು ಭಾವಿಸಿದರೆ Admin ಅನ್ನು ಸಂಪರ್ಕಿಸಿ.", "expired": "ನಿಮ್ಮ Premium access ಮುಗಿದಿದೆ.\n\n🔄 ಮುಂದುವರಿಸಲು ಹೊಸ Premium Plan ಖರೀದಿಸಿ.", "expiring": "ಸೇವೆಯನ್ನು ಮುಂದುವರಿಸಲು Premium Plan renew ಮಾಡಿ.", "language_title": "🌐 <b>ನಿಮ್ಮ ಭಾಷೆಯನ್ನು ಆಯ್ಕೆಮಾಡಿ</b>", "language_body": "ಸಾಮಾನ್ಯ bot messages ಗಾಗಿ ನಿಮ್ಮ ಭಾಷೆಯನ್ನು ಆಯ್ಕೆಮಾಡಿ.", "language_saved": "🌐 ಭಾಷೆ ಯಶಸ್ವಿಯಾಗಿ ಬದಲಾಯಿಸಲಾಗಿದೆ.", "contact": "💬 ADMIN ಸಂಪರ್ಕಿಸಿ",
     },
     "ml": {
         "progress_title": "🔎 <b>Payment Screenshot ലഭിച്ചു</b>", "progress_body": "⏳ നിങ്ങളുടെ payment സുരക്ഷിതമായി പരിശോധിക്കുന്നു.\nഇതിന് <b>1–2 മിനിറ്റ്</b> വരെ എടുക്കാം. Screenshot വീണ്ടും അയയ്ക്കരുത്; മറ്റൊരു bot-ലേക്ക് മാറരുത്.\n\n✅ പരിശോധന പൂർത്തിയായാൽ ഫലം സ്വയമേവ ലഭിക്കും.",
-        "no_order_title": "⚠️ <b>Premium Order കണ്ടെത്താനായില്ല</b>", "no_order_body": "നിങ്ങളുടെ അക്കൗണ്ടുമായി ബന്ധിപ്പിച്ച active Premium Order കണ്ടെത്താനായില്ല.\nആദ്യം Premium Plan തിരഞ്ഞെടുക്കുക, payment പൂർത്തിയാക്കി ശേഷം screenshot അയയ്ക്കുക.\n\n🧹 ഈ സന്ദേശം 10 സെക്കൻഡിന് ശേഷം സ്വയമേവ ഇല്ലാതാകും.",
+        "no_order_title": "⚠️ <b>Premium Order കണ്ടെത്താനായില്ല</b>", "no_order_body": "നിങ്ങളുടെ അക്കൗണ്ടുമായി ബന്ധിപ്പിച്ച active Premium Order കണ്ടെത്താനായില്ല.\nആദ്യം Premium Plan തിരഞ്ഞെടുക്കുക, payment പൂർത്തിയാക്കി ശേഷം screenshot അയയ്ക്കുക.\n\n🧹 ഈ സന്ദേശം 5 മിനിറ്റിന് ശേഷം സ്വയമേവ ഇല്ലാതാകും.",
         "manual_title": "⚠️ <b>Premium സജീവമാക്കി — Payment പരിശോധനയിൽ</b>", "manual_body": "നിങ്ങളുടെ payment screenshot സ്വയമേവ approve ചെയ്യാനായില്ല; Admin manual review-ലേക്ക് അയച്ചു. നിങ്ങൾ തിരഞ്ഞെടുത്ത Premium Plan താൽക്കാലികമായി active ആണ്. Payment തെറ്റാണെന്ന് കണ്ടെത്തിയാൽ access നീക്കം ചെയ്യാം.",
         "activated": "Premium വാങ്ങിയതിന് നന്ദി!", "renewed": "Premium renew ചെയ്തതിന് നന്ദി!", "approved": "നിങ്ങളുടെ payment സ്ഥിരീകരിച്ചു. Premium access active ആണ്.", "rejected": "ഈ payment വഴി നൽകിയ Premium access നീക്കം ചെയ്തു. തെറ്റാണെന്ന് തോന്നുന്നുവെങ്കിൽ Admin-നെ ബന്ധപ്പെടുക.", "expired": "നിങ്ങളുടെ Premium access അവസാനിച്ചു.\n\n🔄 തുടരാൻ പുതിയ Premium Plan വാങ്ങുക.", "expiring": "സേവനം തുടരാൻ Premium Plan renew ചെയ്യുക.", "language_title": "🌐 <b>നിങ്ങളുടെ ഭാഷ തിരഞ്ഞെടുക്കുക</b>", "language_body": "സാധാരണ bot messages-നായി നിങ്ങളുടെ ഇഷ്ടഭാഷ തിരഞ്ഞെടുക്കുക.", "language_saved": "🌐 ഭാഷ വിജയകരമായി മാറ്റി.", "contact": "💬 ADMIN-നെ ബന്ധപ്പെടുക",
     },
@@ -188,263 +182,6 @@ I18N = {
 for _code in ("bn", "mr", "gu", "pa", "ur"):
     I18N[_code] = I18N["en"]
 
-# Complete the remaining Indian-language payment messages too (rather than
-# silently falling back to English).
-I18N.update({
-    "bn": {
-        "progress_title":"🔎 <b>পেমেন্ট স্ক্রিনশট পাওয়া গেছে</b>", "progress_body":"⏳ আপনার পেমেন্ট নিরাপদভাবে যাচাই করা হচ্ছে। এতে <b>১–২ মিনিট</b> লাগতে পারে। স্ক্রিনশট আবার পাঠাবেন না বা অন্য বটে যাবেন না।\n\n✅ যাচাই শেষ হলে ফলাফল স্বয়ংক্রিয়ভাবে পাবেন।", "no_order_title":"⚠️ <b>কোনও Premium Order পাওয়া যায়নি</b>", "no_order_body":"আপনার অ্যাকাউন্টের সঙ্গে কোনও Premium Order পাওয়া যায়নি।\nআগে একটি Premium Plan বেছে নিয়ে payment সম্পূর্ণ করুন, তারপর এখানে screenshot পাঠান।\n\n🧹 এই বার্তাটি ১০ সেকেন্ড পরে নিজে থেকে মুছে যাবে।", "manual_title":"⚠️ <b>Premium সক্রিয় — Payment যাচাই চলছে</b>", "manual_body":"আপনার payment screenshot স্বয়ংক্রিয়ভাবে approve হয়নি এবং Admin manual review-এর জন্য পাঠানো হয়েছে। আপনার নির্বাচিত Premium Plan সাময়িকভাবে active আছে। Payment ভুল হলে access সরিয়ে দেওয়া হতে পারে।", "activated":"Premium কেনার জন্য ধন্যবাদ!", "renewed":"Premium renew করার জন্য ধন্যবাদ!", "approved":"আপনার payment নিশ্চিত হয়েছে। Premium access active আছে।", "rejected":"এই payment-এর জন্য দেওয়া Premium access সরিয়ে দেওয়া হয়েছে। ভুল মনে হলে Admin-এর সঙ্গে যোগাযোগ করুন।", "expired":"আপনার Premium access শেষ হয়েছে।\n\n🔄 চালিয়ে যেতে নতুন Premium Plan কিনুন।", "expiring":"সেবা চালিয়ে যেতে আপনার Premium Plan renew করুন।", "language_title":"🌐 <b>আপনার ভাষা বেছে নিন</b>", "language_body":"সাধারণ bot messages-এর জন্য আপনার পছন্দের ভাষা বেছে নিন। চাইলে পরে পরিবর্তন করতে পারবেন।", "language_saved":"🌐 ভাষা সফলভাবে পরিবর্তন হয়েছে।", "contact":"💬 ADMIN-এর সঙ্গে যোগাযোগ করুন"
-    },
-    "mr": {
-        "progress_title":"🔎 <b>पेमेंट स्क्रीनशॉट मिळाला</b>", "progress_body":"⏳ तुमचे payment सुरक्षितपणे तपासले जात आहे. यासाठी <b>१–२ मिनिटे</b> लागू शकतात. Screenshot पुन्हा पाठवू नका किंवा दुसऱ्या bot वर जाऊ नका.\n\n✅ तपासणी पूर्ण झाल्यावर निकाल आपोआप मिळेल.", "no_order_title":"⚠️ <b>Premium Order सापडला नाही</b>", "no_order_body":"तुमच्या खात्याशी जोडलेला Premium Order सापडला नाही.\nआधी Premium Plan निवडा, payment पूर्ण करा आणि नंतर screenshot पाठवा.\n\n🧹 हा संदेश ५ मिनिटांनी आपोआप हटेल.", "manual_title":"⚠️ <b>Premium सक्रिय — Payment तपासणीमध्ये</b>", "manual_body":"तुमचा payment screenshot आपोआप approve झाला नाही आणि Admin manual review साठी पाठवला आहे. निवडलेला Premium Plan तात्पुरता active आहे. Payment चुकीचा आढळल्यास access काढला जाऊ शकतो.", "activated":"Premium खरेदी केल्याबद्दल धन्यवाद!", "renewed":"Premium renew केल्याबद्दल धन्यवाद!", "approved":"तुमचे payment निश्चित झाले आहे. Premium access active आहे.", "rejected":"या payment साठी दिलेले Premium access काढले आहे. चूक वाटत असल्यास Admin शी संपर्क करा.", "expired":"तुमचा Premium access संपला आहे.\n\n🔄 सुरू ठेवण्यासाठी नवीन Premium Plan खरेदी करा.", "expiring":"सेवा सुरू ठेवण्यासाठी Premium Plan renew करा.", "language_title":"🌐 <b>तुमची भाषा निवडा</b>", "language_body":"सामान्य bot messages साठी तुमची आवडती भाषा निवडा. तुम्ही ती कधीही बदलू शकता.", "language_saved":"🌐 भाषा यशस्वीपणे बदलली.", "contact":"💬 ADMIN शी संपर्क करा"
-    },
-    "gu": {
-        "progress_title":"🔎 <b>પેમેન્ટ સ્ક્રીનશોટ મળ્યો</b>", "progress_body":"⏳ તમારું payment સુરક્ષિત રીતે તપાસવામાં આવી રહ્યું છે. તેમાં <b>1–2 મિનિટ</b> લાગી શકે છે. Screenshot ફરી મોકલશો નહીં અને બીજા bot પર ન જશો.\n\n✅ તપાસ પૂર્ણ થયા પછી પરિણામ આપમેળે મળશે.", "no_order_title":"⚠️ <b>Premium Order મળ્યો નથી</b>", "no_order_body":"તમારા ખાતા સાથે કોઈ Premium Order મળ્યો નથી.\nપહેલા Premium Plan પસંદ કરો, payment પૂર્ણ કરો અને પછી screenshot મોકલો.\n\n🧹 આ સંદેશ 10 સેકન્ડમાં આપમેળે દૂર થશે.", "manual_title":"⚠️ <b>Premium સક્રિય — Payment તપાસમાં</b>", "manual_body":"તમારો payment screenshot આપમેળે approve થયો નથી અને Admin manual review માટે મોકલાયો છે. પસંદ કરેલો Premium Plan તાત્કાલિક active છે. Payment ખોટું હોય તો access દૂર થઈ શકે છે.", "activated":"Premium ખરીદવા બદલ આભાર!", "renewed":"Premium renew કરવા બદલ આભાર!", "approved":"તમારું payment પુષ્ટિ થયું છે. Premium access active છે.", "rejected":"આ payment માટે આપવામાં આવેલ Premium access દૂર કરવામાં આવ્યું છે. ભૂલ લાગે તો Admin નો સંપર્ક કરો.", "expired":"તમારું Premium access સમાપ્ત થયું છે.\n\n🔄 ચાલુ રાખવા માટે નવો Premium Plan ખરીદો.", "expiring":"સેવા ચાલુ રાખવા માટે Premium Plan renew કરો.", "language_title":"🌐 <b>તમારી ભાષા પસંદ કરો</b>", "language_body":"સામાન્ય bot messages માટે તમારી ભાષા પસંદ કરો. તમે તેને ક્યારે પણ બદલી શકો છો.", "language_saved":"🌐 ભાષા સફળતાપૂર્વક બદલાઈ.", "contact":"💬 ADMIN નો સંપર્ક કરો"
-    },
-    "pa": {
-        "progress_title":"🔎 <b>ਪੇਮੈਂਟ ਸਕ੍ਰੀਨਸ਼ਾਟ ਮਿਲ ਗਿਆ</b>", "progress_body":"⏳ ਤੁਹਾਡੀ payment ਸੁਰੱਖਿਅਤ ਤਰੀਕੇ ਨਾਲ ਜਾਂਚੀ ਜਾ ਰਹੀ ਹੈ। ਇਸ ਵਿੱਚ <b>1–2 ਮਿੰਟ</b> ਲੱਗ ਸਕਦੇ ਹਨ। Screenshot ਦੁਬਾਰਾ ਨਾ ਭੇਜੋ ਅਤੇ ਕਿਸੇ ਹੋਰ bot ਤੇ ਨਾ ਜਾਓ।\n\n✅ ਜਾਂਚ ਪੂਰੀ ਹੋਣ ਤੇ ਨਤੀਜਾ ਆਪਣੇ ਆਪ ਮਿਲੇਗਾ।", "no_order_title":"⚠️ <b>Premium Order ਨਹੀਂ ਮਿਲਿਆ</b>", "no_order_body":"ਤੁਹਾਡੇ ਖਾਤੇ ਨਾਲ ਕੋਈ Premium Order ਨਹੀਂ ਮਿਲਿਆ।\nਪਹਿਲਾਂ Premium Plan ਚੁਣੋ, payment ਪੂਰੀ ਕਰੋ ਅਤੇ ਫਿਰ screenshot ਭੇਜੋ।\n\n🧹 ਇਹ ਸੁਨੇਹਾ 10 ਸਕਿੰਟ ਬਾਅਦ ਆਪਣੇ ਆਪ ਮਿਟ ਜਾਵੇਗਾ।", "manual_title":"⚠️ <b>Premium ਸਰਗਰਮ — Payment ਜਾਂਚ ਵਿੱਚ</b>", "manual_body":"ਤੁਹਾਡਾ payment screenshot ਆਪਣੇ ਆਪ approve ਨਹੀਂ ਹੋਇਆ ਅਤੇ Admin manual review ਲਈ ਭੇਜਿਆ ਗਿਆ ਹੈ। ਚੁਣਿਆ Premium Plan ਅਸਥਾਈ ਤੌਰ ਤੇ active ਹੈ। Payment ਗਲਤ ਹੋਣ ਤੇ access ਹਟਾਇਆ ਜਾ ਸਕਦਾ ਹੈ।", "activated":"Premium ਖਰੀਦਣ ਲਈ ਧੰਨਵਾਦ!", "renewed":"Premium renew ਕਰਨ ਲਈ ਧੰਨਵਾਦ!", "approved":"ਤੁਹਾਡੀ payment ਦੀ ਪੁਸ਼ਟੀ ਹੋ ਗਈ ਹੈ। Premium access active ਹੈ.", "rejected":"ਇਸ payment ਲਈ ਦਿੱਤਾ Premium access ਹਟਾ ਦਿੱਤਾ ਗਿਆ ਹੈ। ਗਲਤੀ ਲੱਗੇ ਤਾਂ Admin ਨਾਲ ਸੰਪਰਕ ਕਰੋ।", "expired":"ਤੁਹਾਡਾ Premium access ਖਤਮ ਹੋ ਗਿਆ ਹੈ।\n\n🔄 ਜਾਰੀ ਰੱਖਣ ਲਈ ਨਵਾਂ Premium Plan ਖਰੀਦੋ।", "expiring":"ਸੇਵਾ ਜਾਰੀ ਰੱਖਣ ਲਈ Premium Plan renew ਕਰੋ।", "language_title":"🌐 <b>ਆਪਣੀ ਭਾਸ਼ਾ ਚੁਣੋ</b>", "language_body":"ਆਮ bot messages ਲਈ ਆਪਣੀ ਪਸੰਦ ਦੀ ਭਾਸ਼ਾ ਚੁਣੋ। ਤੁਸੀਂ ਇਸਨੂੰ ਕਦੇ ਵੀ ਬਦਲ ਸਕਦੇ ਹੋ।", "language_saved":"🌐 ਭਾਸ਼ਾ ਸਫਲਤਾਪੂਰਵਕ ਬਦਲ ਗਈ।", "contact":"💬 ADMIN ਨਾਲ ਸੰਪਰਕ ਕਰੋ"
-    },
-    "ur": {
-        "progress_title":"🔎 <b>ادائیگی کا اسکرین شاٹ موصول ہوا</b>", "progress_body":"⏳ آپ کی payment محفوظ طریقے سے چیک کی جا رہی ہے۔ اس میں <b>1–2 منٹ</b> لگ سکتے ہیں۔ Screenshot دوبارہ نہ بھیجیں اور دوسرے bot پر نہ جائیں۔\n\n✅ چیک مکمل ہونے پر نتیجہ خودکار طور پر مل جائے گا۔", "no_order_title":"⚠️ <b>Premium Order نہیں ملا</b>", "no_order_body":"آپ کے اکاؤنٹ کے ساتھ کوئی Premium Order نہیں ملا۔\nپہلے Premium Plan منتخب کریں، payment مکمل کریں اور پھر screenshot بھیجیں۔\n\n🧹 یہ پیغام 10 سیکنڈ بعد خودکار طور پر حذف ہو جائے گا۔", "manual_title":"⚠️ <b>Premium فعال — Payment جانچ میں</b>", "manual_body":"آپ کا payment screenshot خودکار طور پر approve نہیں ہوا اور Admin manual review کے لیے بھیج دیا گیا ہے۔ منتخب Premium Plan عارضی طور پر active ہے۔ Payment غلط ہونے پر access ہٹایا جا سکتا ہے۔", "activated":"Premium خریدنے کا شکریہ!", "renewed":"Premium renew کرنے کا شکریہ!", "approved":"آپ کی payment کی تصدیق ہو گئی ہے۔ Premium access active ہے۔", "rejected":"اس payment کے لیے دیا گیا Premium access ہٹا دیا گیا ہے۔ غلطی لگے تو Admin سے رابطہ کریں۔", "expired":"آپ کا Premium access ختم ہو گیا ہے۔\n\n🔄 جاری رکھنے کے لیے نیا Premium Plan خریدیں۔", "expiring":"سروس جاری رکھنے کے لیے Premium Plan renew کریں۔", "language_title":"🌐 <b>اپنی زبان منتخب کریں</b>", "language_body":"عام bot messages کے لیے اپنی پسند کی زبان منتخب کریں۔ آپ اسے کبھی بھی تبدیل کر سکتے ہیں۔", "language_saved":"🌐 زبان کامیابی سے تبدیل ہو گئی۔", "contact":"💬 ADMIN سے رابطہ کریں"
-    },
-})
-
-# Full payment-flow translations for the additional languages.
-I18N.update({
-    "as": {
-        "progress_title": "🔎 <b>Payment screenshot পোৱা গৈছে</b>", "progress_body": "⏳ আপোনাৰ payment সুৰক্ষিতভাৱে পৰীক্ষা কৰা হৈছে। ইয়াত <b>1–2 মিনিট</b> লাগিব পাৰে। Screenshot পুনৰ নপঠিয়াব আৰু আন bot লৈ নাযাব।\n\n✅ পৰীক্ষা সম্পূৰ্ণ হ'লে ফলাফল স্বয়ংক্ৰিয়ভাৱে পাব।",
-        "no_order_title": "⚠️ <b>Premium Order পোৱা নগ'ল</b>", "no_order_body": "আপোনাৰ account-ৰ সৈতে কোনো active Premium Order পোৱা নগ'ল।\nপ্ৰথমে এটা Premium Plan বাছক, payment সম্পূৰ্ণ কৰক আৰু তাৰ পিছত screenshot পঠিয়াওক।\n\n🧹 এই notice 5 মিনিটৰ পিছত নিজে আঁতৰি যাব।",
-        "manual_title": "⚠️ <b>Premium সক্ৰিয় — Payment পৰীক্ষাধীন</b>", "manual_body": "আপোনাৰ payment screenshot auto-approve হোৱা নাই আৰু Admin manual review-লৈ পঠিওৱা হৈছে। আপোনাৰ বাছনি কৰা Premium Plan সাময়িকভাৱে active আছে। Payment ভুল বা misleading পোৱা গ'লে access আঁতৰাব পাৰে।",
-        "activated": "Premium ক্ৰয় কৰাৰ বাবে ধন্যবাদ!", "renewed": "Premium renew কৰাৰ বাবে ধন্যবাদ!", "approved": "আপোনাৰ payment নিশ্চিত কৰা হৈছে। Premium access active আছে।", "rejected": "এই payment-ৰ বাবে দিয়া Premium access আঁতৰোৱা হৈছে। ভুল বুলি ভাবিলে Admin-ৰ সৈতে যোগাযোগ কৰক।", "expired": "আপোনাৰ Premium access শেষ হৈছে।\n\n🔄 আগবঢ়িবলৈ নতুন Premium Plan ক্ৰয় কৰক।", "expiring": "সেৱা চলাই নিবলৈ আপোনাৰ Premium Plan renew কৰক।", "language_title": "🌐 <b>আপোনাৰ ভাষা বাছক</b>", "language_body": "সাধাৰণ bot messages-ৰ বাবে আপোনাৰ ভাষা বাছক। আপুনি পিছতো সলনি কৰিব পাৰে।", "language_saved": "🌐 ভাষা সফলভাৱে সলনি কৰা হৈছে।", "contact": "💬 ADMIN-ৰ সৈতে যোগাযোগ কৰক"
-    },
-    "ne": {
-        "progress_title": "🔎 <b>Payment screenshot प्राप्त भयो</b>", "progress_body": "⏳ तपाईंको payment सुरक्षित रूपमा जाँच भइरहेको छ। यसमा <b>1–2 मिनेट</b> लाग्न सक्छ। Screenshot फेरि नपठाउनुहोस् र अर्को bot मा नजानुहोस्।\n\n✅ जाँच पूरा भएपछि परिणाम आफैं प्राप्त हुनेछ।",
-        "no_order_title": "⚠️ <b>Premium Order भेटिएन</b>", "no_order_body": "तपाईंको account सँग जोडिएको active Premium Order भेटिएन।\nपहिले Premium Plan छान्नुहोस्, payment पूरा गर्नुहोस् र त्यसपछि screenshot पठाउनुहोस्।\n\n🧹 यो notice 5 मिनेटपछि आफैं हट्नेछ।",
-        "manual_title": "⚠️ <b>Premium सक्रिय — Payment Review मा</b>", "manual_body": "तपाईंको payment screenshot स्वतः approve हुन सकेन र Admin manual review का लागि पठाइएको छ। तपाईंले छानेको Premium Plan अस्थायी रूपमा active छ। Payment गलत वा misleading भए access हटाउन सकिन्छ।",
-        "activated": "Premium किन्नुभएकोमा धन्यवाद!", "renewed": "Premium renew गर्नुभएकोमा धन्यवाद!", "approved": "तपाईंको payment पुष्टि भयो। Premium access active छ।", "rejected": "यस payment का लागि दिइएको Premium access हटाइएको छ। गल्ती हो जस्तो लागेमा Admin लाई सम्पर्क गर्नुहोस्।", "expired": "तपाईंको Premium access सकिएको छ।\n\n🔄 जारी राख्न नयाँ Premium Plan किन्नुहोस्।", "expiring": "सेवा जारी राख्न आफ्नो Premium Plan renew गर्नुहोस्।", "language_title": "🌐 <b>आफ्नो भाषा छान्नुहोस्</b>", "language_body": "सामान्य bot messages का लागि आफ्नो भाषा छान्नुहोस्। तपाईं यसलाई पछि पनि बदल्न सक्नुहुन्छ।", "language_saved": "🌐 भाषा सफलतापूर्वक बदलियो।", "contact": "💬 ADMIN लाई सम्पर्क गर्नुहोस्"
-    },
-    "hinglish": {
-        "progress_title": "🔎 <b>Payment Screenshot Mil Gaya</b>", "progress_body": "⏳ Aapka payment securely check ho raha hai. Isme <b>1–2 minutes</b> lag sakte hain. Screenshot dobara mat bhejo aur kisi aur bot par mat jao.\n\n✅ Check complete hote hi final result automatically mil jayega.",
-        "no_order_title": "⚠️ <b>Premium Order Nahi Mila</b>", "no_order_body": "Aapke account se koi active Premium Order linked nahi mila.\nPehle Premium Plan choose karo, payment complete karo aur phir screenshot yahan bhejo.\n\n🧹 Ye notice 10 seconds baad automatically delete ho jayega.",
-        "manual_title": "⚠️ <b>Premium Activated — Payment Review Mein</b>", "manual_body": "Aapka payment screenshot automatically approve nahi ho saka aur Admin manual review ke liye bheja gaya hai. Aapka selected Premium Plan temporary active hai. Agar payment galat ya misleading mila, to access remove kiya ja sakta hai.",
-        "activated": "Premium purchase karne ke liye thank you!", "renewed": "Premium renew karne ke liye thank you!", "approved": "Aapka payment confirm ho gaya hai. Premium access active hai.", "rejected": "Is payment se diya gaya Premium access remove kar diya gaya hai. Agar aapko lagta hai ye mistake hai, Admin se contact karo.", "expired": "Aapka Premium access khatam ho gaya hai.\n\n🔄 Continue karne ke liye naya Premium Plan purchase karo.", "expiring": "Service continue karne ke liye apna Premium Plan renew karo.", "language_title": "🌐 <b>Apni Language Choose Karo</b>", "language_body": "Normal bot messages ke liye apni language choose karo. Aap ise kabhi bhi change kar sakte ho.", "language_saved": "🌐 Language successfully update ho gayi.", "contact": "💬 ADMIN Se Contact Karo"
-    },
-})
-
-# Clear language-control labels so users understand exactly what this button does.
-I18N.update({
-    "en": {"language_button": "🌐 CHOOSE / CHANGE LANGUAGE", "language_first_guide": "First, choose your language. After you choose it, all Premium and payment messages for your account will use that language."},
-    "hi": {"language_button": "🌐 भाषा चुनें / बदलें", "language_first_guide": "पहले अपनी भाषा चुनें। भाषा चुनने के बाद आपके सभी Premium और payment messages इसी भाषा में दिखेंगे।"},
-    "ta": {"language_button": "🌐 மொழியைத் தேர்வு / மாற்ற", "language_first_guide": "முதலில் உங்கள் மொழியைத் தேர்வு செய்யவும். அதன் பிறகு உங்கள் Premium மற்றும் payment messages அனைத்தும் அந்த மொழியில் காட்டப்படும்."},
-    "te": {"language_button": "🌐 భాషను ఎంచుకోండి / మార్చండి", "language_first_guide": "ముందుగా మీ భాషను ఎంచుకోండి. ఆ తర్వాత మీ Premium మరియు payment messages అన్నీ అదే భాషలో కనిపిస్తాయి."},
-    "kn": {"language_button": "🌐 ಭಾಷೆ ಆಯ್ಕೆ / ಬದಲಿಸಿ", "language_first_guide": "ಮೊದಲು ನಿಮ್ಮ ಭಾಷೆಯನ್ನು ಆಯ್ಕೆಮಾಡಿ. ನಂತರ ನಿಮ್ಮ ಎಲ್ಲಾ Premium ಮತ್ತು payment messages ಅದೇ ಭಾಷೆಯಲ್ಲಿ ಕಾಣಿಸುತ್ತವೆ."},
-    "ml": {"language_button": "🌐 ഭാഷ തിരഞ്ഞെടുക്കുക / മാറ്റുക", "language_first_guide": "ആദ്യം നിങ്ങളുടെ ഭാഷ തിരഞ്ഞെടുക്കുക. അതിന് ശേഷം നിങ്ങളുടെ എല്ലാ Premium, payment messages അതേ ഭാഷയിൽ കാണിക്കും."},
-    "bn": {"language_button": "🌐 ভাষা বাছুন / বদলান", "language_first_guide": "প্রথমে আপনার ভাষা বেছে নিন। এরপর আপনার সব Premium ও payment message সেই ভাষাতেই দেখানো হবে।"},
-    "mr": {"language_button": "🌐 भाषा निवडा / बदला", "language_first_guide": "आधी तुमची भाषा निवडा. त्यानंतर तुमचे सर्व Premium आणि payment messages त्याच भाषेत दिसतील."},
-    "gu": {"language_button": "🌐 ભાષા પસંદ / બદલો", "language_first_guide": "સૌપ્રથમ તમારી ભાષા પસંદ કરો. ત્યાર પછી તમારા બધા Premium અને payment messages એ જ ભાષામાં દેખાશે."},
-    "pa": {"language_button": "🌐 ਭਾਸ਼ਾ ਚੁਣੋ / ਬਦਲੋ", "language_first_guide": "ਪਹਿਲਾਂ ਆਪਣੀ ਭਾਸ਼ਾ ਚੁਣੋ। ਇਸ ਤੋਂ ਬਾਅਦ ਤੁਹਾਡੇ ਸਾਰੇ Premium ਅਤੇ payment messages ਉਸੇ ਭਾਸ਼ਾ ਵਿੱਚ ਦਿਖਣਗੇ।"},
-    "ur": {"language_button": "🌐 زبان منتخب / تبدیل کریں", "language_first_guide": "سب سے پہلے اپنی زبان منتخب کریں۔ اس کے بعد آپ کے تمام Premium اور payment messages اسی زبان میں دکھائے جائیں گے۔"},
-    "as": {"language_button": "🌐 ভাষা বাছক / সলনি কৰক", "language_first_guide": "প্ৰথমে আপোনাৰ ভাষা বাছক। তাৰ পিছত আপোনাৰ সকলো Premium আৰু payment message সেই ভাষাতেই দেখুওৱা হ'ব।"},
-    "ne": {"language_button": "🌐 भाषा छान्नुहोस् / बदल्नुहोस्", "language_first_guide": "पहिले आफ्नो भाषा छान्नुहोस्। त्यसपछि तपाईंका सबै Premium र payment messages यही भाषामा देखाइनेछन्।"},
-    "hinglish": {"language_button": "🌐 Language Choose / Change Karo", "language_first_guide": "Pehle apni language choose karo. Uske baad aapke saare Premium aur payment messages isi language mein dikhenge."},
-})
-
-# Complete user-facing payment result templates. These are used for every
-# selected language so headings/labels do not fall back to English.
-
-for _lang_key, _lang_data in I18N.items():
-    _lang_data.setdefault("processing_error", "⚠️ Your screenshot was received, but processing failed temporarily. Please contact the admin.")
-
-_RESULT_I18N = {
-    "en": {"activated_title":"Premium Activated Successfully!","renewed_title":"Premium Renewed Successfully!","plan":"Plan","duration":"Duration","added":"Added","activated_at":"Activated","expires":"Expires","new_expiry":"New Expiry","status":"Status: Active","thanks_purchase":"Thank you for purchasing Premium!","thanks_renew":"Thank you for renewing Premium!","rejected_title":"Payment Rejected","rejected_body":"The Premium access added for this payment has been removed. Please contact the admin if you think this is a mistake."},
-    "hi": {"activated_title":"Premium सफलतापूर्वक सक्रिय हुआ!","renewed_title":"Premium सफलतापूर्वक Renew हुआ!","plan":"प्लान","duration":"अवधि","added":"जोड़ा गया","activated_at":"सक्रिय किया गया","expires":"समाप्ति","new_expiry":"नई समाप्ति","status":"स्थिति: सक्रिय","thanks_purchase":"Premium खरीदने के लिए धन्यवाद!","thanks_renew":"Premium renew करने के लिए धन्यवाद!","rejected_title":"Payment अस्वीकार किया गया","rejected_body":"इस payment से दिया गया Premium access हटा दिया गया है। गलती लगने पर Admin से संपर्क करें।"},
-    "ta": {"activated_title":"Premium வெற்றிகரமாக செயல்படுத்தப்பட்டது!","renewed_title":"Premium வெற்றிகரமாக Renew செய்யப்பட்டது!","plan":"Plan","duration":"காலம்","added":"சேர்க்கப்பட்டது","activated_at":"செயல்படுத்தப்பட்டது","expires":"காலாவதி","new_expiry":"புதிய காலாவதி","status":"நிலை: Active","thanks_purchase":"Premium வாங்கியதற்கு நன்றி!","thanks_renew":"Premium renew செய்ததற்கு நன்றி!","rejected_title":"Payment நிராகரிக்கப்பட்டது","rejected_body":"இந்த payment மூலம் வழங்கப்பட்ட Premium access நீக்கப்பட்டது. தவறு என நினைத்தால் Admin-ஐ தொடர்புகொள்ளவும்."},
-    "te": {"activated_title":"Premium విజయవంతంగా యాక్టివేట్ అయింది!","renewed_title":"Premium విజయవంతంగా Renew అయింది!","plan":"Plan","duration":"వ్యవధి","added":"జోడించబడింది","activated_at":"యాక్టివేట్ చేసిన సమయం","expires":"గడువు","new_expiry":"కొత్త గడువు","status":"స్థితి: Active","thanks_purchase":"Premium కొనుగోలు చేసినందుకు ధన్యవాదాలు!","thanks_renew":"Premium renew చేసినందుకు ధన్యవాదాలు!","rejected_title":"Payment తిరస్కరించబడింది","rejected_body":"ఈ payment ద్వారా ఇచ్చిన Premium access తొలగించబడింది. ఇది పొరపాటు అనుకుంటే Admin‌ను సంప్రదించండి."},
-    "kn": {"activated_title":"Premium ಯಶಸ್ವಿಯಾಗಿ ಸಕ್ರಿಯಗೊಂಡಿದೆ!","renewed_title":"Premium ಯಶಸ್ವಿಯಾಗಿ Renew ಮಾಡಲಾಗಿದೆ!","plan":"Plan","duration":"ಅವಧಿ","added":"ಸೇರಿಸಲಾಗಿದೆ","activated_at":"ಸಕ್ರಿಯಗೊಳಿಸಿದ ಸಮಯ","expires":"ಅವಧಿ ಮುಗಿಯುವಿಕೆ","new_expiry":"ಹೊಸ ಅವಧಿ","status":"ಸ್ಥಿತಿ: Active","thanks_purchase":"Premium ಖರೀದಿಸಿದ್ದಕ್ಕಾಗಿ ಧನ್ಯವಾದಗಳು!","thanks_renew":"Premium renew ಮಾಡಿದ್ದಕ್ಕಾಗಿ ಧನ್ಯವಾದಗಳು!","rejected_title":"Payment ತಿರಸ್ಕರಿಸಲಾಗಿದೆ","rejected_body":"ಈ payment ಮೂಲಕ ನೀಡಿದ Premium access ತೆಗೆದುಹಾಕಲಾಗಿದೆ. ಇದು ತಪ್ಪು ಎಂದು ಭಾವಿಸಿದರೆ Admin ಅನ್ನು ಸಂಪರ್ಕಿಸಿ."},
-    "ml": {"activated_title":"Premium വിജയകരമായി സജീവമാക്കി!","renewed_title":"Premium വിജയകരമായി Renew ചെയ്തു!","plan":"Plan","duration":"കാലാവധി","added":"ചേർത്തത്","activated_at":"സജീവമാക്കിയ സമയം","expires":"കാലാവധി","new_expiry":"പുതിയ കാലാവധി","status":"സ്ഥിതി: Active","thanks_purchase":"Premium വാങ്ങിയതിന് നന്ദി!","thanks_renew":"Premium renew ചെയ്തതിന് നന്ദി!","rejected_title":"Payment നിരസിച്ചു","rejected_body":"ഈ payment വഴി നൽകിയ Premium access നീക്കം ചെയ്തു. തെറ്റാണെന്ന് തോന്നുന്നുവെങ്കിൽ Admin-നെ ബന്ധപ്പെടുക."},
-    "bn": {"activated_title":"Premium সফলভাবে সক্রিয় হয়েছে!","renewed_title":"Premium সফলভাবে Renew হয়েছে!","plan":"প্ল্যান","duration":"সময়কাল","added":"যোগ হয়েছে","activated_at":"সক্রিয় হয়েছে","expires":"মেয়াদ শেষ","new_expiry":"নতুন মেয়াদ শেষ","status":"স্ট্যাটাস: সক্রিয়","thanks_purchase":"Premium কেনার জন্য ধন্যবাদ!","thanks_renew":"Premium renew করার জন্য ধন্যবাদ!","rejected_title":"Payment প্রত্যাখ্যাত হয়েছে","rejected_body":"এই payment-এর মাধ্যমে দেওয়া Premium access সরিয়ে দেওয়া হয়েছে। ভুল মনে হলে Admin-এর সাথে যোগাযোগ করুন।"},
-    "mr": {"activated_title":"Premium यशस्वीरित्या सक्रिय झाले!","renewed_title":"Premium यशस्वीरित्या Renew झाले!","plan":"प्लॅन","duration":"कालावधी","added":"वाढवले","activated_at":"सक्रिय वेळ","expires":"समाप्ती","new_expiry":"नवीन समाप्ती","status":"स्थिती: सक्रिय","thanks_purchase":"Premium खरेदी केल्याबद्दल धन्यवाद!","thanks_renew":"Premium renew केल्याबद्दल धन्यवाद!","rejected_title":"Payment नाकारले गेले","rejected_body":"या payment मुळे दिलेले Premium access काढून टाकले आहे. चूक वाटत असल्यास Admin शी संपर्क करा."},
-    "gu": {"activated_title":"Premium સફળતાપૂર્વક સક્રિય થયું!","renewed_title":"Premium સફળતાપૂર્વક Renew થયું!","plan":"પ્લાન","duration":"સમયગાળો","added":"ઉમેરાયું","activated_at":"સક્રિય સમય","expires":"સમાપ્તિ","new_expiry":"નવી સમાપ્તિ","status":"સ્થિતિ: સક્રિય","thanks_purchase":"Premium ખરીદવા બદલ આભાર!","thanks_renew":"Premium renew કરવા બદલ આભાર!","rejected_title":"Payment નામંજૂર થયું","rejected_body":"આ payment દ્વારા આપવામાં આવેલ Premium access દૂર કરવામાં આવ્યું છે. ભૂલ લાગે તો Adminનો સંપર્ક કરો."},
-    "pa": {"activated_title":"Premium ਸਫਲਤਾਪੂਰਵਕ ਐਕਟੀਵੇਟ ਹੋ ਗਿਆ!","renewed_title":"Premium ਸਫਲਤਾਪੂਰਵਕ Renew ਹੋ ਗਿਆ!","plan":"ਪਲਾਨ","duration":"ਮਿਆਦ","added":"ਜੋੜਿਆ ਗਿਆ","activated_at":"ਐਕਟੀਵੇਟ ਸਮਾਂ","expires":"ਮਿਆਦ ਖਤਮ","new_expiry":"ਨਵੀਂ ਮਿਆਦ ਖਤਮ","status":"ਸਥਿਤੀ: Active","thanks_purchase":"Premium ਖਰੀਦਣ ਲਈ ਧੰਨਵਾਦ!","thanks_renew":"Premium renew ਕਰਨ ਲਈ ਧੰਨਵਾਦ!","rejected_title":"Payment ਰੱਦ ਕੀਤਾ ਗਿਆ","rejected_body":"ਇਸ payment ਨਾਲ ਦਿੱਤਾ Premium access ਹਟਾ ਦਿੱਤਾ ਗਿਆ ਹੈ। ਜੇ ਇਹ ਗਲਤੀ ਲੱਗਦੀ ਹੈ ਤਾਂ Admin ਨਾਲ ਸੰਪਰਕ ਕਰੋ।"},
-    "ur": {"activated_title":"Premium کامیابی سے فعال ہو گیا!","renewed_title":"Premium کامیابی سے Renew ہو گیا!","plan":"پلان","duration":"مدت","added":"شامل کیا گیا","activated_at":"فعال ہونے کا وقت","expires":"میعاد ختم","new_expiry":"نئی میعاد","status":"حیثیت: فعال","thanks_purchase":"Premium خریدنے کا شکریہ!","thanks_renew":"Premium renew کرنے کا شکریہ!","rejected_title":"Payment مسترد کر دی گئی","rejected_body":"اس payment سے دیا گیا Premium access ہٹا دیا گیا ہے۔ اگر یہ غلطی ہے تو Admin سے رابطہ کریں۔"},
-    "as": {"activated_title":"Premium সফলভাৱে সক্ৰিয় কৰা হৈছে!","renewed_title":"Premium সফলভাৱে Renew কৰা হৈছে!","plan":"Plan","duration":"সময়কাল","added":"যোগ কৰা হৈছে","activated_at":"সক্ৰিয় কৰাৰ সময়","expires":"ম্যাদ শেষ","new_expiry":"নতুন ম্যাদ শেষ","status":"স্থিতি: সক্ৰিয়","thanks_purchase":"Premium ক্ৰয় কৰাৰ বাবে ধন্যবাদ!","thanks_renew":"Premium renew কৰাৰ বাবে ধন্যবাদ!","rejected_title":"Payment নাকচ কৰা হৈছে","rejected_body":"এই payment-ৰ জৰিয়তে দিয়া Premium access আঁতৰাই দিয়া হৈছে। ভুল বুলি ভাবিলে Admin-ৰ সৈতে যোগাযোগ কৰক।"},
-    "ne": {"activated_title":"Premium सफलतापूर्वक सक्रिय भयो!","renewed_title":"Premium सफलतापूर्वक Renew भयो!","plan":"प्लान","duration":"अवधि","added":"थपिएको","activated_at":"सक्रिय समय","expires":"म्याद सकिने","new_expiry":"नयाँ म्याद","status":"स्थिति: सक्रिय","thanks_purchase":"Premium खरिद गर्नुभएकोमा धन्यवाद!","thanks_renew":"Premium renew गर्नुभएकोमा धन्यवाद!","rejected_title":"Payment अस्वीकार गरियो","rejected_body":"यस payment बाट दिइएको Premium access हटाइएको छ। गल्ती भएको जस्तो लागेमा Admin लाई सम्पर्क गर्नुहोस्।"},
-    "hinglish": {"activated_title":"Premium Successfully Activate Ho Gaya!","renewed_title":"Premium Successfully Renew Ho Gaya!","plan":"Plan","duration":"Duration","added":"Added","activated_at":"Activated","expires":"Expires","new_expiry":"New Expiry","status":"Status: Active","thanks_purchase":"Premium purchase karne ke liye thank you!","thanks_renew":"Premium renew karne ke liye thank you!","rejected_title":"Payment Reject Ho Gaya","rejected_body":"Is payment se mila Premium access remove kar diya gaya hai. Agar aapko lagta hai ye mistake hai, Admin se contact karo."},
-}
-
-_NO_ORDER_WARNING_I18N = {
-    "en": "We could not find an active Premium order linked to your account.\nPlease select a Premium plan first, complete the payment, and then send the screenshot here.\n\n🧹 This notice will disappear automatically after 10 seconds.",
-    "hi": "आपके खाते से कोई सक्रिय Premium Order नहीं मिला।\nपहले Premium Plan चुनें, payment पूरा करें और फिर screenshot भेजें।\n\n🧹 यह संदेश 10 सेकंड बाद अपने आप हट जाएगा।",
-    "ta": "உங்கள் கணக்குடன் செயலில் உள்ள Premium Order எதுவும் இல்லை.\nமுதலில் Premium Plan தேர்வு செய்து payment முடித்து screenshot அனுப்பவும்.\n\n🧹 இந்த செய்தி 10 விநாடிகளில் தானாக நீக்கப்படும்.",
-    "te": "మీ ఖాతాతో active Premium Order కనుగొనబడలేదు.\nముందుగా Premium Plan ఎంచుకుని payment పూర్తి చేసి screenshot పంపండి.\n\n🧹 ఈ సందేశం 10 సెకన్లలో ఆటోమేటిక్‌గా తొలగించబడుతుంది.",
-    "kn": "ನಿಮ್ಮ ಖಾತೆಗೆ ಸಕ್ರಿಯ Premium Order ಕಂಡುಬಂದಿಲ್ಲ.\nಮೊದಲು Premium Plan ಆಯ್ಕೆ ಮಾಡಿ payment ಪೂರ್ಣಗೊಳಿಸಿ screenshot ಕಳುಹಿಸಿ.\n\n🧹 ಈ ಸಂದೇಶ 10 ಸೆಕೆಂಡುಗಳಲ್ಲಿ ಅಳಿಸಲಾಗುತ್ತದೆ.",
-    "ml": "നിങ്ങളുടെ അക്കൗണ്ടുമായി സജീവമായ Premium Order കണ്ടെത്തിയില്ല.\nആദ്യം Premium Plan തിരഞ്ഞെടുക്കുക, payment പൂർത്തിയാക്കി screenshot അയയ്ക്കുക.\n\n🧹 ഈ സന്ദേശം 10 സെക്കൻഡിൽ സ്വയം നീക്കും.",
-    "bn": "আপনার অ্যাকাউন্টের সঙ্গে কোনো সক্রিয় Premium Order পাওয়া যায়নি।\nপ্রথমে Premium Plan বেছে payment সম্পূর্ণ করে screenshot পাঠান।\n\n🧹 এই বার্তাটি ১০ সেকেন্ড পরে নিজে থেকে মুছে যাবে।",
-    "mr": "तुमच्या खात्याशी कोणताही सक्रिय Premium Order सापडला नाही.\nआधी Premium Plan निवडा, payment पूर्ण करा आणि screenshot पाठवा.\n\n🧹 हा संदेश 10 सेकंदांनी आपोआप हटेल.",
-    "gu": "તમારા ખાતા સાથે કોઈ active Premium Order મળ્યો નથી.\nપહેલા Premium Plan પસંદ કરો, payment પૂર્ણ કરો અને screenshot મોકલો.\n\n🧹 આ સંદેશ 10 સેકન્ડમાં આપમેળે દૂર થશે.",
-    "pa": "ਤੁਹਾਡੇ ਖਾਤੇ ਨਾਲ ਕੋਈ active Premium Order ਨਹੀਂ ਮਿਲਿਆ।\nਪਹਿਲਾਂ Premium Plan ਚੁਣੋ, payment ਪੂਰਾ ਕਰੋ ਅਤੇ screenshot ਭੇਜੋ।\n\n🧹 ਇਹ message 10 ਸਕਿੰਟ ਬਾਅਦ ਆਪਣੇ ਆਪ delete ਹੋ ਜਾਵੇਗਾ।",
-    "ur": "آپ کے اکاؤنٹ کے ساتھ کوئی فعال Premium Order نہیں ملا۔\nپہلے Premium Plan منتخب کریں، payment مکمل کریں اور screenshot بھیجیں۔\n\n🧹 یہ پیغام 10 سیکنڈ بعد خود حذف ہو جائے گا۔",
-    "as": "আপোনাৰ একাউণ্টৰ সৈতে কোনো সক্ৰিয় Premium Order পোৱা নগ'ল।\nআগতে Premium Plan বাছি payment সম্পূৰ্ণ কৰি screenshot পঠাওক।\n\n🧹 এই বাৰ্তা ১০ ছেকেণ্ড পিছত নিজে মচি যাব।",
-    "ne": "तपाईंको खातासँग सक्रिय Premium Order भेटिएन।\nपहिले Premium Plan छान्नुहोस्, payment पूरा गरेर screenshot पठाउनुहोस्।\n\n🧹 यो सन्देश १० सेकेन्डपछि आफैं हट्नेछ।",
-    "hinglish": "Aapke account se koi active Premium Order nahi mila.\nPehle Premium Plan choose karo, payment complete karo aur phir screenshot bhejo.\n\n🧹 Ye message 10 seconds baad automatically delete ho jayega.",
-}
-
-def _no_order_warning(lang):
-    title = _tr(lang, "no_order_title")
-    body = _NO_ORDER_WARNING_I18N.get(lang, _NO_ORDER_WARNING_I18N["en"])
-    return title + "\n\n" + body
-
-_PROCESSING_ERROR_I18N = {
-    "en":"⚠️ Your screenshot was received, but processing failed temporarily. Please try again later or contact the admin.",
-    "hi":"⚠️ आपका screenshot मिल गया, लेकिन processing में अस्थायी समस्या हुई। बाद में फिर कोशिश करें या Admin से संपर्क करें।",
-    "ta":"⚠️ உங்கள் screenshot பெறப்பட்டது, ஆனால் processing-ல் தற்காலிக சிக்கல் ஏற்பட்டது. பின்னர் மீண்டும் முயற்சிக்கவும் அல்லது Admin-ஐ தொடர்புகொள்ளவும்.",
-    "te":"⚠️ మీ screenshot అందింది, కానీ processingలో తాత్కాలిక సమస్య వచ్చింది. తర్వాత మళ్లీ ప్రయత్నించండి లేదా Admin‌ను సంప్రదించండి.",
-    "kn":"⚠️ ನಿಮ್ಮ screenshot ಬಂದಿದೆ, ಆದರೆ processing ನಲ್ಲಿ ತಾತ್ಕಾಲಿಕ ಸಮಸ್ಯೆ ಉಂಟಾಗಿದೆ. ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ ಅಥವಾ Admin ಸಂಪರ್ಕಿಸಿ.",
-    "ml":"⚠️ നിങ്ങളുടെ screenshot ലഭിച്ചു, പക്ഷേ processing-ൽ താൽക്കാലിക പ്രശ്നമുണ്ടായി. പിന്നീട് വീണ്ടും ശ്രമിക്കുക അല്ലെങ്കിൽ Admin-നെ ബന്ധപ്പെടുക.",
-    "bn":"⚠️ আপনার screenshot পাওয়া গেছে, কিন্তু processing-এ সাময়িক সমস্যা হয়েছে। পরে আবার চেষ্টা করুন বা Admin-এর সঙ্গে যোগাযোগ করুন।",
-    "mr":"⚠️ तुमचा screenshot मिळाला, पण processing मध्ये तात्पुरती अडचण आली. नंतर पुन्हा प्रयत्न करा किंवा Admin शी संपर्क करा.",
-    "gu":"⚠️ તમારો screenshot મળ્યો, પરંતુ processingમાં તાત્કાલિક સમસ્યા આવી. પછી ફરી પ્રયાસ કરો અથવા Adminનો સંપર્ક કરો.",
-    "pa":"⚠️ ਤੁਹਾਡਾ screenshot ਮਿਲ ਗਿਆ, ਪਰ processing ਵਿੱਚ ਅਸਥਾਈ ਸਮੱਸਿਆ ਆਈ। ਬਾਅਦ ਵਿੱਚ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ ਜਾਂ Admin ਨਾਲ ਸੰਪਰਕ ਕਰੋ।",
-    "ur":"⚠️ آپ کا screenshot موصول ہو گیا، لیکن processing میں عارضی مسئلہ آیا۔ بعد میں دوبارہ کوشش کریں یا Admin سے رابطہ کریں۔",
-    "as":"⚠️ আপোনাৰ screenshot পোৱা গ'ল, কিন্তু processing-ত সাময়িক সমস্যা হৈছে। পিছত পুনৰ চেষ্টা কৰক বা Admin-ৰ সৈতে যোগাযোগ কৰক।",
-    "ne":"⚠️ तपाईंको screenshot प्राप्त भयो, तर processing मा अस्थायी समस्या भयो। पछि फेरि प्रयास गर्नुहोस् वा Admin लाई सम्पर्क गर्नुहोस्।",
-    "hinglish":"⚠️ Aapka screenshot mil gaya, lekin processing mein temporary problem hui. Baad mein dobara try karo ya Admin se contact karo.",
-}
-
-_EXPIRY_LABELS = {
-    "en": ("Status: Expired", "4 days or less"),
-    "hi": ("स्थिति: समाप्त", "4 दिन या कम"),
-    "ta": ("நிலை: காலாவதி", "4 நாட்கள் அல்லது குறைவு"),
-    "te": ("స్థితి: గడువు ముగిసింది", "4 రోజులు లేదా తక్కువ"),
-    "kn": ("ಸ್ಥಿತಿ: ಅವಧಿ ಮುಗಿದಿದೆ", "4 ದಿನಗಳು ಅಥವಾ ಕಡಿಮೆ"),
-    "ml": ("സ്ഥിതി: കാലാവധി കഴിഞ്ഞു", "4 ദിവസമോ അതിൽ കുറവോ"),
-    "bn": ("স্ট্যাটাস: মেয়াদ শেষ", "৪ দিন বা কম"),
-    "mr": ("स्थिती: समाप्त", "4 दिवस किंवा कमी"),
-    "gu": ("સ્થિતિ: સમાપ્ત", "4 દિવસ અથવા ઓછા"),
-    "pa": ("ਸਥਿਤੀ: ਸਮਾਪਤ", "4 ਦਿਨ ਜਾਂ ਘੱਟ"),
-    "ur": ("حیثیت: میعاد ختم", "4 دن یا کم"),
-    "as": ("স্থিতি: ম্যাদ শেষ", "৪ দিন বা কম"),
-    "ne": ("स्थिति: म्याद सकियो", "४ दिन वा कम"),
-    "hinglish": ("Status: Expired", "4 days ya usse kam"),
-}
-def _expiry_label(lang, kind):
-    return small_caps(_EXPIRY_LABELS.get(lang, _EXPIRY_LABELS["en"])[0 if kind == "status" else 1])
-
-def _result_text(lang, key):
-    return small_caps(_RESULT_I18N.get(lang, _RESULT_I18N["en"]).get(key, _RESULT_I18N["en"][key]))
-
-
-# Premium entry/order UI is also localized so the language choice is useful
-# from the very first Premium screen, not only after a screenshot is sent.
-PREMIUM_FLOW_I18N = {
-    "en": {
-        "intro": "💎 <b>Premium Membership</b>\n\nChoose your Premium plan to remove ads and unlock Premium access.",
-        "plans": "💎 <b>Premium Plans & Prices</b>\n\nSelect a plan below to continue with payment.",
-        "order": "💳 <b>Premium Order Created</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ Duration: <b>{duration}</b>\n💰 Price: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nComplete the payment, then send your payment screenshot to the dedicated payment bot.\n\n⚠️ Your screenshot will be checked before the payment is confirmed.",
-        "send": "📸 SEND PAYMENT SCREENSHOT", "back": "• BACK TO PLANS •", "close": "• CLOSE •",
-        "selected": "Premium plan selected.",
-    },
-    "hi": {
-        "intro": "💎 <b>Premium Membership</b>\n\nAds हटाने और Premium access पाने के लिए अपना Premium Plan चुनें।",
-        "plans": "💎 <b>Premium Plans और Prices</b>\n\nPayment जारी रखने के लिए नीचे अपना Plan चुनें।",
-        "order": "💳 <b>Premium Order बन गया</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ अवधि: <b>{duration}</b>\n💰 कीमत: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment पूरा करें और फिर अपना screenshot dedicated payment bot पर भेजें।\n\n⚠️ Payment confirm होने से पहले screenshot की जाँच की जाएगी।",
-        "send": "📸 PAYMENT SCREENSHOT भेजें", "back": "• PLANS पर वापस •", "close": "• बंद करें •", "selected": "Premium Plan चुना गया है।",
-    },
-    "ta": {
-        "intro": "💎 <b>Premium Membership</b>\n\nவிளம்பரங்களை நீக்கவும் Premium access பெறவும் உங்கள் Plan-ஐ தேர்வு செய்யவும்.",
-        "plans": "💎 <b>Premium Plans & Prices</b>\n\nPayment தொடர கீழே ஒரு Plan-ஐ தேர்வு செய்யவும்.",
-        "order": "💳 <b>Premium Order உருவாக்கப்பட்டது</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ காலம்: <b>{duration}</b>\n💰 விலை: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment முடித்து screenshot-ஐ dedicated payment bot-க்கு அனுப்பவும்.\n\n⚠️ Payment confirm செய்வதற்கு முன் screenshot சரிபார்க்கப்படும்.",
-        "send": "📸 PAYMENT SCREENSHOT அனுப்பவும்", "back": "• PLANS-க்கு திரும்பு •", "close": "• மூடு •", "selected": "Premium Plan தேர்வு செய்யப்பட்டது.",
-    },
-    "te": {
-        "intro": "💎 <b>Premium Membership</b>\n\nAds తొలగించి Premium access పొందడానికి మీ Premium Plan ఎంచుకోండి.",
-        "plans": "💎 <b>Premium Plans & Prices</b>\n\nPayment కొనసాగించడానికి క్రింద Plan ఎంచుకోండి.",
-        "order": "💳 <b>Premium Order రూపొందించబడింది</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ వ్యవధి: <b>{duration}</b>\n💰 ధర: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment పూర్తి చేసి screenshot‌ను dedicated payment bot‌కు పంపండి.\n\n⚠️ Payment confirm చేయడానికి ముందు screenshot పరిశీలించబడుతుంది.",
-        "send": "📸 PAYMENT SCREENSHOT పంపండి", "back": "• PLANS కు తిరిగి •", "close": "• మూసివేయండి •", "selected": "Premium Plan ఎంచుకోబడింది.",
-    },
-    "kn": {
-        "intro": "💎 <b>Premium Membership</b>\n\nAds ತೆಗೆದು Premium access ಪಡೆಯಲು ನಿಮ್ಮ Premium Plan ಆಯ್ಕೆಮಾಡಿ.",
-        "plans": "💎 <b>Premium Plans & Prices</b>\n\nPayment ಮುಂದುವರಿಸಲು ಕೆಳಗೆ Plan ಆಯ್ಕೆಮಾಡಿ.",
-        "order": "💳 <b>Premium Order ರಚಿಸಲಾಗಿದೆ</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ ಅವಧಿ: <b>{duration}</b>\n💰 ಬೆಲೆ: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment ಪೂರ್ಣಗೊಳಿಸಿ screenshot ಅನ್ನು dedicated payment bot ಗೆ ಕಳುಹಿಸಿ.\n\n⚠️ Payment confirm ಮಾಡುವ ಮೊದಲು screenshot ಪರಿಶೀಲಿಸಲಾಗುತ್ತದೆ.",
-        "send": "📸 PAYMENT SCREENSHOT ಕಳುಹಿಸಿ", "back": "• PLANS ಗೆ ಹಿಂದಿರುಗಿ •", "close": "• ಮುಚ್ಚಿ •", "selected": "Premium Plan ಆಯ್ಕೆಮಾಡಲಾಗಿದೆ.",
-    },
-    "ml": {
-        "intro": "💎 <b>Premium Membership</b>\n\nAds ഒഴിവാക്കി Premium access ലഭിക്കാൻ നിങ്ങളുടെ Premium Plan തിരഞ്ഞെടുക്കുക.",
-        "plans": "💎 <b>Premium Plans & Prices</b>\n\nPayment തുടരാൻ താഴെ ഒരു Plan തിരഞ്ഞെടുക്കുക.",
-        "order": "💳 <b>Premium Order സൃഷ്ടിച്ചു</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ കാലാവധി: <b>{duration}</b>\n💰 വില: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment പൂർത്തിയാക്കി screenshot dedicated payment bot-ലേക്ക് അയയ്ക്കുക.\n\n⚠️ Payment സ്ഥിരീകരിക്കുന്നതിന് മുമ്പ് screenshot പരിശോധിക്കും.",
-        "send": "📸 PAYMENT SCREENSHOT അയയ്ക്കുക", "back": "• PLANS-ലേക്ക് മടങ്ങുക •", "close": "• അടയ്ക്കുക •", "selected": "Premium Plan തിരഞ്ഞെടുത്തു.",
-    },
-    "as": {
-        "intro": "💎 <b>Premium Membership</b>\n\nAds আঁতৰাবলৈ আৰু Premium access পাবলৈ আপোনাৰ Premium Plan বাছক।",
-        "plans": "💎 <b>Premium Plans & Prices</b>\n\nPayment আগবঢ়াবলৈ তলৰ পৰা এটা Plan বাছক।",
-        "order": "💳 <b>Premium Order তৈয়াৰ হৈছে</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ সময়কাল: <b>{duration}</b>\n💰 মূল্য: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment সম্পূৰ্ণ কৰি screenshot-টো dedicated payment bot-লৈ পঠিয়াওক।\n\n⚠️ Payment confirm কৰাৰ আগতে screenshot পৰীক্ষা কৰা হ'ব।",
-        "send": "📸 PAYMENT SCREENSHOT পঠিয়াওক", "back": "• PLANS লৈ উভতি যাওক •", "close": "• বন্ধ কৰক •", "selected": "Premium Plan বাছনি কৰা হৈছে।",
-    },
-    "ne": {
-        "intro": "💎 <b>Premium Membership</b>\n\nAds हटाउन र Premium access पाउन आफ्नो Premium Plan छान्नुहोस्।",
-        "plans": "💎 <b>Premium Plans & Prices</b>\n\nPayment अगाडि बढाउन तलबाट एउटा Plan छान्नुहोस्।",
-        "order": "💳 <b>Premium Order तयार भयो</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ अवधि: <b>{duration}</b>\n💰 मूल्य: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment पूरा गरेर screenshot dedicated payment bot मा पठाउनुहोस्।\n\n⚠️ Payment confirm गर्नुअघि screenshot जाँच गरिनेछ।",
-        "send": "📸 PAYMENT SCREENSHOT पठाउनुहोस्", "back": "• PLANS मा फर्कनुहोस् •", "close": "• बन्द गर्नुहोस् •", "selected": "Premium Plan छानिएको छ।",
-    },
-    "hinglish": {
-        "intro": "💎 <b>Premium Membership</b>\n\nAds hatane aur Premium access paane ke liye apna Premium Plan choose karo.",
-        "plans": "💎 <b>Premium Plans & Prices</b>\n\nPayment continue karne ke liye neeche se ek Plan choose karo.",
-        "order": "💳 <b>Premium Order Create Ho Gaya</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ Duration: <b>{duration}</b>\n💰 Price: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment complete karo, phir screenshot dedicated payment bot par bhejo.\n\n⚠️ Payment confirm hone se pehle screenshot check kiya jayega.",
-        "send": "📸 PAYMENT SCREENSHOT BHEJO", "back": "• PLANS PAR WAPAS •", "close": "• CLOSE •", "selected": "Premium Plan select ho gaya hai.",
-    },
-}
-# Complete the Premium entry/order UI for every advertised language.
-PREMIUM_FLOW_I18N["bn"] = {
-    "intro":"💎 <b>Premium Membership</b>\n\nAds সরিয়ে Premium access পেতে আপনার Premium Plan বেছে নিন.",
-    "plans":"💎 <b>Premium Plans & Prices</b>\n\nPayment চালিয়ে যেতে নিচের একটি Plan বেছে নিন।",
-    "order":"💳 <b>Premium Order তৈরি হয়েছে</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ সময়কাল: <b>{duration}</b>\n💰 মূল্য: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment সম্পূর্ণ করে screenshot dedicated payment bot-এ পাঠান।\n\n⚠️ Payment confirm করার আগে screenshot যাচাই করা হবে।",
-    "send":"📸 PAYMENT SCREENSHOT পাঠান","back":"• PLANS-এ ফিরে যান •","close":"• বন্ধ করুন •","selected":"Premium Plan বেছে নেওয়া হয়েছে।"}
-PREMIUM_FLOW_I18N["mr"] = {
-    "intro":"💎 <b>Premium Membership</b>\n\nAds काढण्यासाठी आणि Premium access मिळवण्यासाठी तुमचा Premium Plan निवडा.",
-    "plans":"💎 <b>Premium Plans & Prices</b>\n\nPayment पुढे नेण्यासाठी खालील Plan निवडा.",
-    "order":"💳 <b>Premium Order तयार झाले</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ कालावधी: <b>{duration}</b>\n💰 किंमत: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment पूर्ण करा आणि screenshot dedicated payment bot वर पाठवा.\n\n⚠️ Payment confirm करण्यापूर्वी screenshot तपासला जाईल.",
-    "send":"📸 PAYMENT SCREENSHOT पाठवा","back":"• PLANS कडे परत •","close":"• बंद करा •","selected":"Premium Plan निवडला आहे."}
-PREMIUM_FLOW_I18N["gu"] = {
-    "intro":"💎 <b>Premium Membership</b>\n\nAds દૂર કરવા અને Premium access મેળવવા તમારો Premium Plan પસંદ કરો.",
-    "plans":"💎 <b>Premium Plans & Prices</b>\n\nPayment ચાલુ રાખવા નીચેનો Plan પસંદ કરો.",
-    "order":"💳 <b>Premium Order બની ગયો</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ સમયગાળો: <b>{duration}</b>\n💰 કિંમત: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment પૂર્ણ કરો અને screenshot dedicated payment bot પર મોકલો.\n\n⚠️ Payment confirm કરતા પહેલાં screenshot તપાસવામાં આવશે.",
-    "send":"📸 PAYMENT SCREENSHOT મોકલો","back":"• PLANS પર પાછા •","close":"• બંધ કરો •","selected":"Premium Plan પસંદ થયો છે."}
-PREMIUM_FLOW_I18N["pa"] = {
-    "intro":"💎 <b>Premium Membership</b>\n\nAds ਹਟਾਉਣ ਅਤੇ Premium access ਲੈਣ ਲਈ ਆਪਣਾ Premium Plan ਚੁਣੋ।",
-    "plans":"💎 <b>Premium Plans & Prices</b>\n\nPayment ਜਾਰੀ ਰੱਖਣ ਲਈ ਹੇਠਾਂ ਇੱਕ Plan ਚੁਣੋ।",
-    "order":"💳 <b>Premium Order ਬਣ ਗਿਆ</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ ਮਿਆਦ: <b>{duration}</b>\n💰 ਕੀਮਤ: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment ਪੂਰਾ ਕਰੋ ਅਤੇ screenshot dedicated payment bot ਨੂੰ ਭੇਜੋ।\n\n⚠️ Payment confirm ਕਰਨ ਤੋਂ ਪਹਿਲਾਂ screenshot ਚੈੱਕ ਕੀਤਾ ਜਾਵੇਗਾ।",
-    "send":"📸 PAYMENT SCREENSHOT ਭੇਜੋ","back":"• PLANS ਵੱਲ ਵਾਪਸ •","close":"• ਬੰਦ ਕਰੋ •","selected":"Premium Plan ਚੁਣਿਆ ਗਿਆ ਹੈ।"}
-PREMIUM_FLOW_I18N["ur"] = {
-    "intro":"💎 <b>Premium Membership</b>\n\nAds ہٹانے اور Premium access حاصل کرنے کے لیے اپنا Premium Plan منتخب کریں۔",
-    "plans":"💎 <b>Premium Plans & Prices</b>\n\nPayment جاری رکھنے کے لیے نیچے ایک Plan منتخب کریں۔",
-    "order":"💳 <b>Premium Order بن گیا</b>\n\n📦 Plan: <b>{plan}</b>\n⏳ مدت: <b>{duration}</b>\n💰 قیمت: <b>{price}</b>\n\n🟡 Payment status: <code>waiting_for_payment</code>\n\nPayment مکمل کریں اور screenshot dedicated payment bot پر بھیجیں۔\n\n⚠️ Payment confirm کرنے سے پہلے screenshot چیک کیا جائے گا۔",
-    "send":"📸 PAYMENT SCREENSHOT بھیجیں","back":"• PLANS پر واپس •","close":"• بند کریں •","selected":"Premium Plan منتخب کر لیا گیا ہے۔"}
-
-_CONTINUE_I18N = {
-    "en":"• CONTINUE TO PLANS •","hi":"• PLANS पर जाएँ •","ta":"• PLANS-க்கு தொடரவும் •","te":"• PLANS కి కొనసాగండి •","kn":"• PLANS ಗೆ ಮುಂದುವರಿಯಿರಿ •","ml":"• PLANS-ലേക്ക് തുടരുക •","bn":"• PLANS-এ যান •","mr":"• PLANS कडे जा •","gu":"• PLANS પર જાઓ •","pa":"• PLANS ਵੱਲ ਜਾਓ •","ur":"• PLANS پر جائیں •","as":"• PLANS লৈ আগবাঢ়ক •","ne":"• PLANS मा जानुहोस् •","hinglish":"• PLANS PAR CHALO •"}
-for _code in PREMIUM_FLOW_I18N:
-    PREMIUM_FLOW_I18N[_code].setdefault("continue", _CONTINUE_I18N.get(_code, _CONTINUE_I18N["en"]))
-
-# Critical screenshot states are available in every advertised language so a
-# user never gets an English processing/no-order message after choosing a language.
-for _c in GLOBAL_LANGUAGES:
-    I18N.setdefault(_c, dict(I18N["en"]))
-I18N["bn"].update({"progress_title":"🔎 <b>পেমেন্ট স্ক্রিনশট পাওয়া গেছে</b>","progress_body":"⏳ আপনার পেমেন্ট নিরাপদভাবে পরীক্ষা করা হচ্ছে। এতে <b>১–২ মিনিট</b> লাগতে পারে। স্ক্রিনশট আবার পাঠাবেন না এবং মেনু বন্ধ করবেন না।\n\n✅ পরীক্ষা শেষ হলে ফলাফল স্বয়ংক্রিয়ভাবে পাবেন।","no_order_title":"⚠️ <b>কোনো Premium Order পাওয়া যায়নি</b>","no_order_body":"প্রথমে একটি Premium Plan নির্বাচন করে payment সম্পূর্ণ করুন, তারপর screenshot পাঠান।\n\n🧹 এই বার্তাটি ১০ সেকেন্ড পরে নিজে থেকে মুছে যাবে।"})
-I18N["mr"].update({"progress_title":"🔎 <b>Payment Screenshot मिळाला</b>","progress_body":"⏳ तुमचे payment सुरक्षितपणे तपासले जात आहे. यासाठी <b>1–2 मिनिटे</b> लागू शकतात. Screenshot पुन्हा पाठवू नका आणि menu बंद करू नका.\n\n✅ तपासणी पूर्ण झाल्यावर निकाल आपोआप मिळेल.","no_order_title":"⚠️ <b>Premium Order सापडला नाही</b>","no_order_body":"आधी Premium Plan निवडा, payment पूर्ण करा आणि नंतर screenshot पाठवा.\n\n🧹 हा संदेश 10 सेकंदांनी आपोआप हटेल."})
-I18N["gu"].update({"progress_title":"🔎 <b>Payment Screenshot મળ્યો</b>","progress_body":"⏳ તમારું payment સુરક્ષિત રીતે તપાસાઈ રહ્યું છે. તેમાં <b>1–2 મિનિટ</b> લાગી શકે છે. Screenshot ફરી મોકલશો નહીં અને menu બંધ કરશો નહીં.\n\n✅ તપાસ પૂર્ણ થયા પછી પરિણામ આપમેળે મળશે.","no_order_title":"⚠️ <b>Premium Order મળ્યો નથી</b>","no_order_body":"પહેલા Premium Plan પસંદ કરો, payment પૂર્ણ કરો અને પછી screenshot મોકલો.\n\n🧹 આ સંદેશ 10 સેકન્ડમાં આપમેળે દૂર થશે."})
-I18N["pa"].update({"progress_title":"🔎 <b>Payment Screenshot ਮਿਲ ਗਿਆ</b>","progress_body":"⏳ ਤੁਹਾਡਾ payment ਸੁਰੱਖਿਅਤ ਤਰੀਕੇ ਨਾਲ check ਹੋ ਰਿਹਾ ਹੈ। ਇਸ ਵਿੱਚ <b>1–2 ਮਿੰਟ</b> ਲੱਗ ਸਕਦੇ ਹਨ। Screenshot ਦੁਬਾਰਾ ਨਾ ਭੇਜੋ ਅਤੇ menu ਬੰਦ ਨਾ ਕਰੋ।\n\n✅ Check ਪੂਰਾ ਹੋਣ ਤੇ result ਆਪਣੇ ਆਪ ਮਿਲੇਗਾ.","no_order_title":"⚠️ <b>Premium Order ਨਹੀਂ ਮਿਲਿਆ</b>","no_order_body":"ਪਹਿਲਾਂ Premium Plan ਚੁਣੋ, payment complete ਕਰੋ ਅਤੇ ਫਿਰ screenshot ਭੇਜੋ।\n\n🧹 ਇਹ message 10 ਸਕਿੰਟ ਬਾਅਦ ਆਪਣੇ ਆਪ delete ਹੋ ਜਾਵੇਗਾ."})
-I18N["ur"].update({"progress_title":"🔎 <b>Payment Screenshot موصول ہو گیا</b>","progress_body":"⏳ آپ کی payment محفوظ طریقے سے چیک کی جا رہی ہے۔ اس میں <b>1–2 منٹ</b> لگ سکتے ہیں۔ Screenshot دوبارہ نہ بھیجیں اور menu بند نہ کریں۔\n\n✅ چیک مکمل ہونے پر نتیجہ خود مل جائے گا۔","no_order_title":"⚠️ <b>Premium Order نہیں ملا</b>","no_order_body":"پہلے Premium Plan منتخب کریں، payment مکمل کریں اور پھر screenshot بھیجیں۔\n\n🧹 یہ پیغام 10 سیکنڈ بعد خود حذف ہو جائے گا۔"})
-I18N["as"].update({"progress_title":"🔎 <b>Payment Screenshot পোৱা গ'ল</b>","progress_body":"⏳ আপোনাৰ payment সুৰক্ষিতভাৱে পৰীক্ষা কৰা হৈছে। <b>১–২ মিনিট</b> লাগিব পাৰে। Screenshot পুনৰ নপঠাব আৰু menu বন্ধ নকৰিব।\n\n✅ পৰীক্ষা শেষ হ'লে ফলাফল নিজে পাব।","no_order_title":"⚠️ <b>Premium Order পোৱা নগ'ল</b>","no_order_body":"আগতে Premium Plan বাছি payment সম্পূৰ্ণ কৰক, তাৰ পিছত screenshot পঠাওক।\n\n🧹 এই বাৰ্তা ১০ ছেকেণ্ড পিছত নিজে মচি যাব।"})
-I18N["ne"].update({"progress_title":"🔎 <b>Payment Screenshot प्राप्त भयो</b>","progress_body":"⏳ तपाईंको payment सुरक्षित रूपमा जाँच भइरहेको छ। यसलाई <b>१–२ मिनेट</b> लाग्न सक्छ। Screenshot फेरि नपठाउनुहोस् र menu बन्द नगर्नुहोस्।\n\n✅ जाँच पूरा भएपछि परिणाम आफैं आउनेछ।","no_order_title":"⚠️ <b>Premium Order भेटिएन</b>","no_order_body":"पहिले Premium Plan छान्नुहोस्, payment पूरा गर्नुहोस् र त्यसपछि screenshot पठाउनुहोस्।\n\n🧹 यो सन्देश १० सेकेन्डपछि आफैं हट्नेछ।"})
-I18N["hinglish"].update({"progress_title":"🔎 <b>Payment Screenshot Mil Gaya</b>","progress_body":"⏳ Aapka payment safely check ho raha hai. Isme <b>1–2 minutes</b> lag sakte hain. Screenshot dobara mat bhejo aur menu close mat karo.\n\n✅ Check complete hone ke baad result automatically mil jayega.","no_order_title":"⚠️ <b>Premium Order Nahi Mila</b>","no_order_body":"Pehle Premium Plan choose karo, payment complete karo aur phir screenshot bhejo.\n\n🧹 Ye message 10 seconds baad automatically delete ho jayega."})
-
-def _premium_flow_text(lang, key, **values):
-    text = PREMIUM_FLOW_I18N.get(lang, PREMIUM_FLOW_I18N["en"]).get(key, PREMIUM_FLOW_I18N["en"].get(key, key))
-    return text.format(**values) if values else text
-
-
-def _language_button_text(lang):
-    return I18N.get(lang, I18N["en"]).get("language_button", I18N["en"]["language_button"])
-
 
 def _lang_from_code(code):
     code = str(code or "").lower().replace("_", "-")
@@ -453,23 +190,18 @@ def _lang_from_code(code):
 
 
 async def _user_language(user_id, telegram_user=None):
-    # One global language source for the entire bot, including Premium/payment.
-    # Existing accounts without a saved preference safely default to English.
-    return await _global_user_language(user_id, telegram_user)
+    try:
+        data = await db.get_user(int(user_id))
+        saved = (data or {}).get("language") or (data or {}).get("language_code")
+        if saved in I18N:
+            return saved
+    except Exception:
+        pass
+    return _lang_from_code(getattr(telegram_user, "language_code", None))
 
 
 def _tr(lang, key, **values):
-    text = I18N.get(lang, I18N["en"]).get(key)
-    if text is None:
-        text = I18N["en"].get(key)
-    if text is None:
-        # Never expose an internal translation key to a user.
-        text = {
-            "manual_title": "⚠️ <b>Premium — Payment Under Review</b>",
-            "manual_body": "Your payment screenshot has been sent to the admin for manual review.",
-            "progress_title": "🔎 <b>Payment screenshot received</b>",
-            "progress_body": "⏳ Your payment is being analyzed. Please wait for the result.",
-        }.get(key, "")
+    text = I18N.get(lang, I18N["en"]).get(key, I18N["en"].get(key, key))
     return text.format(**values) if values else text
 
 
@@ -477,9 +209,9 @@ def _language_markup():
     codes = list(LANGUAGES)
     rows = []
     for i in range(0, len(codes), 2):
-        rows.append([InlineKeyboardButton(LANGUAGES[codes[i]], callback_data=f"global_lang:{codes[i]}")])
+        rows.append([InlineKeyboardButton(LANGUAGES[codes[i]], callback_data=f"paylang:{codes[i]}")])
         if i + 1 < len(codes):
-            rows[-1].append(InlineKeyboardButton(LANGUAGES[codes[i + 1]], callback_data=f"global_lang:{codes[i+1]}"))
+            rows[-1].append(InlineKeyboardButton(LANGUAGES[codes[i + 1]], callback_data=f"paylang:{codes[i+1]}"))
     return InlineKeyboardMarkup(rows)
 
 
@@ -493,8 +225,8 @@ async def _delete_message_later(sent_message, delay=TEMP_MESSAGE_DELETE_SECONDS)
     try:
         await asyncio.sleep(delay)
         await sent_message.delete()
-    except Exception as exc:
-        LOGGER.debug("Temporary message cleanup failed: %s", exc)
+    except Exception:
+        pass
 
 
 def _schedule_temp_delete(sent_message, delay=TEMP_MESSAGE_DELETE_SECONDS):
@@ -503,23 +235,22 @@ def _schedule_temp_delete(sent_message, delay=TEMP_MESSAGE_DELETE_SECONDS):
     return sent_message
 
 
-async def _reply_temp(message, text, delay=TEMP_MESSAGE_DELETE_SECONDS, **kwargs):
+async def _reply_temp(message, text, **kwargs):
     sent = await message.reply_text(text, **kwargs)
-    return _schedule_temp_delete(sent, delay)
+    return _schedule_temp_delete(sent)
 
 
-async def _send_user_temp(client, user_id, text, delay=TEMP_MESSAGE_DELETE_SECONDS, **kwargs):
+async def _send_user_temp(client, user_id, text, **kwargs):
     sent = await client.send_message(user_id, text, **kwargs)
-    return _schedule_temp_delete(sent, delay)
+    return _schedule_temp_delete(sent)
 
-
-def _contact_admin_markup(lang="en"):
+def _contact_admin_markup():
     """Return a direct Telegram contact button using the configured owner username."""
     username = (OWNER_USERNAME or "").strip().lstrip("@")
     if not username:
         return None
     return InlineKeyboardMarkup(
-        [[InlineKeyboardButton(_tr(lang, "contact"), url=f"https://t.me/{username}")]]
+        [[InlineKeyboardButton("💬 CONTACT ADMIN", url=f"https://t.me/{username}")]]
     )
 
 
@@ -783,11 +514,12 @@ def _payment_success_signal(text):
 
 
 def _payment_match_result(order, ocr_text, received_at):
-    """Validate payment evidence using amount + transaction date + success status.
+    """Match payment evidence without trusting OCR blindly.
 
-    Transaction TIME is informational only and is never used as an approval gate.
-    This deliberately removes the old time-window matching so OCR cannot reject
-    a genuine payment because it selected/read a wrong transaction time.
+    Amount is always required. The OCR transaction date is anchored to when the
+    screenshot was received, not when the user originally opened the order.
+    Optional timestamp approval checks the full date+time against a bounded
+    window and therefore also catches wrong day/month/year selections.
     """
     expected = _expected_amount(order.get("plan_price"))
     found = _extract_amount(ocr_text, expected)
@@ -797,34 +529,40 @@ def _payment_match_result(order, ocr_text, received_at):
     tx_dt = parsed_tx_dt if parsed_confident else None
     reference = _aware_ist(received_at)
     date_match = None
+    time_match = None
     date_note = "Transaction date could not be read."
+
     if tx_dt is not None and reference is not None:
-        tx_aware = tx_dt.astimezone(IST) if tx_dt.tzinfo else IST.localize(tx_dt)
+        tx_aware = IST.localize(tx_dt) if tx_dt.tzinfo is None else tx_dt.astimezone(IST)
+        # Date is tied to the screenshot submission, avoiding stale order-created
+        # dates and UTC/IST day-boundary errors.
         date_match = tx_aware.date() == reference.date()
         date_note = f"Transaction date: {tx_aware.date().isoformat()}"
+        if PAYMENT_TIME_APPROVAL_ENABLED:
+            earliest = reference - datetime.timedelta(minutes=PAYMENT_MAX_DELAY_MINUTES)
+            latest = reference + datetime.timedelta(minutes=PAYMENT_FUTURE_TOLERANCE_MINUTES)
+            time_match = earliest <= tx_aware <= latest
     elif tx_dt is not None:
         date_match = True
 
     success_signal = _payment_success_signal(ocr_text) if ocr_text else None
     if not PAYMENT_OCR_ENABLED:
         return True, {"ocr_status": "disabled", "amount_found": found, "amount_match": None,
-                      "transaction_at": tx_dt, "date_match": None,
-                      "success_signal": None, "confidence": 0,
-                      "date_note": "OCR checks disabled; sender/order matching used."}
+                      "transaction_at": tx_dt, "date_match": None, "time_match": None,
+                      "success_signal": None, "confidence": 0, "date_note": "OCR checks disabled; sender/order matching used."}
 
-    hard_fail = amount_match is False or date_match is False
+    hard_fail = amount_match is False or date_match is False or (PAYMENT_TIME_APPROVAL_ENABLED and time_match is False)
     score = 0
-    if amount_match:
-        score += 60
-    if date_match:
-        score += 30
-    if success_signal:
+    if amount_match: score += 60
+    if date_match: score += 30
+    if success_signal: score += 10
+    if PAYMENT_TIME_APPROVAL_ENABLED and time_match:
         score += 10
-    passed = (not hard_fail) and amount_match is True and date_match is True and success_signal is True
+    passed = (not hard_fail) and amount_match is True and date_match is True and success_signal is True and (not PAYMENT_TIME_APPROVAL_ENABLED or time_match is True)
     return passed, {
         "ocr_status": "matched" if passed else "manual_review",
         "amount_found": found, "amount_match": amount_match,
-        "transaction_at": tx_dt, "date_match": date_match,
+        "transaction_at": tx_dt, "date_match": date_match, "time_match": time_match,
         "success_signal": success_signal, "confidence": min(score, 100),
         "date_note": date_note,
         "date_detected": tx_dt.date().isoformat() if tx_dt else None,
@@ -1049,28 +787,6 @@ def _run_original_payment_ocr_sync(blob, sha256):
                 pass
 
 
-async def _send_payment_result_with_screenshot(client, user_id, screenshot_message_id, text, order=None, reply_markup=None):
-    """Send the final user result with the submitted screenshot as one message.
-
-    The screenshot is copied into the payment chat with the localized final
-    result as its caption. If Telegram rejects the copy/caption operation, a
-    normal text result is used as a safe fallback.
-    """
-    try:
-        source_chat = int((order or {}).get("payment_chat_id") or user_id)
-        return await client.copy_message(
-            chat_id=int(user_id),
-            from_chat_id=source_chat,
-            message_id=int(screenshot_message_id),
-            caption=text,
-            parse_mode=enums.ParseMode.HTML,
-            reply_markup=reply_markup,
-        )
-    except Exception as exc:
-        LOGGER.warning("Could not send final payment result with screenshot for %s: %s", user_id, exc)
-        return await client.send_message(user_id, text, parse_mode=enums.ParseMode.HTML, reply_markup=reply_markup)
-
-
 async def _activate_order(client, order, screenshot_message_id):
     """Grant Premium using the exact plan stored on the payment order.
 
@@ -1103,12 +819,6 @@ async def _activate_order(client, order, screenshot_message_id):
     # add the selected duration to its existing expiry instead of overwriting it.
     current = await db.get_user(user_id)
     current_expiry = _naive_utc(current.get("expiry_time")) if current else None
-    previous_premium_state = {
-        "expiry_time": current.get("expiry_time") if current else None,
-        "premium_plan": current.get("premium_plan") if current else None,
-        "premium_plan_name": current.get("premium_plan_name") if current else None,
-        "premium_price": current.get("premium_price") if current else None,
-    }
     temporary_review = bool(order.get("temporary_review_access"))
     if (not temporary_review) and isinstance(current_expiry, datetime.datetime) and current_expiry > now:
         base = current_expiry
@@ -1125,10 +835,6 @@ async def _activate_order(client, order, screenshot_message_id):
         "premium_plan_name": order["plan_duration"],
         "premium_price": order["plan_price"],
     })
-    await db.premium_orders.update_one(
-        {"user_id": user_id, "screenshot_message_id": int(screenshot_message_id)},
-        {"$set": {"payment_previous_premium_state": previous_premium_state}},
-    )
 
     await db.set_order_activation(user_id, now, new_expiry)
     await db.premium_orders.update_one(
@@ -1145,31 +851,27 @@ async def _activate_order(client, order, screenshot_message_id):
 
     is_renewal = (not temporary_review) and isinstance(current_expiry, datetime.datetime) and current_expiry > now
     plan = PREMIUM_PLANS[plan_key]
-    lang = await _user_language(user_id)
     if is_renewal:
         text = (
-            f"♻️ <b>{_result_text(lang, 'renewed_title')}</b>\n\n"
-            f"📦 {_result_text(lang, 'plan')}: <b>{escape(plan['name'])}</b>\n"
-            f"⏳ {_result_text(lang, 'added')}: <b>{escape(plan['duration'])}</b>\n"
-            f"📅 {_result_text(lang, 'new_expiry')}: {_fmt_dt(new_expiry)}\n"
-            f"🟢 {_result_text(lang, 'status')}\n\n"
-            f"{_result_text(lang, 'thanks_renew')}"
+            "♻️ <b>Premium Renewed Successfully!</b>\n\n"
+            f"📦 Plan: {escape(plan['name'])}\n"
+            f"⏳ Added: {escape(plan['duration'])}\n"
+            f"📅 New Expiry: {_fmt_dt(new_expiry)}\n"
+            "🟢 Status: Active\n\n" +
+            _tr(await _user_language(user_id), "renewed")
         )
     else:
         text = (
-            f"✅ <b>{_result_text(lang, 'activated_title')}</b>\n\n"
-            f"📦 {_result_text(lang, 'plan')}: <b>{escape(plan['name'])}</b>\n"
-            f"⏳ {_result_text(lang, 'duration')}: <b>{escape(plan['duration'])}</b>\n"
-            f"📅 {_result_text(lang, 'activated_at')}: {_fmt_dt(now)}\n"
-            f"⏳ {_result_text(lang, 'expires')}: {_fmt_dt(new_expiry)}\n"
-            f"🟢 {_result_text(lang, 'status')}\n\n"
-            f"{_result_text(lang, 'thanks_purchase')}"
+            "✅ <b>Premium Activated Successfully!</b>\n\n"
+            f"📦 Plan: {escape(plan['name'])}\n"
+            f"⏳ Duration: {escape(plan['duration'])}\n"
+            f"📅 Activated: {_fmt_dt(now)}\n"
+            f"⏳ Expires: {_fmt_dt(new_expiry)}\n"
+            "🟢 Status: Active\n\n" +
+            _tr(await _user_language(user_id), "activated")
         )
     try:
-        await _send_payment_result_with_screenshot(
-            client, user_id, screenshot_message_id, text, order=order,
-            reply_markup=_contact_admin_markup(lang),
-        )
+        await client.send_message(user_id, text, parse_mode=enums.ParseMode.HTML)
     except Exception as exc:
         LOGGER.warning("Could not send Premium activation to %s: %s", user_id, exc)
 
@@ -1193,10 +895,6 @@ async def _activate_order(client, order, screenshot_message_id):
 
 
 async def process_payment_submission(payment_client, message):
-    """Handle a payment screenshot through the verified Premium-order pipeline."""
-    return await _process_payment_submission_impl(payment_client, message)
-
-async def _process_payment_submission_impl(payment_client, message):
     """Handle a screenshot, verify sender/order and perform a soft OCR check."""
     sender = message.from_user
     if not sender:
@@ -1214,56 +912,7 @@ async def _process_payment_submission_impl(payment_client, message):
         file_id = message.document.file_id
         file_unique_id = message.document.file_unique_id
 
-    # First guard against Telegram/Pyrogram delivering the same screenshot
-    # message more than once.  The payment_submissions collection has a unique
-    # (chat_id, message_id) index, so an already-recorded message must be a
-    # silent no-op rather than falling through to the unmatched-order warning.
-    existing_submission = await db.get_payment_submission(user_id, message.id)
-    if existing_submission:
-        LOGGER.info("Ignoring duplicate payment screenshot message %s from %s", message.id, user_id)
-        return
-
-    # A selected Premium plan is the proof that the user followed the
-    # purchase flow. Do NOT require the order to still be in exactly
-    # ``waiting_for_payment`` here: another payment/review transition can
-    # legitimately change that status before the screenshot is processed.
-    # Only a truly missing/unconfigured order is unmatched.
-    lang = await _user_language(user_id, sender)
-    order = await db.get_premium_order(user_id)
-    if order and not order.get("selected_plan"):
-        LOGGER.warning("Premium order for user %s exists but has no selected_plan; treating screenshot as unmatched", user_id)
-        order = None
-    LOGGER.info(
-        "Payment screenshot %s from user %s: order_found=%s selected_plan=%s payment_status=%s",
-        message.id, user_id, bool(order),
-        (order or {}).get("selected_plan"), (order or {}).get("payment_status"),
-    )
-
-    # Once the current order has already consumed a screenshot, require the
-    # user to select a Premium plan again before another screenshot can enter
-    # the pipeline. This prevents repeated screenshots from being treated as
-    # fresh payments while still allowing a genuinely new order to proceed.
-    if order and order.get("screenshot_message_id") and order.get("payment_status") != "waiting_for_payment":
-        LOGGER.info(
-            "Ignoring additional screenshot %s for user %s; current Premium order already has a payment screenshot",
-            message.id, user_id,
-        )
-        return
-
-    # If this user already has a screenshot attached to the current Premium
-    # order (for example the first copy is already in manual review), do not
-    # incorrectly call the next delivery an "unmatched" payment.  The order
-    # has already entered the review pipeline, so the extra screenshot is
-    # simply ignored.
-    if not order:
-        current_order = await db.get_premium_order(user_id)
-        if current_order and current_order.get("screenshot_message_id"):
-            LOGGER.info(
-                "Ignoring additional screenshot %s for user %s; existing Premium payment is already under review",
-                message.id, user_id,
-            )
-            return
-
+    order = await db.get_pending_premium_order(user_id)
     submission = {
         "user_id": user_id,
         "username": sender.username or "",
@@ -1281,67 +930,37 @@ async def _process_payment_submission_impl(payment_client, message):
     }
     await db.record_payment_submission(submission)
 
-    processing_message = None
     if not order:
-        # An unmatched screenshot must never activate Premium, but it can still
-        # be OCR-audited so the admin can diagnose a real payment/order mismatch.
-        try:
-            processing_message = await message.reply_text(
-                _tr(lang, "progress_title") + "\n\n" + _tr(lang, "progress_body"),
-                parse_mode=enums.ParseMode.HTML,
-            )
-        except Exception:
-            LOGGER.exception("Could not send unmatched-payment processing notice")
-
-        ocr_text, ocr_status, file_sha256, perceptual_hash = await _ocr_payment_message(payment_client, message)
-        # Keep the user's response simple and short-lived.
-        try:
-            await _reply_temp(
-                message,
-                _no_order_warning(lang),
-                parse_mode=enums.ParseMode.HTML,
-                delay=10,
-            )
-        except Exception:
-            LOGGER.exception("Could not send unmatched-payment 10-second notice to user %s", user_id)
-
-        admin_text = (
+        await _notify_admins(
+            payment_client,
             "⚠️ <b>Unmatched payment screenshot</b>\n\n"
             f"👤 User ID: <code>{user_id}</code>\n"
             f"👤 Username: @{escape(sender.username) if sender.username else 'none'}\n"
             f"🆔 Message ID: <code>{message.id}</code>\n\n"
-            "<b>🔎 Automatic analysis report</b>\n"
-            f"• OCR engine: {escape(str(ocr_status or 'unknown').replace('_', ' ').title())}\n"
-            "• Analysis result: <b>NOT APPROVED — no pending Premium order</b>\n"
-            f"• OCR text read: <code>{escape((ocr_text[:1200] if ocr_text else 'NO TEXT READ'))}</code>\n\n"
-            "⚠️ Premium was NOT activated. The user must select a Premium plan first."
+            "No pending Premium order was found. Premium was <b>not</b> activated."
         )
-        for admin_id in _admins():
-            try:
-                await payment_client.copy_message(
-                    admin_id, message.chat.id, message.id,
-                    caption=admin_text, parse_mode=enums.ParseMode.HTML,
-                )
-            except Exception as exc:
-                LOGGER.warning("Could not send unmatched OCR report to %s: %s", admin_id, exc)
-        if processing_message:
-            try:
-                await processing_message.delete()
-            except Exception:
-                pass
+        try:
+            lang = await _user_language(user_id, sender)
+            await _reply_temp(
+                message,
+                _tr(lang, "no_order_title") + "\n\n" + _tr(lang, "no_order_body"),
+                parse_mode=enums.ParseMode.HTML,
+            )
+        except Exception:
+            pass
         return
 
+    # Working baseline preserved: only matched Premium orders enter OCR.
+    # Show the multilingual processing notice immediately before OCR begins.
     try:
-        # Processing is a meaningful status message.  It is intentionally NOT
-        # scheduled for the 10-second cleanup; only unmatched/meaningless
-        # warnings use that short lifetime.
-        processing_message = await message.reply_text(
-            _tr(lang, "progress_title") + "\n\n" +
-            _tr(lang, "progress_body"),
+        lang = await _user_language(user_id, sender)
+        await _reply_temp(
+            message,
+            _tr(lang, "progress_title") + "\n\n" + _tr(lang, "progress_body"),
             parse_mode=enums.ParseMode.HTML,
         )
     except Exception:
-        LOGGER.exception("Could not send payment processing notice")
+        pass
 
     ocr_text, ocr_status, file_sha256, perceptual_hash = await _ocr_payment_message(payment_client, message)
     passed, check = _payment_match_result(order, ocr_text, received_at)
@@ -1367,6 +986,7 @@ async def _process_payment_submission_impl(payment_client, message):
             "amount_found": check["amount_found"],
             "amount_match": check["amount_match"],
             "transaction_at": check["transaction_at"],
+            "time_match": check.get("time_match"),
             "date_match": check.get("date_match"),
             "ocr_engine_status": ocr_status,
             "file_sha256": file_sha256,
@@ -1397,10 +1017,15 @@ async def _process_payment_submission_impl(payment_client, message):
             reason.append("Transaction date does not match the screenshot submission date.")
         elif check.get("date_match") is None:
             reason.append("Transaction date could not be read confidently.")
+        if PAYMENT_TIME_APPROVAL_ENABLED:
+            if check.get("time_match") is False:
+                reason.append("Transaction time is outside the allowed approval window.")
+            elif check.get("time_match") is None:
+                reason.append("Transaction time could not be read confidently.")
         if check.get("success_signal") is False:
             reason.append("A payment-success confirmation was not detected.")
         if check.get("duplicate_suspected"):
-            reason.append("The exact same screenshot file was already submitted.")
+            reason.append("The same or a very similar screenshot was already submitted.")
         if check.get("ocr_status") == "disabled":
             reason.append("OCR verification is disabled, so automatic evidence checks were unavailable.")
         elif ocr_status == "download_failed":
@@ -1413,6 +1038,10 @@ async def _process_payment_submission_impl(payment_client, message):
         amount_found = check.get("amount_found")
         tx_at = check.get("transaction_at")
         amount_result = "Matched" if check.get("amount_match") is True else ("Not matched" if check.get("amount_match") is False else "Not confidently detected")
+        if PAYMENT_TIME_APPROVAL_ENABLED:
+            time_result = "Matched" if check.get("time_match") is True else ("Not matched" if check.get("time_match") is False else "Not confidently detected")
+        else:
+            time_result = "Not used for approval (setting OFF)"
         success_result = "Detected" if check.get("success_signal") is True else ("Not detected" if check.get("success_signal") is False else "Not available")
         duplicate_result = "Suspected duplicate" if check.get("duplicate_suspected") else "No duplicate detected"
         ocr_result = str(ocr_status or "unknown").replace("_", " ").title()
@@ -1437,7 +1066,9 @@ async def _process_payment_submission_impl(payment_client, message):
             f"• Amount comparison: {escape(amount_result)}\n"
             f"• Date detected: {escape(tx_at.strftime('%d %B %Y') if tx_at else 'NOT DETECTED')}\n"
             f"• Time detected: {escape(tx_at.strftime('%I:%M %p') if tx_at else 'NOT DETECTED')}\n"
-            f"• Transaction time detected (informational): {escape(tx_at.strftime('%I:%M %p') if tx_at else 'NOT DETECTED')}\n"
+            f"• Date/time comparison: {escape(time_result)}\n"
+            f"• Time approval: {'ON' if PAYMENT_TIME_APPROVAL_ENABLED else 'OFF'}\n"
+            f"• Allowed transaction delay: {PAYMENT_MAX_DELAY_MINUTES} min; future tolerance: {PAYMENT_FUTURE_TOLERANCE_MINUTES} min\n"
             f"• Payment-success signal: {escape(success_result)}\n"
             f"• Duplicate check: {escape(duplicate_result)}\n"
             f"• Verification confidence: {escape(confidence_text)}\n"
@@ -1454,13 +1085,16 @@ async def _process_payment_submission_impl(payment_client, message):
         ])
         for admin_id in _admins():
             try:
+                await payment_client.send_message(
+                    admin_id,
+                    review_text,
+                    parse_mode=enums.ParseMode.HTML,
+                    reply_markup=review_buttons,
+                )
                 await payment_client.copy_message(
                     admin_id,
                     message.chat.id,
                     message.id,
-                    caption=review_text,
-                    parse_mode=enums.ParseMode.HTML,
-                    reply_markup=review_buttons,
                 )
             except Exception as exc:
                 LOGGER.warning("Could not send manual payment review to %s: %s", admin_id, exc)
@@ -1468,31 +1102,22 @@ async def _process_payment_submission_impl(payment_client, message):
             plan_key = _plan_key(order.get("selected_plan"))
             plan = PREMIUM_PLANS.get(plan_key, {}) if plan_key else {}
             activated_at = order.get("review_started_at") or _now()
-            lang = await _user_language(user_id, sender)
             user_text = (
-                _tr(lang, "manual_title") + "\n\n"
-                f"📦 {_result_text(lang, 'plan')}: <b>{escape(str(plan.get('name') or order.get('plan_duration', 'N/A')))}</b>\n"
-                f"⏳ {_result_text(lang, 'duration')}: <b>{escape(str(plan.get('duration') or order.get('plan_duration', 'N/A')))}</b>\n"
-                f"📅 {_result_text(lang, 'activated_at')}: {_fmt_dt(activated_at)}\n"
-                f"⏳ {_result_text(lang, 'expires')}: {_fmt_dt(review_expiry)}\n"
-                f"🟢 {_result_text(lang, 'status')}\n\n" +
-                _tr(lang, "manual_body")
+                "⚠️ <b>Premium Activated — Payment Under Review</b>\n\n"
+                f"📦 Plan: {escape(str(plan.get('name') or order.get('plan_duration', 'N/A')))}\n"
+                f"⏳ Duration: {escape(str(plan.get('duration') or order.get('plan_duration', 'N/A')))}\n"
+                f"📅 Activated: {_fmt_dt(activated_at)}\n"
+                f"⏳ Expires: {_fmt_dt(review_expiry)}\n"
+                "🟢 Status: Active\n\n" +
+                _tr(await _user_language(user_id, sender), "manual_body")
             )
-            if processing_message:
-                try:
-                    await processing_message.delete()
-                except Exception:
-                    pass
-            await _send_payment_result_with_screenshot(
-                payment_client,
-                user_id,
-                message.id,
+            await message.reply_text(
                 user_text,
-                order=order,
-                reply_markup=_contact_admin_markup(lang),
+                parse_mode=enums.ParseMode.HTML,
+                reply_markup=_contact_admin_markup(),
             )
         except Exception:
-            LOGGER.exception("Could not send manual-review Premium result to user %s", user_id)
+            pass
         return
 
     await db.update_payment_submission(
@@ -1523,6 +1148,10 @@ async def _process_payment_submission_impl(payment_client, message):
     sender_username = f"@{sender.username}" if sender.username else "none"
     amount_found = check.get("amount_found")
     amount_result = "Matched" if check.get("amount_match") is True else ("Not matched" if check.get("amount_match") is False else "Not confidently detected")
+    if PAYMENT_TIME_APPROVAL_ENABLED:
+        time_result = "Matched" if check.get("time_match") is True else ("Not matched" if check.get("time_match") is False else "Not confidently detected")
+    else:
+        time_result = "Not used for approval (setting OFF)"
     success_result = "Detected" if check.get("success_signal") is True else ("Not detected" if check.get("success_signal") is False else "Not available")
     confidence = check.get("confidence")
     confidence_text = f"{confidence}%" if isinstance(confidence, (int, float)) else "N/A"
@@ -1542,7 +1171,9 @@ async def _process_payment_submission_impl(payment_client, message):
         f"• Amount comparison: {escape(amount_result)}\n"
         f"• Date detected: {escape(tx_at.strftime('%d %B %Y') if tx_at else 'NOT DETECTED')}\n"
         f"• Time detected: {escape(tx_at.strftime('%I:%M %p') if tx_at else 'NOT DETECTED')}\n"
-        f"• Transaction time detected (informational): {escape(tx_at.strftime('%I:%M %p') if tx_at else 'NOT DETECTED')}\n"
+        f"• Date/time comparison: {escape(time_result)}\n"
+        f"• Time approval: {'ON' if PAYMENT_TIME_APPROVAL_ENABLED else 'OFF'}\n"
+        f"• Allowed transaction delay: {PAYMENT_MAX_DELAY_MINUTES} min; future tolerance: {PAYMENT_FUTURE_TOLERANCE_MINUTES} min\n"
         f"• Payment-success signal: {escape(success_result)}\n"
         "• Duplicate check: No duplicate detected\n"
         f"• Verification confidence: {escape(confidence_text)}\n"
@@ -1554,27 +1185,21 @@ async def _process_payment_submission_impl(payment_client, message):
     ])
     for admin_id in _admins():
         try:
+            await payment_client.send_message(
+                admin_id,
+                detected_report,
+                parse_mode=enums.ParseMode.HTML,
+                reply_markup=auto_reject_buttons,
+            )
             await payment_client.copy_message(
                 admin_id,
                 message.chat.id,
                 message.id,
-                caption=detected_report,
-                parse_mode=enums.ParseMode.HTML,
-                reply_markup=auto_reject_buttons,
             )
         except Exception as exc:
             LOGGER.warning("Could not send auto-approved payment review to %s: %s", admin_id, exc)
 
-    if processing_message:
-        try:
-            await processing_message.delete()
-        except Exception:
-            pass
     await _activate_order(payment_client, claimed, message.id)
-    try:
-        await message.delete()
-    except Exception:
-        pass
 
 
 async def _grant_review_access(user_id, order, minutes=None):
@@ -1588,13 +1213,6 @@ async def _grant_review_access(user_id, order, minutes=None):
     if not plan_key:
         raise ValueError("Invalid selected Premium plan for payment review")
     expires = _expiry_from(now, plan_key)
-    current = await db.get_user(int(user_id))
-    previous_premium_state = {
-        "expiry_time": current.get("expiry_time") if current else None,
-        "premium_plan": current.get("premium_plan") if current else None,
-        "premium_plan_name": current.get("premium_plan_name") if current else None,
-        "premium_price": current.get("premium_price") if current else None,
-    }
     await db.update_user({
         "id": int(user_id),
         "expiry_time": expires,
@@ -1611,7 +1229,6 @@ async def _grant_review_access(user_id, order, minutes=None):
             "payment_status": "manual_review_required",
             "expires_at": expires,
             "review_started_at": now,
-            "payment_previous_premium_state": previous_premium_state,
         }},
     )
     return expires
@@ -1623,6 +1240,42 @@ async def _notify_admins(client, text):
             await client.send_message(admin_id, text, parse_mode=enums.ParseMode.HTML)
         except Exception as exc:
             LOGGER.warning("Could not notify admin %s: %s", admin_id, exc)
+
+
+@Client.on_callback_query(filters.regex(r"^paylang:"), group=1)
+async def premium_language_callback(client, query):
+    value = query.data.split(":", 1)[1]
+    if value == "menu":
+        lang = await _user_language(query.from_user.id, query.from_user)
+        await query.message.edit_text(
+            _tr(lang, "language_title") + "\n\n" + _tr(lang, "language_body"),
+            reply_markup=_language_markup(),
+            parse_mode=enums.ParseMode.HTML,
+        )
+        return await query.answer()
+    if value not in I18N:
+        return await query.answer("Language unavailable.", show_alert=True)
+    await db.update_user({"id": int(query.from_user.id), "language": value, "language_code": value})
+    await query.answer(_tr(value, "language_saved"), show_alert=True)
+    try:
+        order = await db.get_premium_order(int(query.from_user.id))
+        if order and order.get("selected_plan"):
+            plan_key = _plan_key(order.get("selected_plan"))
+            plan = PREMIUM_PLANS.get(plan_key, {}) if plan_key else {}
+            buttons = [[InlineKeyboardButton("📸 SEND PAYMENT SCREENSHOT", url=f"https://t.me/{PAYMENT_BOT_USERNAME}")]] if PAYMENT_BOT_USERNAME else []
+            buttons += [[InlineKeyboardButton("🌐 LANGUAGE", callback_data="paylang:menu")], [InlineKeyboardButton("• ʙᴀᴄᴋ ᴛᴏ ᴘʟᴀɴꜱ •", callback_data="free"), InlineKeyboardButton("• ᴄʟᴏꜱᴇ •", callback_data="close_data")]]
+            payment_text = (
+                "💳 <b>Premium Order Created</b>\n\n"
+                f"📦 Plan: <b>{escape(plan.get('name', order.get('plan_duration', 'Premium')))}</b>\n"
+                f"⏳ Duration: <b>{escape(plan.get('duration', order.get('plan_duration', 'N/A')))}</b>\n"
+                f"💰 Price: <b>{escape(str(order.get('plan_price', 'N/A')))}</b>\n\n"
+                "🟡 Payment status: <code>waiting_for_payment</code>\n\n"
+                "Complete the payment, then send the payment screenshot to the dedicated payment bot.\n\n"
+                "⚠️ Your screenshot is treated only as a payment submission and will be verified."
+            )
+            await query.message.edit_text(payment_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML)
+    except Exception:
+        pass
 
 
 @Client.on_callback_query(filters.regex(r"^buyplan_"), group=1)
@@ -1641,66 +1294,46 @@ async def select_premium_plan(client, query):
         plan["price"],
     )
 
-    lang = await _user_language(user.id, user)
     buttons = []
     if PAYMENT_BOT_USERNAME:
         buttons.append([
             InlineKeyboardButton(
-                _premium_flow_text(lang, "send"),
+                "📸 SEND PAYMENT SCREENSHOT",
                 url=f"https://t.me/{PAYMENT_BOT_USERNAME}",
             )
         ])
     buttons.append([
-        InlineKeyboardButton(_premium_flow_text(lang, "back"), callback_data="free"),
-        InlineKeyboardButton(_premium_flow_text(lang, "close"), callback_data="close_data"),
+        InlineKeyboardButton("🌐 LANGUAGE", callback_data="paylang:menu"),
+    ])
+    buttons.append([
+        InlineKeyboardButton("• ʙᴀᴄᴋ ᴛᴏ ᴘʟᴀɴꜱ •", callback_data="free"),
+        InlineKeyboardButton("• ᴄʟᴏꜱᴇ •", callback_data="close_data"),
     ])
 
-    payment_text = _premium_flow_text(
-        lang, "order",
-        plan=escape(plan["name"]), duration=escape(plan["duration"]), price=escape(plan["price"]),
+    payment_text = (
+        "💳 <b>Premium Order Created</b>\n\n"
+        f"📦 Plan: <b>{escape(plan['name'])}</b>\n"
+        f"⏳ Duration: <b>{escape(plan['duration'])}</b>\n"
+        f"💰 Price: <b>{escape(plan['price'])}</b>\n"
+        f"🆔 Order User ID: <code>{user.id}</code>\n"
+        "🟡 Payment status: <code>waiting_for_payment</code>\n\n"
+        "Complete the payment using the existing payment instructions, then "
+        "send the payment screenshot to the dedicated payment bot.\n\n"
+        "⚠️ Your screenshot is treated only as a payment submission. "
+        "The transaction will still be manually checked by the admin."
     )
     await query.message.edit_text(
         payment_text,
         reply_markup=InlineKeyboardMarkup(buttons),
         parse_mode=enums.ParseMode.HTML,
     )
-    await query.answer(_premium_flow_text(lang, "selected"))
-
-
-async def _saved_language(user_id):
-    try:
-        data = await db.get_user(int(user_id))
-        saved = (data or {}).get("language") or (data or {}).get("language_code")
-        return saved if saved in LANGUAGES else None
-    except Exception:
-        return None
-
-
-@Client.on_message(filters.command("plan") & filters.private & filters.incoming)
-async def user_plan_command(client, message):
-    user = message.from_user
-    if not user:
-        return
-    if not await _saved_language(user.id):
-        return await message.reply_text(
-            _tr("en", "language_title") + "\n\n" + _tr("en", "language_body"),
-            reply_markup=_language_markup(),
-            parse_mode=enums.ParseMode.HTML,
-        )
-    lang = await _user_language(user.id, user)
-    rows = premium_plan_buttons()
-    rows.append([InlineKeyboardButton(_tr(lang, "language_button"), callback_data="global_lang:menu")])
-    await message.reply_text(
-        script.FREE_TXT.format(user.mention),
-        reply_markup=InlineKeyboardMarkup(rows),
-        parse_mode=enums.ParseMode.HTML,
-    )
+    await query.answer("Premium plan selected.")
 
 
 @Client.on_message(filters.command("pending"))
 async def pending_payments(client, message):
     if message.from_user.id not in _admins():
-        return await _reply_temp(message, "You are not authorized to use this command.")
+        return await message.reply_text("You are not authorized to use this command.")
 
     rows = []
     async for order in db.get_pending_manual_verifications():
@@ -1714,27 +1347,27 @@ async def pending_payments(client, message):
             f"⏳ Expires: {_fmt_dt(order.get('expires_at'))}\n"
         )
     if not rows:
-        return await _reply_temp(message, "No Premium payments are waiting for manual verification.")
+        return await message.reply_text("No Premium payments are waiting for manual verification.")
     text = "🧾 <b>Pending Manual Payment Verification</b>\n\n" + "\n".join(rows)
-    await _reply_temp(message, text, parse_mode=enums.ParseMode.HTML)
+    await message.reply_text(text, parse_mode=enums.ParseMode.HTML)
 
 
 @Client.on_message(filters.command("premium"))
 async def premium_details(client, message):
     if message.from_user.id not in _admins():
-        return await _reply_temp(message, "You are not authorized to use this command.")
+        return await message.reply_text("You are not authorized to use this command.")
     if len(message.command) != 2:
-        return await _reply_temp(message, "Usage: /premium USER_ID")
+        return await message.reply_text("Usage: /premium USER_ID")
 
     try:
         user_id = int(message.command[1])
     except ValueError:
-        return await _reply_temp(message, "USER_ID must be numeric.")
+        return await message.reply_text("USER_ID must be numeric.")
 
     order = await db.get_premium_order(user_id)
     user = await db.get_user(user_id)
     if not order and not user:
-        return await _reply_temp(message, "User was not found.")
+        return await message.reply_text("User was not found.")
 
     expiry = _naive_utc(user.get("expiry_time")) if user else None
     active = isinstance(expiry, datetime.datetime) and expiry > _now()
@@ -1751,63 +1384,61 @@ async def premium_details(client, message):
         f"🔎 Manually verified: {bool((order or {}).get('manually_verified', False))}\n"
         f"🖼️ Screenshot message: {escape(str((order or {}).get('screenshot_message_id', 'N/A')))}"
     )
-    await _reply_temp(message, text, parse_mode=enums.ParseMode.HTML)
+    await message.reply_text(text, parse_mode=enums.ParseMode.HTML)
 
 
 @Client.on_message(filters.command("approve"))
 async def approve_payment(client, message):
     if message.from_user.id not in _admins():
-        return await _reply_temp(message, "You are not authorized to use this command.")
+        return await message.reply_text("You are not authorized to use this command.")
     if len(message.command) != 2:
-        return await _reply_temp(message, "Usage: /approve USER_ID")
+        return await message.reply_text("Usage: /approve USER_ID")
     try:
         user_id = int(message.command[1])
     except ValueError:
-        return await _reply_temp(message, "USER_ID must be numeric.")
+        return await message.reply_text("USER_ID must be numeric.")
 
     order = await db.get_premium_order(user_id)
     if not order:
-        return await _reply_temp(message, "No Premium payment record found for this user.")
+        return await message.reply_text("No Premium payment record found for this user.")
 
     screenshot_id = order.get("screenshot_message_id")
     if not screenshot_id:
-        return await _reply_temp(message, "No payment screenshot is attached to this order.")
+        return await message.reply_text("No payment screenshot is attached to this order.")
     approved = await db.approve_manual_payment(user_id, screenshot_id)
     if not approved.modified_count:
-        return await _reply_temp(message, "This payment is not waiting for manual approval.")
+        return await message.reply_text("This payment is not waiting for manual approval.")
     try:
         fresh = await db.get_premium_order(user_id)
         await _activate_order(client, fresh, screenshot_id)
     except Exception as exc:
         LOGGER.exception("Command approval activation failed for %s", user_id)
         await db.premium_orders.update_one({"user_id": user_id, "screenshot_message_id": screenshot_id}, {"$set": {"payment_status": "manual_review_required", "premium_status": "inactive"}})
-        return await _reply_temp(message, "Premium activation failed; the review was restored to pending.")
-    await _reply_temp(message, f"✅ Payment approved and Premium activated for <code>{user_id}</code>.", parse_mode=enums.ParseMode.HTML)
+        return await message.reply_text("Premium activation failed; the review was restored to pending.")
+    await message.reply_text(f"✅ Payment approved and Premium activated for <code>{user_id}</code>.", parse_mode=enums.ParseMode.HTML)
 
 
 @Client.on_message(filters.command("remove"))
 async def remove_premium_payment(client, message):
     if message.from_user.id not in _admins():
-        return await _reply_temp(message, "You are not authorized to use this command.")
+        return await message.reply_text("You are not authorized to use this command.")
     if len(message.command) != 2:
-        return await _reply_temp(message, "Usage: /remove USER_ID")
+        return await message.reply_text("Usage: /remove USER_ID")
     try:
         user_id = int(message.command[1])
     except ValueError:
-        return await _reply_temp(message, "USER_ID must be numeric.")
+        return await message.reply_text("USER_ID must be numeric.")
 
     result = await db.remove_premium_access(user_id)
     if not result:
-        return await _reply_temp(message, "Premium user was not found.")
+        return await message.reply_text("Premium user was not found.")
     await db.set_subscription_expired(user_id)
-    await _reply_temp(message, f"❌ Premium access removed for <code>{user_id}</code>.", parse_mode=enums.ParseMode.HTML)
+    await message.reply_text(f"❌ Premium access removed for <code>{user_id}</code>.", parse_mode=enums.ParseMode.HTML)
     try:
+        lang = await _user_language(user_id)
         await _send_user_temp(
-            client,
-            user_id,
-            "❌ <b>Premium Plan Removed</b>\n\n"
-            "Your Premium access has been removed by an administrator.\n"
-            "If this was related to payment verification, please contact the admin.",
+            client, user_id,
+            "❌ <b>Premium Plan Removed</b>\n\n" + _tr(lang, "rejected"),
             parse_mode=enums.ParseMode.HTML,
         )
     except Exception:
@@ -1817,27 +1448,27 @@ async def remove_premium_payment(client, message):
 @Client.on_message(filters.command("expire"))
 async def expire_now(client, message):
     if message.from_user.id not in _admins():
-        return await _reply_temp(message, "You are not authorized to use this command.")
+        return await message.reply_text("You are not authorized to use this command.")
     await run_expiry_check(client, notify=True)
-    await _reply_temp(message, "✅ Premium expiry check completed.")
+    await message.reply_text("✅ Premium expiry check completed.")
 
 
 @Client.on_message(filters.command("renew"))
 async def manual_renew(client, message):
     if message.from_user.id not in _admins():
-        return await _reply_temp(message, "You are not authorized to use this command.")
+        return await message.reply_text("You are not authorized to use this command.")
     if len(message.command) != 3:
-        return await _reply_temp(message, 
+        return await message.reply_text(
             "Usage: /renew USER_ID PLAN\n"
             "PLAN: week, month, 3month, 6month, year, lifetime"
         )
     try:
         user_id = int(message.command[1])
     except ValueError:
-        return await _reply_temp(message, "USER_ID must be numeric.")
+        return await message.reply_text("USER_ID must be numeric.")
     plan_key = _plan_key(message.command[2])
     if not plan_key:
-        return await _reply_temp(message, "Unknown plan.")
+        return await message.reply_text("Unknown plan.")
 
     now = _now()
     user = await db.get_user(user_id)
@@ -1872,7 +1503,7 @@ async def manual_renew(client, message):
         }},
         upsert=True,
     )
-    await _reply_temp(message, 
+    await message.reply_text(
         f"♻️ Premium renewed for <code>{user_id}</code>.\n"
         f"📦 Plan: {escape(plan['name'])}\n"
         f"⏳ New expiry: {_fmt_dt(new_expiry)}",
@@ -1894,14 +1525,14 @@ async def run_expiry_check(client, notify=True):
         await db.set_subscription_expired(user_id, order.get("expires_at") or now)
         if notify:
             try:
-                await _send_user_temp(
-                    client,
+                await client.send_message(
                     user_id,
-                    (lambda lang: _tr(lang, "expired") + "\n\n"
-                     f"📦 {_result_text(lang, 'plan')}: {escape(order.get('plan_duration', 'Premium'))}\n"
-                     f"📅 {_result_text(lang, 'expires')}: {_fmt_dt(order.get('expires_at') or now)}\n"
-                     f"🔴 {_expiry_label(lang, 'status')}"
-                    )(await _user_language(user_id)),
+                    "❌ <b>Premium Plan Expired</b>\n\n"
+                    f"📦 Plan: {escape(order.get('plan_duration', 'Premium'))}\n"
+                    f"📅 Expired: {_fmt_dt(order.get('expires_at') or now)}\n"
+                    "🔴 Status: Expired\n\n"
+                    "Your Premium access has ended.\n\n"
+                    "🔄 Purchase a new Premium plan to continue.",
                     parse_mode=enums.ParseMode.HTML,
                 )
             except Exception as exc:
@@ -1922,14 +1553,13 @@ async def run_expiry_check(client, notify=True):
         if expires_at - now <= four_days:
             user_id = int(order["user_id"])
             try:
-                await _send_user_temp(
-                    client,
+                await client.send_message(
                     user_id,
-                    (lambda lang: _tr(lang, "expiring") + "\n\n"
-                     f"📦 {_result_text(lang, 'plan')}: {escape(order.get('plan_duration', 'Premium'))}\n"
-                     f"⏳ {_result_text(lang, 'duration')}: {_expiry_label(lang, 'remaining')}\n"
-                     f"📅 {_result_text(lang, 'expires')}: {_fmt_dt(expires_at)}"
-                    )(await _user_language(user_id)),
+                    "⚠️ <b>Premium Expiring Soon</b>\n\n"
+                    f"📦 Plan: {escape(order.get('plan_duration', 'Premium'))}\n"
+                    "⏳ Remaining: 4 Days or less\n"
+                    f"📅 Expiry: {_fmt_dt(expires_at)}\n\n"
+                    "Renew your Premium plan to continue using the service.",
                     parse_mode=enums.ParseMode.HTML,
                 )
             except Exception as exc:
@@ -1950,10 +1580,13 @@ async def run_expiry_check(client, notify=True):
         if notify:
             try:
                 target = await client.get_users(user_id)
-                await _send_user_temp(
-                    client,
+                await client.send_message(
                     user_id,
-                    (lambda lang: f"<b>{target.mention}</b>\n\n" + _tr(lang, "expired"))(await _user_language(user_id, target)),
+                    f"<b>ʜᴇʏ {target.mention},\n\n"
+                    "ʏᴏᴜʀ ᴘʀᴇᴍɪᴜᴍ ᴀᴄᴄᴇss ʜᴀs ᴇxᴘɪʀᴇᴅ, "
+                    "ᴛʜᴀɴᴋ ʏᴏᴜ ꜰᴏʀ ᴜsɪɴɢ ᴏᴜʀ sᴇʀᴠɪᴄᴇ 😊\n\n"
+                    "ɪꜰ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴛᴀᴋᴇ ᴛʜᴇ ᴘʀᴇᴍɪᴜᴍ ᴀɢᴀɪɴ, "
+                    "ᴛʜᴇɴ ᴄʟɪᴄᴋ ᴏɴ ᴛʜᴇ /plan ꜰᴏʀ ᴛʜᴇ ᴅᴇᴛᴀɪʟs ᴏꜰ ᴛʜᴇ ᴘʟᴀɴs...</b>",
                     parse_mode=enums.ParseMode.HTML,
                 )
                 await client.send_message(
@@ -2040,13 +1673,11 @@ def register_payment_bot_handlers(payment_client):
                         }},
                     )
                     try:
-                        await _send_payment_result_with_screenshot(
-                            client,
+                        await client.send_message(
                             user_id,
-                            screenshot_message_id,
-                            f"✅ <b>{_result_text(await _user_language(user_id), 'approved_title')}</b>\n\n"
-                            f"{_result_text(await _user_language(user_id), 'approved_body')}",
-                            order=order,
+                            "✅ <b>Payment Approved Successfully!</b>\n\n"
+                            "Your payment has been confirmed. Your existing Premium plan and expiry date remain unchanged.",
+                            parse_mode=enums.ParseMode.HTML,
                         )
                     except Exception:
                         pass
@@ -2070,10 +1701,6 @@ def register_payment_bot_handlers(payment_client):
                 user_id, screenshot_message_id,
                 {"review_status": "approved", "approval_error": None},
             )
-            try:
-                await client.delete_messages(user_id, screenshot_message_id)
-            except Exception:
-                pass
             text = (
                 f"✅ <b>Payment approved</b>\n\n"
                 f"User ID: <code>{user_id}</code>\n"
@@ -2108,31 +1735,16 @@ def register_payment_bot_handlers(payment_client):
                         "rejected_at": _now(),
                     }},
                 )
-                previous = order.get("payment_previous_premium_state") or {}
-                # Remove only access created/changed by this exact payment.
-                # If the user already had Premium before this payment, restore it.
-                restore = {"id": user_id, "expiry_time": previous.get("expiry_time")}
-                if previous.get("premium_plan") is not None:
-                    restore["premium_plan"] = previous.get("premium_plan")
-                if previous.get("premium_plan_name") is not None:
-                    restore["premium_plan_name"] = previous.get("premium_plan_name")
-                if previous.get("premium_price") is not None:
-                    restore["premium_price"] = previous.get("premium_price")
-                await db.update_user(restore)
+                await db.remove_premium_access(user_id)
             try:
-                await _send_payment_result_with_screenshot(
-                    client,
+                await client.send_message(
                     user_id,
-                    screenshot_message_id,
-                    f"❌ <b>{_result_text(await _user_language(user_id), 'rejected_title')}</b>\n\n"
-                    f"{_result_text(await _user_language(user_id), 'rejected_body')}",
-                    order=order,
-                    reply_markup=_contact_admin_markup(await _user_language(user_id),),
+                    "❌ <b>Your payment screenshot was rejected after manual review.</b>\n\n"
+                    "The Premium access added for this payment has been removed. "
+                    "Please contact the admin if you think this is a mistake.",
+                    parse_mode=enums.ParseMode.HTML,
+                    reply_markup=_contact_admin_markup(),
                 )
-            except Exception:
-                pass
-            try:
-                await client.delete_messages(user_id, screenshot_message_id)
             except Exception:
                 pass
             text = (
@@ -2162,8 +1774,9 @@ def register_payment_bot_handlers(payment_client):
         except Exception:
             LOGGER.exception("Payment screenshot processing failed.")
             try:
-                await _reply_temp(message,
-                    _PROCESSING_ERROR_I18N.get(await _user_language(message.from_user.id, message.from_user), _PROCESSING_ERROR_I18N["en"])
+                await message.reply_text(
+                    "⚠️ Your screenshot was received, but processing failed temporarily. "
+                    "Please contact the admin."
                 )
             except Exception:
                 pass
