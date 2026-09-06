@@ -18,6 +18,7 @@ from shortzy import Shortzy
 from datetime import datetime
 from typing import Any
 from database.users_chats_db import db
+from language import small_caps
 
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,7 @@ def premium_plan_buttons(lang="en"):
         for key, plan in items[i:i + 2]:
             icon = "💎" if key == "lifetime" else "💳"
             row.append(InlineKeyboardButton(
-                f"{icon} {plan['name']} {plan['price']}",
+                f"{icon} {small_caps(plan['name'])} {plan['price']}",
                 callback_data=f"buyplan_{key}",
             ))
         rows.append(row)
@@ -50,7 +51,7 @@ def premium_plan_buttons(lang="en"):
         "pa":"💎 ਕਸਟਮ ਪਲਾਨ 💎", "ur":"💎 کسٹم پلان 💎", "as":"💎 কাষ্টম প্লেন 💎",
         "ne":"💎 कस्टम प्लान 💎", "hinglish":"💎 Custom Plan 💎",
     }
-    rows.append([InlineKeyboardButton(custom_labels.get(lang, custom_labels["en"]), callback_data="other")])
+    rows.append([InlineKeyboardButton(small_caps(custom_labels.get(lang, custom_labels["en"])), callback_data="other")])
     return rows
 
 
