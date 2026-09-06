@@ -30,10 +30,10 @@ from utils import (
     get_readable_time,
     imdb,
     formate_file_name,
+    premium_plan_buttons,
 )
 from database.users_chats_db import db
 from language import get_user_language, has_saved_language, tr, core_tr, home_tr, page_tr, small_caps, premium_plan_tr
-from plugins.premium_payments import premium_plan_buttons, premium_plan_pricing_text
 from database.ia_filterdb import (
     Media,
     get_search_results,
@@ -1514,7 +1514,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
     elif query.data == "free":
         # Keep the existing plan/pricing page, but add explicit plan-selection
         # buttons so a payment order can be tied to a Telegram user ID.
-        plan_buttons = premium_plan_buttons(ui_lang)
+        plan_buttons = premium_plan_buttons()
         plan_buttons.append([
             InlineKeyboardButton("• ʙᴀᴄᴋ •", callback_data="seeplans"),
             InlineKeyboardButton("• ᴄʟᴏsᴇ •", callback_data="close_data"),
@@ -1527,7 +1527,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             InputMediaPhoto(random.choice(PAYPICS)),
         )
         await query.message.edit_text(
-            text=premium_plan_pricing_text(ui_lang, query.from_user.mention),
+            text=script.FREE_TXT.format(query.from_user.mention),
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML,
         )
