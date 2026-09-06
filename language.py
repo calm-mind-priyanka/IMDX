@@ -4,6 +4,8 @@ This module lives at project root intentionally: bot.py auto-loads every
 plugins/*.py as a handler module, so shared language code must not be placed
 inside plugins/.
 """
+import re
+
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database.users_chats_db import db
 
@@ -124,30 +126,33 @@ _SMALL_CAPS = str.maketrans({
 })
 
 def small_caps(text):
-    """Apply Unicode small-caps to ordinary visible text.
+    """Apply Unicode small-caps to ordinary visible text only.
 
-    This helper intentionally does not know about Telegram/HTML markup. Use
-    ``small_caps_html`` for any Telegram HTML message so tag names, attributes,
-    URLs, IDs and placeholders are never modified.
+    This function is intentionally for plain text/buttons. Telegram HTML
+    messages must use :func:`small_caps_html` so markup and dynamic values are
+    preserved.
     """
     if text is None:
         return text
     return str(text).lower().translate(_SMALL_CAPS)
 
 
-def small_caps_html(text):
-    """Safely style visible Latin text while preserving Telegram HTML.
+_HTML_TOKEN_RE = re.compile(r"(<[^>]*>|&(?:#\d+|#x[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);|\{[^{}]+\}|https?://[^\s<>]+|/[_A-Za-z][_A-Za-z0-9-]*)")
 
-    Only text outside HTML tags is transformed. Attribute values (including
-    ``href``/``tg://user`` links), tag names, placeholders and entities remain
-    untouched, preventing malformed Telegram HTML.
+
+def small_caps_html(text):
+    """Safely style visible Latin text in a Telegram HTML message.
+
+    HTML tags, entities, and Python ``{placeholders}`` are left byte-for-byte
+    unchanged. This is important because the same translation helper is used
+    by /start, search/filter alerts, and verification messages.
     """
     if text is None:
         return text
     value = str(text)
-    parts = re.split(r"(<[^>]*>)", value)
+    parts = _HTML_TOKEN_RE.split(value)
     for i, part in enumerate(parts):
-        if not part or part.startswith("<"):
+        if not part or _HTML_TOKEN_RE.fullmatch(part):
             continue
         parts[i] = part.lower().translate(_SMALL_CAPS)
     return "".join(parts)
@@ -231,6 +236,8 @@ def core_tr(lang, key, **values):
     try:
         return small_caps_html(text.format(**values))
     except Exception:
+        # Keep placeholders intact if a caller omitted a value; never turn
+        # ``{mention}`` into a different key while styling the message.
         return small_caps_html(text)
 
 
@@ -484,4 +491,7 @@ def verify_tr(lang, key, **values):
         text = localized.get(lang, {}).get(key)
     if text is None:
         text = VERIFY.get("en", {}).get(key, key)
-    return small_caps_html(text.format(**values))
+    try:
+        return small_caps_html(text.format(**values))
+    except Exception:
+        return small_caps_html(text)
