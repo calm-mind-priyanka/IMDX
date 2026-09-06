@@ -34,6 +34,7 @@ from utils import (
 )
 from database.users_chats_db import db
 from language import get_user_language, has_saved_language, tr, core_tr, home_tr, page_tr, small_caps, premium_plan_tr
+from plugins.premium_payments import _premium_flow_text
 from database.ia_filterdb import (
     Media,
     get_search_results,
@@ -1431,7 +1432,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         ]
         reply_markup = InlineKeyboardMarkup(btn)
         await query.message.edit_text(
-            text=premium_plan_tr(ui_lang, query.from_user.mention),
+            text=_premium_flow_text(ui_lang, "plans", mention=query.from_user.mention),
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML,
         )
@@ -1475,7 +1476,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         btn = [
             [
                 InlineKeyboardButton(
-                    "🍁 ᴄʜᴇᴄᴋ ᴀʟʟ ᴘʟᴀɴꜱ & ᴘʀɪᴄᴇꜱ 🍁", callback_data="free"
+                    _premium_flow_text(ui_lang, "continue"), callback_data="free"
                 )
             ],
             [InlineKeyboardButton("⪻ ʙᴀᴄᴋ ᴛᴏ ʜᴏᴍᴇ", callback_data="start")],
@@ -1485,7 +1486,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             query.message.chat.id, query.message.id, InputMediaPhoto(SUBSCRIPTION)
         )
         await query.message.edit_text(
-            text=premium_plan_tr(ui_lang, query.from_user.mention),
+            text=_premium_flow_text(ui_lang, "plans", mention=query.from_user.mention),
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML,
         )
@@ -1494,10 +1495,10 @@ async def cb_handler(client: Client, query: CallbackQuery):
         btn = [
             [
                 InlineKeyboardButton(
-                    "🍁 ᴄʜᴇᴄᴋ ᴀʟʟ ᴘʟᴀɴꜱ & ᴘʀɪᴄᴇꜱ 🍁", callback_data="free"
+                    _premium_flow_text(ui_lang, "continue"), callback_data="free"
                 )
             ],
-            [InlineKeyboardButton("• 𝗖𝗹𝗼𝘀𝗲 •", callback_data="close_data")],
+            [InlineKeyboardButton(_premium_flow_text(ui_lang, "close"), callback_data="close_data")],
         ]
         reply_markup = InlineKeyboardMarkup(btn)
         m = await query.message.reply_sticker(
@@ -1506,7 +1507,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         await m.delete()
         await query.message.reply_photo(
             photo=(SUBSCRIPTION),
-            caption=premium_plan_tr(ui_lang, query.from_user.mention),
+            caption=_premium_flow_text(ui_lang, "plans", mention=query.from_user.mention),
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML,
         )
@@ -1514,10 +1515,10 @@ async def cb_handler(client: Client, query: CallbackQuery):
     elif query.data == "free":
         # Keep the existing plan/pricing page, but add explicit plan-selection
         # buttons so a payment order can be tied to a Telegram user ID.
-        plan_buttons = premium_plan_buttons()
+        plan_buttons = premium_plan_buttons(ui_lang)
         plan_buttons.append([
-            InlineKeyboardButton("• ʙᴀᴄᴋ •", callback_data="seeplans"),
-            InlineKeyboardButton("• ᴄʟᴏsᴇ •", callback_data="close_data"),
+            InlineKeyboardButton(_premium_flow_text(ui_lang, "back"), callback_data="seeplans"),
+            InlineKeyboardButton(_premium_flow_text(ui_lang, "close"), callback_data="close_data"),
         ])
         buttons = plan_buttons
         reply_markup = InlineKeyboardMarkup(buttons)
@@ -1527,7 +1528,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             InputMediaPhoto(random.choice(PAYPICS)),
         )
         await query.message.edit_text(
-            text=script.FREE_TXT.format(query.from_user.mention),
+            text=_premium_flow_text(ui_lang, "plans", mention=query.from_user.mention),
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML,
         )
@@ -1539,7 +1540,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
                     "📲 ᴄᴏɴᴛᴀᴄᴛ ᴛᴏ ᴏᴡɴᴇʀ", url=f"https://telegram.me/{OWNER_USERNAME}"
                 )
             ],
-            [InlineKeyboardButton("• 𝗕𝗮𝗰𝗸 •", callback_data="free")],
+            [InlineKeyboardButton(_premium_flow_text(ui_lang, "back"), callback_data="free")],
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
         await client.edit_message_media(
