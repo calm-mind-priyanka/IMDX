@@ -209,15 +209,9 @@ def core_tr(lang, key, **values):
     data = CORE.get(lang) or CORE[DEFAULT_LANGUAGE]
     text = data.get(key) or CORE[DEFAULT_LANGUAGE].get(key, key)
     try:
-        text = text.format(**values)
+        return small_caps(text.format(**values))
     except Exception:
-        pass
-    # Keep the home/start message structurally consistent in every language.
-    # Several translated start strings previously omitted the maintained-by
-    # footer, making the /start screen look incomplete depending on language.
-    if key == "start" and "ᴍᴀɪɴᴛᴀɪɴᴇᴅ ʙʏ" not in text.lower():
-        text += '\n<blockquote>🌿 ᴍᴀɪɴᴛᴀɪɴᴇᴅ ʙʏ : <a href="https://t.me/+DiOcxJnNQXdmNDdl">sandy Bots &lt;/&gt;</a></blockquote>'
-    return small_caps(text)
+        return small_caps(text)
 
 
 # Unified Premium plan-page template.  The layout/benefit structure is kept
