@@ -33,6 +33,7 @@ from utils import (
 )
 from database.users_chats_db import db
 from language import get_user_language, has_saved_language, tr, core_tr, home_tr, page_tr, small_caps, premium_plan_tr
+from plugins.premium_payments import premium_plan_buttons, premium_plan_pricing_text
 from database.ia_filterdb import (
     Media,
     get_search_results,
@@ -550,7 +551,7 @@ async def season_search(client: Client, query: CallbackQuery):
             [
                 InlineKeyboardButton(
                     text=f"🔗 {get_size(file.file_size)}≽ {formate_file_name(file.file_name)}",
-                    callback_data=f"cfiles#{reqnxt}#{file.file_id}",
+                    url=f"https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}",
                 ),
             ]
             for file in files
@@ -734,7 +735,7 @@ async def year_search(client: Client, query: CallbackQuery):
             [
                 InlineKeyboardButton(
                     text=f"🔗 {get_size(file.file_size)}≽ {formate_file_name(file.file_name)}",
-                    callback_data=f"cfiles#{reqnxt}#{file.file_id}",
+                    url=f"https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}",
                 ),
             ]
             for file in files
@@ -924,7 +925,7 @@ async def quality_search(client: Client, query: CallbackQuery):
             [
                 InlineKeyboardButton(
                     text=f"🔗 {get_size(file.file_size)}≽ {formate_file_name(file.file_name)}",
-                    callback_data=f"cfiles#{reqnxt}#{file.file_id}",
+                    url=f"https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}",
                 ),
             ]
             for file in files
@@ -1136,7 +1137,7 @@ async def lang_search(client: Client, query: CallbackQuery):
             [
                 InlineKeyboardButton(
                     text=f"🔗 {get_size(file.file_size)}≽ {formate_file_name(file.file_name)}",
-                    callback_data=f"cfiles#{reqnxt}#{file.file_id}",
+                    url=f"https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}",
                 ),
             ]
             for file in files
@@ -1513,25 +1514,11 @@ async def cb_handler(client: Client, query: CallbackQuery):
     elif query.data == "free":
         # Keep the existing plan/pricing page, but add explicit plan-selection
         # buttons so a payment order can be tied to a Telegram user ID.
-        plan_buttons = [
-            [
-                InlineKeyboardButton("💳 𝟶𝟷 ᴡᴇᴇᴋ ₹23", callback_data="buyplan_week"),
-                InlineKeyboardButton("💳 𝟶𝟷 ᴍᴏɴᴛʜ ₹59", callback_data="buyplan_month"),
-            ],
-            [
-                InlineKeyboardButton("💳 𝟶𝟹 ᴍᴏɴᴛʜ ₹𝟷𝟺𝟿", callback_data="buyplan_3month"),
-                InlineKeyboardButton("💳 𝟶𝟼 ᴍᴏɴᴛʜ ₹𝟸𝟼𝟿", callback_data="buyplan_6month"),
-            ],
-            [
-                InlineKeyboardButton("💳 𝟷𝟸 ᴍᴏɴᴛʜ ₹𝟺𝟿𝟿", callback_data="buyplan_year"),
-                InlineKeyboardButton("💎 ʟɪꜰᴇᴛɪᴍᴇ ₹𝟿𝟿𝟿", callback_data="buyplan_lifetime"),
-            ],
-            [InlineKeyboardButton("💎 ᴄᴜꜱᴛᴏᴍ ᴘʟᴀɴ 💎", callback_data="other")],
-            [
-                InlineKeyboardButton("• ʙᴀᴄᴋ •", callback_data="seeplans"),
-                InlineKeyboardButton("• ᴄʟᴏꜱᴇ •", callback_data="close_data"),
-            ],
-        ]
+        plan_buttons = premium_plan_buttons(ui_lang)
+        plan_buttons.append([
+            InlineKeyboardButton("• ʙᴀᴄᴋ •", callback_data="seeplans"),
+            InlineKeyboardButton("• ᴄʟᴏsᴇ •", callback_data="close_data"),
+        ])
         buttons = plan_buttons
         reply_markup = InlineKeyboardMarkup(buttons)
         await client.edit_message_media(
@@ -1540,7 +1527,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             InputMediaPhoto(random.choice(PAYPICS)),
         )
         await query.message.edit_text(
-            text=script.FREE_TXT.format(query.from_user.mention),
+            text=premium_plan_pricing_text(ui_lang, query.from_user.mention),
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML,
         )
