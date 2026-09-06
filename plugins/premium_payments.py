@@ -101,6 +101,23 @@ LANGUAGES = {
     "pa": "🇮🇳 ਪੰਜਾਬੀ", "ur": "🇮🇳 اردو",
 }
 
+PREMIUM_FLOW_I18N = {
+    "en": {
+        "intro": "💎 <b>Premium Plans</b>\n\nChoose an option below to continue.",
+        "continue": "• ᴄᴏɴᴛɪɴᴜᴇ •",
+        "close": "• ᴄʟᴏꜱᴇ •",
+    },
+}
+
+# All supported languages safely fall back to English for the Premium plan screen.
+for _code in LANGUAGES:
+    PREMIUM_FLOW_I18N.setdefault(_code, PREMIUM_FLOW_I18N["en"])
+
+def _premium_flow_text(lang, key):
+    return PREMIUM_FLOW_I18N.get(lang, PREMIUM_FLOW_I18N["en"]).get(
+        key, PREMIUM_FLOW_I18N["en"].get(key, key)
+    )
+
 LANGUAGE_ALIASES = {
     "en": "en", "en-us": "en", "en-gb": "en",
     "hi": "hi", "ta": "ta", "te": "te", "kn": "kn", "ml": "ml",
@@ -122,6 +139,7 @@ I18N = {
         "expired": "Your Premium access has ended.\n\n🔄 Purchase a new Premium plan to continue.",
         "expiring": "Renew your Premium plan to continue using the service.",
         "language_title": "🌐 <b>Choose Your Language</b>",
+        "language_first_guide": "Select your preferred language below to continue with Premium.",
         "language_body": "Select the language you want the bot to use for normal messages. You can change it anytime.",
         "language_saved": "🌐 Language updated successfully.",
         "contact": "💬 CONTACT ADMIN",
