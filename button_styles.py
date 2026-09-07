@@ -117,7 +117,7 @@ def _build_button(button):
         data = button.callback_data
         if isinstance(data, str):
             data = data.encode("utf-8")
-        flags = (1 if button.requires_password else 0) | (1 << 10)
+        flags = (1 if getattr(button, "requires_password", False) else 0) | (1 << 10)
         payload = _i(_KB_CALLBACK) + _i(flags) + style_blob + _tl_string(text) + _tl_bytes(data)
         return _StyledRawButton(payload)
 
@@ -139,7 +139,7 @@ def _build_button(button):
         payload = _i(_KB_WEBVIEW) + _i(flags) + style_blob + _tl_string(text) + _tl_string(button.web_app.url)
         return _StyledRawButton(payload)
 
-    if button.copy_text is not None:
+    if getattr(button, "copy_text", None) is not None:
         flags = 1 << 10
         payload = _i(_KB_COPY) + _i(flags) + style_blob + _tl_string(text) + _tl_string(button.copy_text)
         return _StyledRawButton(payload)
@@ -170,18 +170,41 @@ def install():
     original_init = InlineKeyboardButton.__init__
     original_write = InlineKeyboardButton.write
 
+    # Pyrofork versions differ in which newer InlineKeyboardButton fields
+    # they accept. Build kwargs from the installed constructor so this
+    # compatibility layer never passes an unknown argument (e.g. copy_text
+    # on Pyrofork 2.3.45).
+    try:
+        import inspect
+        _init_params = set(inspect.signature(original_init).parameters)
+    except Exception:
+        _init_params = set()
+
     def init(self, text, callback_data=None, url=None, web_app=None, login_url=None,
              user_id=None, switch_inline_query=None, switch_inline_query_current_chat=None,
              callback_game=None, requires_password=None, copy_text=None, style=None, **kwargs):
-        original_init(
-            self, text, callback_data=callback_data, url=url, web_app=web_app,
-            login_url=login_url, user_id=user_id,
-            switch_inline_query=switch_inline_query,
-            switch_inline_query_current_chat=switch_inline_query_current_chat,
-            callback_game=callback_game, requires_password=requires_password,
-            copy_text=copy_text,
-        )
+        values = {
+            "callback_data": callback_data,
+            "url": url,
+            "web_app": web_app,
+            "login_url": login_url,
+            "user_id": user_id,
+            "switch_inline_query": switch_inline_query,
+            "switch_inline_query_current_chat": switch_inline_query_current_chat,
+            "callback_game": callback_game,
+            "requires_password": requires_password,
+            "copy_text": copy_text,
+        }
+        supported = {k: v for k, v in values.items() if k in _init_params}
+        supported.update({k: v for k, v in kwargs.items() if k in _init_params})
+        original_init(self, text, **supported)
+        # Style is handled by our serializer when the installed Pyrofork
+        # schema does not expose it natively.
         self.style = style or choose_button_style(text, callback_data)
+        # Preserve newer fields for the serializer when the installed class
+        # does not define them natively.
+        if copy_text is not None and not hasattr(self, "copy_text"):
+            self.copy_text = copy_text
 
     async def write(self, client):
         styled = _build_button(self)
