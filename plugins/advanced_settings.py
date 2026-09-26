@@ -13,6 +13,7 @@ from utils import (
     save_default_settings,
 )
 from database.users_chats_db import db
+from database.config_db import mdb
 
 
 # ============================================================
@@ -217,6 +218,12 @@ async def show_group_list(client, target, direct_group_id=None):
             pass
 
     if not groups:
+        if user_id in ADMINS:
+            markup = InlineKeyboardMarkup([[InlineKeyboardButton("💎 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ sᴇᴛᴛɪɴɢs", callback_data="premium_settings")]])
+            text = "❌ <b>ɴᴏ ɢʀᴏᴜᴘs ᴀᴠᴀɪʟᴀʙʟᴇ.</b>\n\nᴏʀ ᴍᴀɴᴀɢᴇ ɢʟᴏʙᴀʟ ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴs ʙᴇʟᴏᴡ."
+            if target.chat.type == enums.ChatType.PRIVATE:
+                return await target.reply_text(text, reply_markup=markup, parse_mode=enums.ParseMode.HTML)
+            return await target.message.reply_text(text, reply_markup=markup, parse_mode=enums.ParseMode.HTML)
         text = "❌ <b>ɪ ᴄᴏᴜʟᴅ ɴᴏᴛ ғɪɴᴅ ᴀɴʏ ɢʀᴏᴜᴘs ᴡʜᴇʀᴇ ʏᴏᴜ ᴀʀᴇ ᴀɴ ᴀᴅᴍɪɴ.</b>"
         if target.chat.type == enums.ChatType.PRIVATE:
             return await target.reply_text(text)
@@ -226,6 +233,8 @@ async def show_group_list(client, target, direct_group_id=None):
         [InlineKeyboardButton(f"{title} · {gid}", callback_data=f"set_group#{gid}")]
         for gid, title in groups
     ]
+    if user_id in ADMINS:
+        buttons.insert(0, [InlineKeyboardButton("💎 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ sᴇᴛᴛɪɴɢs", callback_data="premium_settings")])
     markup = InlineKeyboardMarkup(buttons)
     text = "⚙️ <b>ꜱᴇʟᴇᴄᴛ ᴛʜᴇ ɢʀᴏᴜᴘ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴍᴀɴᴀɢᴇ:</b>"
 
@@ -606,6 +615,52 @@ def _parse_duration(value):
 # CALLBACK & MESSAGE HANDLERS
 # ============================================================
 
+def _premium_admin_text():
+    rows = []
+    for key, plan in PREMIUM_PLANS.items():
+        rows.append(f"<b>{plan['name']}</b> · <code>{plan['duration']}</code> · <code>{plan['price']}</code>")
+    return "💎 <b>ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ sᴇᴛᴛɪɴɢs</b>\n\n" + "\n".join(rows) + "\n\nꜱᴇʟᴇᴄᴛ ᴀ ᴘʟᴀɴ ᴛᴏ ᴄʜᴀɴɢᴇ ɪᴛ."
+
+def _premium_admin_buttons():
+    rows = []
+    for key, plan in PREMIUM_PLANS.items():
+        rows.append([InlineKeyboardButton(f"{plan['name']} · {plan['price']}", callback_data=f"premium_plan#{key}")])
+    rows.append([InlineKeyboardButton("✕ ᴄʟᴏsᴇ", callback_data="premium_close")])
+    return rows
+
+def _premium_plan_text(key):
+    plan = PREMIUM_PLANS[key]
+    return f"💎 <b>{plan['name']}</b>\n\n💰 Price: <code>{plan['price']}</code>\n⏳ Duration: <code>{plan['duration']}</code>\n\nChoose what you want to change."
+
+@Client.on_callback_query(filters.regex(r"^premium_(settings|plan#|edit#|close)"))
+async def premium_settings_callback(client, query):
+    if query.from_user.id not in ADMINS:
+        return await query.answer("ᴏɴʟʏ ᴛʜᴇ ʙᴏᴛ ᴀᴅᴍɪɴ ᴄᴀɴ ᴄʜᴀɴɢᴇ ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴs.", show_alert=True)
+    data = query.data
+    if data == "premium_settings":
+        return await query.message.edit_text(_premium_admin_text(), reply_markup=InlineKeyboardMarkup(_premium_admin_buttons()), parse_mode=enums.ParseMode.HTML)
+    if data == "premium_close":
+        return await query.message.delete()
+    if data.startswith("premium_plan#"):
+        key = data.split("#", 1)[1]
+        if key not in PREMIUM_PLANS:
+            return await query.answer("Invalid plan.", show_alert=True)
+        plan = PREMIUM_PLANS[key]
+        buttons = [
+            [InlineKeyboardButton("💰 sᴇᴛ ᴘʀɪᴄᴇ", callback_data=f"premium_edit#{key}#price")],
+            [InlineKeyboardButton("⏳ sᴇᴛ ᴅᴜʀᴀᴛɪᴏɴ", callback_data=f"premium_edit#{key}#duration")],
+            [InlineKeyboardButton("⋞ ʙᴀᴄᴋ", callback_data="premium_settings")],
+        ]
+        return await query.message.edit_text(_premium_plan_text(key), reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML)
+    if data.startswith("premium_edit#"):
+        _, key, field = data.split("#")
+        if key not in PREMIUM_PLANS or field not in {"price", "duration"}:
+            return await query.answer("Invalid setting.", show_alert=True)
+        PENDING[(query.from_user.id, 0)] = {"type": f"premium_{field}", "plan": key, "origin_page": "premium_settings", "prompt_chat_id": query.message.chat.id, "prompt_message_id": query.message.id}
+        prompt = "sᴇɴᴅ ᴛʜᴇ ᴘʀɪᴄᴇ ᴏɴʟʏ, ᴇ.ɢ. <code>23</code>" if field == "price" else "sᴇɴᴅ ᴅᴜʀᴀᴛɪᴏɴ, ᴇ.ɢ. <code>7d</code>, <code>30d</code>, <code>90d</code> ᴏʀ <code>lifetime</code>"
+        return await query.message.edit_text(f"<b>{prompt}</b>\n\nCurrent: <code>{plan[field if field != 'duration' else 'duration']}</code>\n\nSend /cancel to stop.", parse_mode=enums.ParseMode.HTML)
+    await query.answer()
+
 @Client.on_callback_query(filters.regex(r"^(set_|advanced_settings)"))
 async def settings_callback(client, query):
     data = query.data
@@ -835,6 +890,12 @@ async def advanced_cancel(client, message):
     (uid, gid), state = candidates[-1]
     PENDING.pop((uid, gid), None)
     page = state.get("origin_page", "main")
+    if page == "premium_settings" and uid in ADMINS:
+        try:
+            await client.edit_message_text(state["prompt_chat_id"], state["prompt_message_id"], _premium_plan_text(state["plan"]), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💰 sᴇᴛ ᴘʀɪᴄᴇ", callback_data=f"premium_edit#{state['plan']}#price")],[InlineKeyboardButton("⏳ sᴇᴛ ᴅᴜʀᴀᴛɪᴏɴ", callback_data=f"premium_edit#{state['plan']}#duration")],[InlineKeyboardButton("⋞ ʙᴀᴄᴋ", callback_data="premium_settings")]]), parse_mode=enums.ParseMode.HTML)
+        except Exception:
+            pass
+        return
 
     # Delete the user's /cancel command immediately.
     try:
@@ -870,15 +931,49 @@ async def advanced_input(client, message):
     if message.text.startswith("/"):
         raise ContinuePropagation
 
-    if not await is_check_admin(client, gid, uid):
-        PENDING.pop((user_id, gid), None)
-        raise ContinuePropagation
+    # Premium plan input is global and restricted to bot ADMINS; it does not
+    # belong to a Telegram group, so do not run the group-admin check for it.
+    if state.get("type") not in {"premium_price", "premium_duration"}:
+        if not await is_check_admin(client, gid, uid):
+            PENDING.pop((user_id, gid), None)
+            raise ContinuePropagation
 
     value = message.text.strip()
     if not value:
         return await message.reply_text("ᴠᴀʟᴜᴇ ᴄᴀɴɴᴏᴛ ʙᴇ ᴇᴍᴘᴛʏ")
 
     key = state["type"]
+
+    if key in {"premium_price", "premium_duration"}:
+        if uid not in ADMINS:
+            PENDING.pop((uid, 0), None)
+            raise ContinuePropagation
+        plan_key = state["plan"]
+        if plan_key not in PREMIUM_PLANS:
+            PENDING.pop((uid, 0), None)
+            return await message.reply_text("ᴘʟᴀɴ ɴᴏᴛ ғᴏᴜɴᴅ")
+        if key == "premium_price":
+            raw = value.replace("₹", "").replace(",", "").strip()
+            if not re.fullmatch(r"\d+(?:\.\d{1,2})?", raw) or float(raw) <= 0:
+                return await message.reply_text("sᴇɴᴅ ᴀ ᴠᴀʟɪᴅ ᴘʀɪᴄᴇ, ᴇ.ɢ. <code>23</code>", parse_mode=enums.ParseMode.HTML)
+            PREMIUM_PLANS[plan_key]["price"] = f"₹{raw.rstrip('0').rstrip('.') if '.' in raw else raw}"
+        else:
+            normalized = value.lower().strip()
+            if normalized in {"lifetime", "life", "forever"}:
+                PREMIUM_PLANS[plan_key]["days"] = None
+                PREMIUM_PLANS[plan_key]["duration"] = "Lifetime"
+            else:
+                m = re.fullmatch(r"(\d+)\s*(?:d|day|days)", normalized)
+                if not m or int(m.group(1)) <= 0:
+                    return await message.reply_text("sᴇɴᴅ duration like <code>7d</code>, <code>30d</code> or <code>90d</code>", parse_mode=enums.ParseMode.HTML)
+                days = int(m.group(1))
+                PREMIUM_PLANS[plan_key]["days"] = days
+                PREMIUM_PLANS[plan_key]["duration"] = f"{days} day" + ("s" if days != 1 else "")
+        await mdb.save_premium_plans(PREMIUM_PLANS)
+        PENDING.pop((uid, 0), None)
+        try: await message.delete()
+        except Exception: pass
+        return await client.edit_message_text(state["prompt_chat_id"], state["prompt_message_id"], _premium_plan_text(plan_key), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💰 sᴇᴛ ᴘʀɪᴄᴇ", callback_data=f"premium_edit#{plan_key}#price")],[InlineKeyboardButton("⏳ sᴇᴛ ᴅᴜʀᴀᴛɪᴏɴ", callback_data=f"premium_edit#{plan_key}#duration")],[InlineKeyboardButton("⋞ ʙᴀᴄᴋ", callback_data="premium_settings")]]), parse_mode=enums.ParseMode.HTML)
 
     async def _delete_input_message():
         try:
