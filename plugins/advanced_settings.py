@@ -1128,6 +1128,23 @@ async def advanced_input(client, message):
                 )
             PREMIUM_PLANS[plan_key]["days"] = days
             PREMIUM_PLANS[plan_key]["duration"] = duration_label
+
+            # Keep the public Premium-plan button label synchronized with the
+            # duration the owner just selected.  The payment UI uses
+            # PREMIUM_PLANS[...]["name"], so changing only `duration` would
+            # leave the old WEEK/MONTH/YEAR label visible to users.
+            if duration_label == "Lifetime":
+                PREMIUM_PLANS[plan_key]["name"] = "LIFE TIME"
+            else:
+                dm = re.fullmatch(r"(\d+)\s+(day|days|week|weeks|month|months|year|years)", duration_label, re.I)
+                if dm:
+                    amount = int(dm.group(1))
+                    unit = dm.group(2).upper()
+                    if amount == 1:
+                        unit = unit.rstrip("S")
+                    else:
+                        unit = unit.rstrip("S") + "S"
+                    PREMIUM_PLANS[plan_key]["name"] = f"{amount:02d} {unit}"
         try:
             await mdb.save_premium_plans(PREMIUM_PLANS)
         except Exception as exc:
