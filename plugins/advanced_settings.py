@@ -640,7 +640,6 @@ def _premium_admin_buttons(group_id=None):
         rows.append([InlineKeyboardButton(f"{plan['name']} · {plan['price']}", callback_data=f"premium_plan#{key}#{group_id or 0}")])
     if group_id:
         rows.append([InlineKeyboardButton("≪ ʙᴀᴄᴋ ᴛᴏ sᴇᴛᴛɪɴɢs", callback_data=f"premium_back#{group_id}")])
-    rows.append([InlineKeyboardButton("✕ ᴄʟᴏsᴇ", callback_data="premium_close")])
     return rows
 
 
