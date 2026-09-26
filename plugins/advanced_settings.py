@@ -28,6 +28,15 @@ _SETTINGS_CACHE = {}
 _AUTH_TTL = 15.0
 _SETTINGS_TTL = 1.5
 
+
+def _is_bot_owner(user_id):
+    """Global Premium-plan owner check; separate from group-admin permissions."""
+    try:
+        return int(user_id) == int(OWNER_ID)
+    except (TypeError, ValueError, NameError):
+        return False
+
+
 def _invalidate_settings_cache(gid):
     _SETTINGS_CACHE.pop(int(gid), None)
 
@@ -103,12 +112,12 @@ async def _group_title(client, group_id):
 # MAIN SETTINGS MENU
 # ============================================================
 
-def _main_settings_buttons(settings, grp_id):
+def _main_settings_buttons(settings, grp_id, include_premium=False):
 
     def onoff(key):
         return "ON ✅" if settings.get(key) else "OFF ❌"
 
-    return [
+    buttons = [
         [
             InlineKeyboardButton(
                 f"📝 ᴀᴜᴛᴏ ꜰɪʟᴛᴇʀ",
@@ -186,6 +195,9 @@ def _main_settings_buttons(settings, grp_id):
             )
         ],
     ]
+    if include_premium:
+        buttons.insert(0, [InlineKeyboardButton("💎 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ sᴇᴛᴛɪɴɢs", callback_data="premium_settings")])
+    return buttons
 
 
 # ============================================================
@@ -218,7 +230,7 @@ async def show_group_list(client, target, direct_group_id=None):
             pass
 
     if not groups:
-        if user_id in ADMINS:
+        if _is_bot_owner(user_id):
             markup = InlineKeyboardMarkup([[InlineKeyboardButton("💎 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ sᴇᴛᴛɪɴɢs", callback_data="premium_settings")]])
             text = "❌ <b>ɴᴏ ɢʀᴏᴜᴘs ᴀᴠᴀɪʟᴀʙʟᴇ.</b>\n\nᴏʀ ᴍᴀɴᴀɢᴇ ɢʟᴏʙᴀʟ ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴs ʙᴇʟᴏᴡ."
             if target.chat.type == enums.ChatType.PRIVATE:
@@ -233,7 +245,7 @@ async def show_group_list(client, target, direct_group_id=None):
         [InlineKeyboardButton(f"{title} · {gid}", callback_data=f"set_group#{gid}")]
         for gid, title in groups
     ]
-    if user_id in ADMINS:
+    if _is_bot_owner(user_id):
         buttons.insert(0, [InlineKeyboardButton("💎 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ sᴇᴛᴛɪɴɢs", callback_data="premium_settings")])
     markup = InlineKeyboardMarkup(buttons)
     text = "⚙️ <b>ꜱᴇʟᴇᴄᴛ ᴛʜᴇ ɢʀᴏᴜᴘ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴍᴀɴᴀɢᴇ:</b>"
@@ -260,7 +272,7 @@ async def show_group_settings(client, target, grp_id):
         "sᴇʟᴇᴄᴛ ᴏɴᴇ ᴏꜰ ᴛʜᴇ sᴇᴛᴛɪɴɢs ᴛʜᴀᴛ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴄʜᴀɴɢᴇ "
         "ᴀᴄᴄᴏʀᴅɪɴɢ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ..."
     )
-    markup = InlineKeyboardMarkup(_main_settings_buttons(settings, int(grp_id)))
+    markup = InlineKeyboardMarkup(_main_settings_buttons(settings, int(grp_id), include_premium=_is_bot_owner(user_id)))
 
     if hasattr(target, "message"):
         await target.message.edit_text(text, reply_markup=markup, parse_mode=enums.ParseMode.HTML)
@@ -634,8 +646,8 @@ def _premium_plan_text(key):
 
 @Client.on_callback_query(filters.regex(r"^premium_(settings|plan#|edit#|close)"))
 async def premium_settings_callback(client, query):
-    if query.from_user.id not in ADMINS:
-        return await query.answer("ᴏɴʟʏ ᴛʜᴇ ʙᴏᴛ ᴀᴅᴍɪɴ ᴄᴀɴ ᴄʜᴀɴɢᴇ ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴs.", show_alert=True)
+    if not _is_bot_owner(query.from_user.id):
+        return await query.answer("ᴏɴʟʏ ᴛʜᴇ ʙᴏᴛ ᴏᴡɴᴇʀ ᴄᴀɴ ᴄʜᴀɴɢᴇ ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴs.", show_alert=True)
     data = query.data
     if data == "premium_settings":
         return await query.message.edit_text(_premium_admin_text(), reply_markup=InlineKeyboardMarkup(_premium_admin_buttons()), parse_mode=enums.ParseMode.HTML)
@@ -890,7 +902,7 @@ async def advanced_cancel(client, message):
     (uid, gid), state = candidates[-1]
     PENDING.pop((uid, gid), None)
     page = state.get("origin_page", "main")
-    if page == "premium_settings" and uid in ADMINS:
+    if page == "premium_settings" and _is_bot_owner(uid):
         try:
             await client.edit_message_text(state["prompt_chat_id"], state["prompt_message_id"], _premium_plan_text(state["plan"]), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💰 sᴇᴛ ᴘʀɪᴄᴇ", callback_data=f"premium_edit#{state['plan']}#price")],[InlineKeyboardButton("⏳ sᴇᴛ ᴅᴜʀᴀᴛɪᴏɴ", callback_data=f"premium_edit#{state['plan']}#duration")],[InlineKeyboardButton("⋞ ʙᴀᴄᴋ", callback_data="premium_settings")]]), parse_mode=enums.ParseMode.HTML)
         except Exception:
@@ -945,7 +957,7 @@ async def advanced_input(client, message):
     key = state["type"]
 
     if key in {"premium_price", "premium_duration"}:
-        if uid not in ADMINS:
+        if not _is_bot_owner(uid):
             PENDING.pop((uid, 0), None)
             raise ContinuePropagation
         plan_key = state["plan"]
