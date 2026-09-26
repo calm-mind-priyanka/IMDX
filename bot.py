@@ -23,6 +23,7 @@ from pyrogram import __version__
 from pyrogram.raw.all import layer
 from database.ia_filterdb import Media
 from database.users_chats_db import db
+from database.config_db import mdb
 from info import *
 from utils import temp
 from Script import script
@@ -71,6 +72,7 @@ async def Jisshu_start():
     temp.BANNED_CHATS = b_chats
     await Media.ensure_indexes()
     await db.ensure_premium_indexes()
+    await mdb.load_premium_plans()
     me = await JisshuBot.get_me()
     temp.ME = me.id
     temp.U_NAME = me.username
