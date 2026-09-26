@@ -41,6 +41,7 @@ from database.ia_filterdb import (
     get_bad_files,
 )
 import random
+import hashlib
 
 lock = asyncio.Lock()
 import traceback
@@ -52,8 +53,14 @@ CAP = {}
 MAX_RESULTS = {}
 
 def _result_key(message):
-    """Stable per-message key so two users/groups cannot overwrite filter state."""
-    return f"{message.chat.id}-{message.id}-{message.from_user.id if message.from_user else 0}"
+    """Return a compact opaque key for Telegram callback_data.
+
+    Telegram limits callback_data to 64 bytes.  The old key contained chat id,
+    message id and user id in full, and could make Season/Quality callbacks
+    exceed that limit once their other parameters were added.
+    """
+    raw = f"{message.chat.id}:{message.id}:{message.from_user.id if message.from_user else 0}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
 
 
 async def _delete_after(message, seconds: int, request_message=None):
@@ -299,15 +306,37 @@ async def admin_commands(client, query):
     await query.answer()
 
     try:
-        media = InputMediaAnimation(
-            media="https://cdn.jsdelivr.net/gh/Jisshubot/JISSHU_BOTS/Video.mp4/Welcome_video_20240921_184741_0001.gif",
-            caption=script.ADMIN_CMD_TXT,
-            parse_mode=enums.ParseMode.HTML,
-        )
-        # edit_message_media only works when the original message is a media message.
-        # Fall back to text/caption editing so the Admin button never becomes a dead callback.
+        media_url = "https://cdn.jsdelivr.net/gh/Jisshubot/JISSHU_BOTS/Video.mp4/Welcome_video_20240921_184741_0001.gif"
+        # Telegram allows at most 1024 characters in a media caption.  The full
+        # admin command text is longer, so use the media only when it fits;
+        # otherwise replace the current message with the complete text.
         if query.message and (query.message.photo or query.message.animation or query.message.video or query.message.document):
-            await query.message.edit_media(media=media, reply_markup=reply_markup)
+            if len(script.ADMIN_CMD_TXT) <= 1024:
+                media = InputMediaAnimation(
+                    media=media_url,
+                    caption=script.ADMIN_CMD_TXT,
+                    parse_mode=enums.ParseMode.HTML,
+                )
+                await query.message.edit_media(media=media, reply_markup=reply_markup)
+            else:
+                try:
+                    await query.message.edit_text(
+                        script.ADMIN_CMD_TXT,
+                        parse_mode=enums.ParseMode.HTML,
+                        reply_markup=reply_markup,
+                    )
+                except Exception:
+                    # A media message cannot always be converted to text by
+                    # Telegram; send the full admin panel as a new message.
+                    new_msg = await query.message.reply_text(
+                        script.ADMIN_CMD_TXT,
+                        parse_mode=enums.ParseMode.HTML,
+                        reply_markup=reply_markup,
+                    )
+                    try:
+                        await query.message.delete()
+                    except Exception:
+                        pass
         elif query.message:
             await query.message.edit_text(
                 script.ADMIN_CMD_TXT,
@@ -318,7 +347,16 @@ async def admin_commands(client, query):
         pass
     except Exception as e:
         traceback.print_exc()
-        await query.answer(f"Admin panel could not be opened: {str(e)[:150]}", show_alert=True)
+        # The callback was already acknowledged; don't try to answer it again.
+        # Send a visible fallback instead so the Admin button never looks dead.
+        try:
+            await query.message.reply_text(
+                script.ADMIN_CMD_TXT,
+                parse_mode=enums.ParseMode.HTML,
+                reply_markup=reply_markup,
+            )
+        except Exception:
+            pass
 
 @Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
