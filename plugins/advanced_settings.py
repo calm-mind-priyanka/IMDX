@@ -613,7 +613,50 @@ async def _edit_prompt(client, state, text, markup=None):
         return None
 
 
+def _parse_premium_duration(value):
+    """Parse Premium duration in days, weeks, months, years, or lifetime.
+
+    Premium expiry is stored canonically as ``days`` because the payment
+    system calculates expiry from that field.  The human-facing ``duration``
+    keeps the unit the owner entered, so both formats remain supported.
+
+    Supported examples: 7d, 30 days, 1w, 2 weeks, 1mo, 3 months,
+    1y, 2 years, lifetime.  Month = 30 days; year = 365 days.
+    """
+    normalized = re.sub(r"\s+", " ", str(value).strip().lower())
+    if normalized in {"lifetime", "life time", "life", "forever"}:
+        return None, "Lifetime"
+
+    m = re.fullmatch(
+        r"(\d+)\s*(d|day|days|w|week|weeks|mo|mon|month|months|y|yr|year|years)",
+        normalized,
+    )
+    if not m:
+        return False, None
+
+    n = int(m.group(1))
+    if n <= 0:
+        return False, None
+
+    unit = m.group(2)
+    if unit in {"d", "day", "days"}:
+        days = n
+        label = f"{n} day" + ("s" if n != 1 else "")
+    elif unit in {"w", "week", "weeks"}:
+        days = n * 7
+        label = f"{n} week" + ("s" if n != 1 else "")
+    elif unit in {"mo", "mon", "month", "months"}:
+        days = n * 30
+        label = f"{n} month" + ("s" if n != 1 else "")
+    else:
+        days = n * 365
+        label = f"{n} year" + ("s" if n != 1 else "")
+
+    return days, label
+
+
 def _parse_duration(value):
+    # Keep the existing helper used by non-Premium settings unchanged.
     m = re.fullmatch(r"\s*(\d+)\s*([smhd])\s*", value.lower())
     if not m:
         return None
@@ -749,7 +792,11 @@ async def premium_settings_callback(client, query):
                 prompt = "sᴇɴᴅ ᴛʜᴇ ᴘʀɪᴄᴇ ᴏɴʟʏ, ᴇ.ɢ. <code>23</code>"
                 current = PREMIUM_PLANS[key]["price"]
             else:
-                prompt = "sᴇɴᴅ ᴅᴜʀᴀᴛɪᴏɴ, ᴇ.ɢ. <code>7d</code>, <code>30d</code>, <code>90d</code> ᴏʀ <code>lifetime</code>"
+                prompt = (
+                    "sᴇɴᴅ ᴅᴜʀᴀᴛɪᴏɴ: <code>7d</code>, <code>1week</code>, "
+                    "<code>30days</code>, <code>1month</code>, <code>3months</code>, "
+                    "<code>1year</code> ᴏʀ <code>lifetime</code>"
+                )
                 current = PREMIUM_PLANS[key]["duration"]
             return await query.message.edit_text(
                 f"<b>{prompt}</b>\n\nCurrent: <code>{current}</code>\n\nᴜsᴇ ᴛʜᴇ ᴄᴀɴᴄᴇʟ ʙᴜᴛᴛᴏɴ ᴏʀ sᴇɴᴅ /cancel.",
@@ -1071,17 +1118,16 @@ async def advanced_input(client, message):
                 return await message.reply_text("sᴇɴᴅ ᴀ ᴠᴀʟɪᴅ ᴘʀɪᴄᴇ, ᴇ.ɢ. <code>23</code>", parse_mode=enums.ParseMode.HTML)
             PREMIUM_PLANS[plan_key]["price"] = f"₹{raw.rstrip('0').rstrip('.') if '.' in raw else raw}"
         else:
-            normalized = value.lower().strip()
-            if normalized in {"lifetime", "life", "forever"}:
-                PREMIUM_PLANS[plan_key]["days"] = None
-                PREMIUM_PLANS[plan_key]["duration"] = "Lifetime"
-            else:
-                m = re.fullmatch(r"(\d+)\s*(?:d|day|days)", normalized)
-                if not m or int(m.group(1)) <= 0:
-                    return await message.reply_text("sᴇɴᴅ duration like <code>7d</code>, <code>30d</code> or <code>90d</code>", parse_mode=enums.ParseMode.HTML)
-                days = int(m.group(1))
-                PREMIUM_PLANS[plan_key]["days"] = days
-                PREMIUM_PLANS[plan_key]["duration"] = f"{days} day" + ("s" if days != 1 else "")
+            days, duration_label = _parse_premium_duration(value)
+            if days is False:
+                return await message.reply_text(
+                    "sᴇɴᴅ a valid duration like <code>7d</code>, <code>1week</code>, "
+                    "<code>30days</code>, <code>1month</code>, <code>3months</code>, "
+                    "<code>1year</code> or <code>lifetime</code>.",
+                    parse_mode=enums.ParseMode.HTML,
+                )
+            PREMIUM_PLANS[plan_key]["days"] = days
+            PREMIUM_PLANS[plan_key]["duration"] = duration_label
         try:
             await mdb.save_premium_plans(PREMIUM_PLANS)
         except Exception as exc:
