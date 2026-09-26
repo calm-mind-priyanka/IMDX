@@ -49,7 +49,7 @@ ADMINS = [
     int(admin) if id_pattern.search(admin) else admin
     for admin in environ.get("ADMINS", "6046055058").split()
 ]
-OWNER_ID = int(environ.get("OWNER_ID", "6250064764"))
+OWNER_ID = int(environ.get("OWNER_ID", "6046055058"))
 OWNER_USERNAME = environ.get(
     "OWNER_USERNAME", "Sandymaiwait"
 )  # without @ or https://t.me/
