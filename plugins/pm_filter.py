@@ -292,26 +292,33 @@ async def refercall(bot, query):
 async def admin_commands(client, query):
     ui_lang = await get_user_language(query.from_user.id, query.from_user)
     if query.from_user.id not in ADMINS:
-        return await query.answer("ᴛʜɪꜱ ɪꜱ ɴᴏᴛ ꜰᴏʀ ʏᴏᴜ ʙʀᴏ!", show_alert=True)
+        return await query.answer("ᴛʜɪs ɪs ɴᴏᴛ ғᴏʀ ʏᴏᴜ ʙʀᴏ!", show_alert=True)
 
-    buttons = [
-        [
-            InlineKeyboardButton(tr(ui_lang, "back"), callback_data="help"),
-        ]
-    ]
+    buttons = [[InlineKeyboardButton(tr(ui_lang, "back"), callback_data="help")]]
     reply_markup = InlineKeyboardMarkup(buttons)
+    await query.answer()
 
-    await client.edit_message_media(
-        chat_id=query.message.chat.id,
-        message_id=query.message.id,
-        media=InputMediaAnimation(
+    try:
+        media = InputMediaAnimation(
             media="https://cdn.jsdelivr.net/gh/Jisshubot/JISSHU_BOTS/Video.mp4/Welcome_video_20240921_184741_0001.gif",
             caption=script.ADMIN_CMD_TXT,
             parse_mode=enums.ParseMode.HTML,
-        ),
-        reply_markup=reply_markup,
-    )
-
+        )
+        # edit_message_media only works when the original message is a media message.
+        # Fall back to text/caption editing so the Admin button never becomes a dead callback.
+        if query.message and (query.message.photo or query.message.animation or query.message.video or query.message.document):
+            await query.message.edit_media(media=media, reply_markup=reply_markup)
+        elif query.message:
+            await query.message.edit_text(
+                script.ADMIN_CMD_TXT,
+                parse_mode=enums.ParseMode.HTML,
+                reply_markup=reply_markup,
+            )
+    except MessageNotModified:
+        pass
+    except Exception as e:
+        traceback.print_exc()
+        await query.answer(f"Admin panel could not be opened: {str(e)[:150]}", show_alert=True)
 
 @Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
@@ -473,15 +480,23 @@ async def seasons_cb_handler(client: Client, query: CallbackQuery):
             )
         ]
     )
-    await query.message.edit_text(
+    await query.answer()
+    try:
+        await query.message.edit_text(
         f"<b>{tr(ui_lang, 'season_choose')}</b>",
-        reply_markup=InlineKeyboardMarkup(btn),
-    )
+            reply_markup=InlineKeyboardMarkup(btn),
+        )
+    except MessageNotModified:
+        pass
+    except Exception as e:
+        traceback.print_exc()
+        await query.answer(f"Season menu could not be opened: {str(e)[:150]}", show_alert=True)
     return
 
 
 @Client.on_callback_query(filters.regex(r"^season_search#"))
 async def season_search(client: Client, query: CallbackQuery):
+    await query.answer()
     ui_lang = await get_user_language(query.from_user.id, query.from_user)
     _, season, key, offset, orginal_offset, req = query.data.split("#")
     seas = int(season.split(" ", 1)[1])
@@ -863,15 +878,23 @@ async def quality_cb_handler(client: Client, query: CallbackQuery):
             )
         ]
     )
-    await query.message.edit_text(
+    await query.answer()
+    try:
+        await query.message.edit_text(
         f"<b>{tr(ui_lang, 'quality_choose')}</b>",
-        reply_markup=InlineKeyboardMarkup(btn),
-    )
+            reply_markup=InlineKeyboardMarkup(btn),
+        )
+    except MessageNotModified:
+        pass
+    except Exception as e:
+        traceback.print_exc()
+        await query.answer(f"Quality menu could not be opened: {str(e)[:150]}", show_alert=True)
     return
 
 
 @Client.on_callback_query(filters.regex(r"^quality_search#"))
 async def quality_search(client: Client, query: CallbackQuery):
+    await query.answer()
     _, qul, key, offset, orginal_offset, req = query.data.split("#")
     if int(req) != query.from_user.id:
         return await query.answer(script.ALRT_TXT, show_alert=True)
@@ -1025,7 +1048,6 @@ async def quality_search(client: Client, query: CallbackQuery):
     except MessageNotModified:
         pass
     return
-    await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
 
 
 @Client.on_callback_query(filters.regex(r"^languages#"))
@@ -1066,6 +1088,7 @@ async def languages_cb_handler(client: Client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex(r"^lang_search#"))
 async def lang_search(client: Client, query: CallbackQuery):
+    await query.answer()
     _, lang, key, offset, orginal_offset, req = query.data.split("#")
     lang2 = lang[:3]
     if int(req) != query.from_user.id:
@@ -1237,7 +1260,6 @@ async def lang_search(client: Client, query: CallbackQuery):
     except MessageNotModified:
         pass
     return
-    await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
 
 
 @Client.on_callback_query(filters.regex(r"^spol"))
