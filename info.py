@@ -125,7 +125,6 @@ LANGUAGES = [
     "marathi",
     "gujarati",
     "punjabi",
-    "marathi",
 ]
 QUALITIES = [
     "HdRip",
