@@ -21,6 +21,8 @@ from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from PIL import Image, ImageOps, ImageFilter, ImageEnhance
 import pytesseract
 
+from database.config_db import mdb
+
 from info import (
     ADMINS,
     LOG_CHANNEL,
@@ -260,10 +262,12 @@ def _tr(lang, key, **values):
 # Premium UI text is keyed to the user's GLOBAL bot language.  The Premium
 # screen never asks for a second language choice.
 _PREMIUM_FLOW = {
-    "en": {"intro": "<b>👋 ʜᴇʏ {mention},</b>\n\n<b>🎁 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴs</b>\n\nChoose a Premium plan below to continue.", "continue": "🍁 ᴄʜᴇᴄᴋ ᴀʟʟ ᴘʟᴀɴs & ᴘʀɪᴄᴇs 🍁", "close": "• ᴄʟᴏsᴇ •", "plans": "<b>👋 ʜᴇʏ {mention}</b>\n\n<blockquote>🎖️ <b>AVAILABLE PREMIUM PLANS</b></blockquote>\n\n🆔 UPI ID ➩ <code>lamasandeep821@okicici</code> [TAP TO COPY]\n\n⛽️ Check your active plan: /myplan\n\n🏷️ Premium proof\n\n‼️ Send the screenshot after payment.\n‼️ Please allow a little time for verification."},
+    "en": {"intro": "<b>👋 ʜᴇʏ {mention},</b>\n\n<b>🎁 ᴘʀᴇᴍɪᴜᴍ ғᴇᴀᴛᴜʀᴇ ʙᴇɴɪꜰɪᴛs:</b>\n\n❏ ɴᴏ ɴᴇᴇᴅ ᴛᴏ ᴏᴘᴇɴ ʟɪɴᴋꜱ\n❏ ɢᴇᴛ ᴅɪʀᴇᴄᴛ ғɪʟᴇs\n❏ ᴀᴅ-ғʀᴇᴇ ᴇxᴘᴇʀɪᴇɴᴄᴇ\n❏ ʜɪɢʜ-sᴘᴇᴇᴅ ᴅᴏᴡɴʟᴏᴀᴅ ʟɪɴᴋ\n❏ ᴍᴜʟᴛɪ-ᴘʟᴀʏᴇʀ sᴛʀᴇᴀᴍɪɴɢ ʟɪɴᴋs\n❏ ᴜɴʟɪᴍɪᴛᴇᴅ ᴍᴏᴠɪᴇs ᴀɴᴅ sᴇʀɪᴇs\n❏ ꜰᴜʟʟ ᴀᴅᴍɪɴ sᴜᴘᴘᴏʀᴛ\n❏ ʀᴇǫᴜᴇsᴛ ᴡɪʟʟ ʙᴇ ᴄᴏᴍᴘʟᴇᴛᴇᴅ ɪɴ 𝟷ʜ [ ɪꜰ ᴀᴠᴀɪʟᴀʙʟᴇ ]", "continue": "🍁 ᴄʜᴇᴄᴋ ᴀʟʟ ᴘʟᴀɴs & ᴘʀɪᴄᴇs 🍁", "close": "• ᴄʟᴏsᴇ •", "plans": "<b>👋 ʜᴇʏ {mention}</b>\n\n<blockquote>🎖️ <b>AVAILABLE PREMIUM PLANS</b></blockquote>\n\n🆔 UPI ID ➩ <code>lamasandeep821@okicici</code> [TAP TO COPY]\n\n⛽️ Check your active plan: /myplan\n\n🏷️ Premium proof\n\n‼️ Send the screenshot after payment.\n‼️ Please allow a little time for verification."},
     "hi": {"intro": "<b>👋 नमस्ते {mention},</b>\n\n<b>🎁 Premium Plans</b>\n\nनीचे Premium plan चुनकर आगे बढ़ें।", "continue": "🍁 सभी Premium Plans और कीमतें देखें 🍁", "close": "• बंद करें •", "plans": "<b>👋 नमस्ते {mention}</b>\n\n<blockquote>🎖️ <b>उपलब्ध Premium Plans</b></blockquote>\n\n🆔 UPI ID ➩ <code>lamasandeep821@okicici</code> [कॉपी करने के लिए टैप करें]\n\n⛽️ अपना active plan देखें: /myplan\n\n‼️ Payment के बाद screenshot भेजें।\n‼️ Verification के लिए थोड़ा समय दें।"},
     "hinglish": {"intro": "<b>👋 Hey {mention},</b>\n\n<b>🎁 Premium Plans</b>\n\nNeeche Premium plan choose karke continue karo.", "continue": "🍁 Saare Premium Plans & Prices Dekho 🍁", "close": "• Close •", "plans": "<b>👋 Hey {mention}</b>\n\n<blockquote>🎖️ <b>AVAILABLE PREMIUM PLANS</b></blockquote>\n\n🆔 UPI ID ➩ <code>lamasandeep821@okicici</code> [COPY KARNE KE LIYE TAP KARO]\n\n⛽️ Active plan check karo: /myplan\n\n‼️ Payment ke baad screenshot bhejo.\n‼️ Verification ke liye thoda time do."},
 }
+_PREMIUM_FLOW["hi"]["intro"] = "<b>👋 नमस्ते {mention},</b>\n\n<b>🎁 Premium फीचर्स:</b>\n\n❏ लिंक खोलने की जरूरत नहीं\n❏ डायरेक्ट फाइल्स\n❏ विज्ञापन-मुक्त अनुभव\n❏ हाई-स्पीड डाउनलोड लिंक\n❏ मल्टी-प्लेयर स्ट्रीमिंग लिंक\n❏ अनलिमिटेड मूवीज़ और सीरीज़\n❏ पूरा एडमिन सपोर्ट\n❏ अनुरोध उपलब्ध होने पर 1 घंटे में पूरा किया जाएगा"
+_PREMIUM_FLOW["hinglish"]["intro"] = "<b>👋 Hey {mention},</b>\n\n<b>🎁 Premium Feature Benefits:</b>\n\n❏ Link open karne ki zarurat nahi\n❏ Direct files\n❏ Ad-free experience\n❏ High-speed download link\n❏ Multi-player streaming links\n❏ Unlimited movies aur series\n❏ Full admin support\n❏ Request available ho to 1h mein complete hoga"
 _PREMIUM_FLOW.update({
     "ta": {"intro":"<b>👋 வணக்கம் {mention},</b>\n\n<b>🎁 Premium திட்டங்கள்</b>\n\nகீழே ஒரு Premium திட்டத்தைத் தேர்வு செய்து தொடரவும்.","continue":"🍁 அனைத்து Premium திட்டங்கள் & விலைகள் 🍁","close":"• மூடு •","plans":"<b>👋 வணக்கம் {mention}</b>\n\n🎖️ <b>கிடைக்கும் Premium திட்டங்கள்</b>\n\n🆔 UPI ID ➩ <code>lamasandeep821@okicici</code>\n\n⛽️ உங்கள் active plan: /myplan\n\n‼️ Payment முடிந்த பிறகு screenshot அனுப்பவும்."},
     "te": {"intro":"<b>👋 నమస్తే {mention},</b>\n\n<b>🎁 Premium Plans</b>\n\nక్రింద Premium plan ఎంచుకుని కొనసాగండి.","continue":"🍁 అన్ని Premium Plans & ధరలు 🍁","close":"• మూసివేయి •","plans":"<b>👋 నమస్తే {mention}</b>\n\n🎖️ <b>అందుబాటులో ఉన్న Premium Plans</b>\n\n🆔 UPI ID ➩ <code>lamasandeep821@okicici</code>\n\n⛽️ Active plan: /myplan\n\n‼️ Payment తర్వాత screenshot పంపండి."},
@@ -277,6 +281,18 @@ _PREMIUM_FLOW.update({
     "as": {"intro":"<b>👋 নমস্কাৰ {mention},</b>\n\n<b>🎁 Premium Plans</b>\n\nতলত এটা Premium plan বাছি আগবাঢ়ক।","continue":"🍁 সকলো Premium Plans আৰু মূল্য 🍁","close":"• বন্ধ কৰক •","plans":"<b>👋 নমস্কাৰ {mention}</b>\n\n🎖️ <b>উপলব্ধ Premium Plans</b>\n\n🆔 UPI ID ➩ <code>lamasandeep821@okicici</code>\n\n⛽️ Active plan: /myplan\n\n‼️ Payment কৰাৰ পিছত screenshot পঠিয়াওক।"},
     "ne": {"intro":"<b>👋 नमस्ते {mention},</b>\n\n<b>🎁 Premium Plans</b>\n\nतल Premium plan छानेर अगाडि बढ्नुहोस्।","continue":"🍁 सबै Premium Plans र मूल्यहरू 🍁","close":"• बन्द गर्नुहोस् •","plans":"<b>👋 नमस्ते {mention}</b>\n\n🎖️ <b>उपलब्ध Premium Plans</b>\n\n🆔 UPI ID ➩ <code>lamasandeep821@okicici</code>\n\n⛽️ Active plan: /myplan\n\n‼️ Payment पछि screenshot पठाउनुहोस्।"},
 })
+
+_PREMIUM_FLOW["ta"]["intro"] = "<b>👋 வணக்கம் {mention},</b>\n\n<b>🎁 Premium அம்ச நன்மைகள்:</b>\n\n❏ இணைப்புகளை திறக்க தேவையில்லை\n❏ நேரடி கோப்புகள்\n❏ விளம்பரமில்லா அனுபவம்\n❏ அதிவேக பதிவிறக்க இணைப்பு\n❏ பல Player streaming links\n❏ வரம்பற்ற movies மற்றும் series\n❏ முழு Admin support\n❏ கிடைத்தால் request 1 மணி நேரத்தில் முடிக்கப்படும்"
+_PREMIUM_FLOW["te"]["intro"] = "<b>👋 నమస్తే {mention},</b>\n\n<b>🎁 Premium ఫీచర్ ప్రయోజనాలు:</b>\n\n❏ Links open చేయాల్సిన అవసరం లేదు\n❏ Direct files\n❏ Ad-free experience\n❏ High-speed download link\n❏ Multi-player streaming links\n❏ Unlimited movies మరియు series\n❏ Full admin support\n❏ అందుబాటులో ఉంటే request 1 గంటలో పూర్తవుతుంది"
+_PREMIUM_FLOW["kn"]["intro"] = "<b>👋 ನಮಸ್ಕಾರ {mention},</b>\n\n<b>🎁 Premium ವೈಶಿಷ್ಟ್ಯಗಳ ಪ್ರಯೋಜನಗಳು:</b>\n\n❏ Links ತೆರೆಯುವ ಅಗತ್ಯವಿಲ್ಲ\n❏ Direct files\n❏ Ad-free experience\n❏ High-speed download link\n❏ Multi-player streaming links\n❏ Unlimited movies ಮತ್ತು series\n❏ Full admin support\n❏ ಲಭ್ಯವಿದ್ದರೆ request 1 ಗಂಟೆಯಲ್ಲಿ ಪೂರ್ಣಗೊಳ್ಳುತ್ತದೆ"
+_PREMIUM_FLOW["ml"]["intro"] = "<b>👋 നമസ്കാരം {mention},</b>\n\n<b>🎁 Premium സവിശേഷതകളുടെ നേട്ടങ്ങൾ:</b>\n\n❏ Links തുറക്കേണ്ടതില്ല\n❏ Direct files\n❏ Ad-free experience\n❏ High-speed download link\n❏ Multi-player streaming links\n❏ Unlimited movies and series\n❏ Full admin support\n❏ ലഭ്യമെങ്കിൽ request 1 മണിക്കൂറിൽ പൂർത്തിയാകും"
+_PREMIUM_FLOW["bn"]["intro"] = "<b>👋 হ্যালো {mention},</b>\n\n<b>🎁 Premium ফিচারের সুবিধা:</b>\n\n❏ লিংক খোলার দরকার নেই\n❏ Direct files\n❏ বিজ্ঞাপনমুক্ত অভিজ্ঞতা\n❏ High-speed download link\n❏ Multi-player streaming links\n❏ Unlimited movies এবং series\n❏ Full admin support\n❏ পাওয়া গেলে request 1 ঘণ্টায় সম্পূর্ণ হবে"
+_PREMIUM_FLOW["mr"]["intro"] = "<b>👋 नमस्कार {mention},</b>\n\n<b>🎁 Premium फीचरचे फायदे:</b>\n\n❏ लिंक उघडण्याची गरज नाही\n❏ Direct files\n❏ जाहिरात-मुक्त अनुभव\n❏ High-speed download link\n❏ Multi-player streaming links\n❏ Unlimited movies आणि series\n❏ Full admin support\n❏ उपलब्ध असल्यास request 1 तासात पूर्ण होईल"
+_PREMIUM_FLOW["gu"]["intro"] = "<b>👋 નમસ્તે {mention},</b>\n\n<b>🎁 Premium ફીચરના ફાયદા:</b>\n\n❏ Link ખોલવાની જરૂર નથી\n❏ Direct files\n❏ Ad-free experience\n❏ High-speed download link\n❏ Multi-player streaming links\n❏ Unlimited movies અને series\n❏ Full admin support\n❏ ઉપલબ્ધ હોય તો request 1 કલાકમાં પૂર્ણ થશે"
+_PREMIUM_FLOW["pa"]["intro"] = "<b>👋 ਸਤ ਸ੍ਰੀ ਅਕਾਲ {mention},</b>\n\n<b>🎁 Premium ਫੀਚਰ ਦੇ ਫਾਇਦੇ:</b>\n\n❏ Link ਖੋਲ੍ਹਣ ਦੀ ਲੋੜ ਨਹੀਂ\n❏ Direct files\n❏ Ad-free experience\n❏ High-speed download link\n❏ Multi-player streaming links\n❏ Unlimited movies ਅਤੇ series\n❏ Full admin support\n❏ ਉਪਲਬਧ ਹੋਣ ਤੇ request 1 ਘੰਟੇ ਵਿੱਚ ਪੂਰੀ ਹੋਵੇਗੀ"
+_PREMIUM_FLOW["ur"]["intro"] = "<b>👋 السلام علیکم {mention},</b>\n\n<b>🎁 Premium فیچر کے فوائد:</b>\n\n❏ لنکس کھولنے کی ضرورت نہیں\n❏ Direct files\n❏ اشتہارات سے پاک تجربہ\n❏ High-speed download link\n❏ Multi-player streaming links\n❏ Unlimited movies اور series\n❏ Full admin support\n❏ دستیاب ہو تو request 1 گھنٹے میں مکمل ہوگی"
+_PREMIUM_FLOW["as"]["intro"] = "<b>👋 নমস্কাৰ {mention},</b>\n\n<b>🎁 Premium সুবিধাসমূহ:</b>\n\n❏ Link খোলাৰ প্ৰয়োজন নাই\n❏ Direct files\n❏ বিজ্ঞাপনমুক্ত অভিজ্ঞতা\n❏ High-speed download link\n❏ Multi-player streaming links\n❏ Unlimited movies আৰু series\n❏ Full admin support\n❏ উপলব্ধ হ'লে request 1 ঘণ্টাত সম্পূৰ্ণ হ'ব"
+_PREMIUM_FLOW["ne"]["intro"] = "<b>👋 नमस्ते {mention},</b>\n\n<b>🎁 Premium सुविधाका फाइदाहरू:</b>\n\n❏ Link खोल्न आवश्यक छैन\n❏ Direct files\n❏ विज्ञापनरहित अनुभव\n❏ High-speed download link\n❏ Multi-player streaming links\n❏ Unlimited movies र series\n❏ Full admin support\n❏ उपलब्ध भएमा request 1 घण्टामा पूरा हुनेछ"
 
 PREMIUM_PROOF_URL = "https://t.me/+hJg4bVnzCNZiOTE1"
 
@@ -298,6 +314,25 @@ def _premium_flow_text(lang, key, **values):
         elif "premium proof" not in text.lower():
             text += "\n\n" + proof_line
     return small_caps_html(text)
+
+def premium_ads_intro(lang, mention):
+    texts = {
+        "en": "<blockquote>ᴛᴏ ᴇxᴘᴇʀɪᴇɴᴄᴇ ᴀᴅs ғʀᴇᴇ sᴇʀᴠɪᴄᴇ ʏᴏᴜ ᴄᴀɴ ʙᴜʏ ᴏᴜʀ ᴘʀᴇᴍɪᴜᴍ sᴇʀᴠɪᴄᴇ ᴏʀ ʏᴏᴜ ᴄᴀɴ sʜᴀʀᴇ ᴏᴜʀ ʙᴏᴛ ᴡɪᴛʜ ʏᴏᴜʀ ғʀɪᴇɴᴅs ᴛᴏ ɢᴇᴛ ᴘʀᴇᴍɪᴜᴍ.</blockquote>",
+        "hi": "<blockquote>ᴀᴅs-ғʀᴇᴇ sᴇʀᴠɪᴄᴇ ᴋᴀ ᴀɴᴜʙʜᴀᴠ ᴋᴀʀɴᴇ ᴋᴇ ʟɪʏᴇ ᴀᴀᴘ ʜᴀᴍᴀʀᴀ ᴘʀᴇᴍɪᴜᴍ sᴇʀᴠɪᴄᴇ ᴋʜᴀʀɪᴅ sᴀᴋᴛᴇ ʜᴀɪɴ ʏᴀ ʜᴀᴍᴀʀᴀ ʙᴏᴛ ᴅᴏsᴛᴏɴ ᴋᴇ sᴀᴀᴛʜ sʜᴀʀᴇ ᴋᴀʀᴋᴇ ᴘʀᴇᴍɪᴜᴍ ᴘᴀᴀ sᴀᴋᴛᴇ ʜᴀɪɴ.</blockquote>",
+        "ta": "<blockquote>ᴀᴅs-ғʀᴇᴇ sᴇʀᴠɪᴄᴇ ᴘᴇʀ ᴇxᴘᴇʀɪᴇɴᴄᴇ ᴘᴇʀᴀ ᴇɴɢᴀʟ ᴘʀᴇᴍɪᴜᴍ sᴇʀᴠɪᴄᴇ ᴠᴀɴɢᴀʟᴀᴍ ᴀʟʟᴀᴛʜᴜ ᴇɴɢᴀʟ ʙᴏᴛᴀɪ ᴜɴɢᴀʟ ɴᴀɴʙᴀʀɢᴀʟᴜᴅᴀɴ sʜᴀʀᴇ sᴇʏᴛʜᴜ ᴘʀᴇᴍɪᴜᴍ ᴘᴇʀᴀʟᴀᴍ.</blockquote>",
+        "te": "<blockquote>ᴀᴅs-ғʀᴇᴇ sᴇʀᴠɪᴄᴇ ᴀɴᴜʙʜᴀᴠɪɴᴄʜᴀᴅᴀɴɪᴋɪ ᴍᴇᴇʀᴜ ᴍᴀ ᴘʀᴇᴍɪᴜᴍ sᴇʀᴠɪᴄᴇɴɪ ᴋᴏɴᴜɢᴏʟᴜ ᴄʜᴇʏᴀᴠᴀᴄᴄʜᴜ ʟᴇᴋᴀ ᴍᴀ ʙᴏᴛɴɪ ᴍᴇᴇ sɴᴇʜɪᴛᴜʟᴀᴛᴏ sʜᴀʀᴇ ᴄʜᴇsɪ ᴘʀᴇᴍɪᴜᴍ ᴘᴏɴᴅᴀᴠᴀᴄᴄʜᴜ.</blockquote>",
+        "kn": "<blockquote>ᴀᴅs-ғʀᴇᴇ sᴇʀᴠɪᴄᴇ ᴀɴᴜʙʜᴀᴠɪsᴀʟᴜ ɴɪᴍᴍᴀ ᴘʀᴇᴍɪᴜᴍ sᴇʀᴠɪsᴇ ᴋʜᴀʀɪᴅɪsɪ ᴀᴛʜᴀᴠᴀ ɴɪᴍᴍᴀ ʙᴏᴛᴀɴɴᴜ sɴᴇʜɪᴛᴀʀᴏᴛᴛɪɢᴇ sʜᴀʀᴇ ᴍᴀᴅɪ ᴘʀᴇᴍɪᴜᴍ ᴘᴀᴅᴇʏᴀʙᴀʜᴜᴅᴜ.</blockquote>",
+        "ml": "<blockquote>ᴀᴅs-ғʀᴇᴇ sᴇʀᴠɪᴄᴇ ᴀɴᴜʙʜᴀᴠɪᴋᴋᴀɴ ɴɪɴɢᴀʟᴋᴋᴜ ɴᴀᴍᴍᴜᴅᴇ ᴘʀᴇᴍɪᴜᴍ sᴇʀᴠɪᴄᴇ ᴠᴀɴɢᴀᴍ ᴀʟʟᴇɴᴋɪʟ ɴᴀᴍᴍᴜᴅᴇ ʙᴏᴛᴛ ᴄʜᴜɴᴋᴀʟᴋᴋᴀʏᴜᴍᴀʏɪ sʜᴀʀᴇ ᴄʜᴇʏᴛʜᴜ ᴘʀᴇᴍɪᴜᴍ ɴᴇᴛᴀᴍ.</blockquote>",
+        "bn": "<blockquote>ᴀᴅs-ғʀᴇᴇ sᴇʀᴠɪᴄᴇ ᴘᴇᴛᴇ ᴀᴘɴɪ ᴀᴍᴀᴅᴇʀ ᴘʀᴇᴍɪᴜᴍ sᴇʀᴠɪᴄᴇ ᴋɪɴᴛᴇ ᴘᴀʀᴇɴ ʙᴀ ʙɴᴅʜᴜᴅᴇʀ sᴀᴛʜᴇ ᴀᴍᴀᴅᴇʀ ʙᴏᴛ sʜᴀʀᴇ ᴋᴏʀᴇ ᴘʀᴇᴍɪᴜᴍ ᴘᴇᴛᴇ ᴘᴀʀᴇɴ.</blockquote>",
+        "mr": "<blockquote>ᴀᴅs-ғʀᴇᴇ sᴇʀᴠɪᴄᴇ ᴀɴᴜʙʜᴀᴠɴʏᴀsᴀᴛʜɪ ᴛᴜᴍʜɪ ᴀᴍᴄʜɪ ᴘʀᴇᴍɪᴜᴍ sᴇʀᴠɪᴄᴇ ᴠɪᴋᴀᴛ ɢʜᴇᴜ sʜᴀᴋᴛᴀ ᴋɪᴍᴠᴀ ᴛᴜᴍᴄʜʏᴀ ᴍɪᴛʀᴀɴsᴏʙᴀᴛ ᴀᴍᴄʜᴀ ʙᴏᴛ sʜᴇᴀʀ ᴋᴀʀᴜɴ ᴘʀᴇᴍɪᴜᴍ ᴍɪʟᴀᴠᴜ sʜᴀᴋᴛᴀ.</blockquote>",
+        "gu": "<blockquote>ᴀᴅs-ғʀᴇᴇ sᴇʀᴠɪᴄᴇ ᴍᴀᴛᴇ ᴛᴍᴇ ᴀᴍᴀʀᴜ ᴘʀᴇᴍɪᴜᴍ sᴇʀᴠɪᴄᴇ ᴋʜᴀʀɪᴅɪ sʜᴀᴋᴏ ᴀᴛʜᴠᴀ ᴍɪᴛʀᴏ sᴀᴛʜᴇ ᴀᴍᴀʀᴏ ʙᴏᴛ sʜᴀʀᴇ ᴋᴀʀɪ ᴘʀᴇᴍɪᴜᴍ ᴍᴇʟᴠɪ sʜᴀᴋᴏ.</blockquote>",
+        "pa": "<blockquote>ᴀᴅs-ғʀᴇᴇ sᴇʀᴠɪᴄᴇ ᴅᴀ ᴇxᴘᴇʀɪᴇɴᴄᴇ ʟᴀɪ ᴛᴜsɪ ᴀᴘɴɪ ᴘʀᴇᴍɪᴜᴍ sᴇʀᴠɪᴄᴇ ᴋʜᴀʀɪᴅ sᴀᴋᴅᴇ ʜᴏ ʏᴀ ᴀᴘɴᴇ ᴅᴏsᴛᴀɴ ɴᴀʟ ᴀᴘɴᴀ ʙᴏᴛ sʜᴀʀᴇ ᴋᴀʀᴋᴇ ᴘʀᴇᴍɪᴜᴍ ʟᴇ sᴀᴋᴅᴇ ʜᴏ.</blockquote>",
+        "ur": "<blockquote>ᴀᴅs-ғʀᴇᴇ sᴇʀᴠɪᴄᴇ ᴋᴇ ʟɪʏᴇ ᴀᴘ ʜᴀᴍᴀʀɪ ᴘʀᴇᴍɪᴜᴍ sᴇʀᴠɪᴄᴇ ᴋʜᴀʀɪᴅ sᴀᴋᴛᴇ ʜᴀɪɴ ʏᴀ ᴅᴏsᴛᴏɴ ᴋᴇ sᴀᴛʜ ʙᴏᴛ sʜᴇᴀʀ ᴋᴀʀᴋᴇ ᴘʀᴇᴍɪᴜᴍ ʜᴀsɪʟ ᴋᴀʀ sᴀᴋᴛᴇ ʜᴀɪɴ.</blockquote>",
+        "as": "<blockquote>ᴀᴅs-ғʀᴇᴇ sᴇʀᴠɪᴄᴇ ᴘাবলৈ ᴀᴘᴜɴɪ ᴀᴍᴀʀ ᴘʀᴇᴍɪᴜᴍ sᴇʀᴠɪᴄᴇ ᴋʀɪᴋ ᴋᴏʀɪʙ ᴘᴀʀᴇ ʙᴀ ʙɴᴅʜᴜʀ sᴀᴛʜᴀᴛ ᴀᴍᴀʀ ʙᴏᴛ sʜᴀʀᴇ ᴋᴏʀɪ ᴘʀᴇᴍɪᴜᴍ ᴘᴀʙ ᴘᴀʀᴇ.</blockquote>",
+        "ne": "<blockquote>ᴀᴅs-ғʀᴇᴇ sᴇʀᴠɪᴄᴇ ᴋᴏ ᴀɴᴜʙʜᴀᴠᴋᴏ ʟᴀɢɪ ᴛᴀᴘᴀɪʟᴇ ʜᴀᴍʀᴏ ᴘʀᴇᴍɪᴜᴍ sᴇʀᴠɪᴄᴇ ᴋɪɴɴᴀ sᴀᴋɴᴜʜᴜɴᴄʜᴀ ᴠᴀ ᴀᴘɴᴀ sᴀᴛʜɪʜᴀʀᴜsᴀɴɢᴀ ʜᴀᴍʀᴏ ʙᴏᴛ sʜᴀʀᴇ ɢᴀʀᴇʀᴀ ᴘʀᴇᴍɪᴜᴍ ᴘᴀᴜɴᴀ sᴀᴋɴᴜʜᴜɴᴄʜᴀ.</blockquote>",
+        "hinglish": "<blockquote>ᴀᴅs-ғʀᴇᴇ sᴇʀᴠɪᴄᴇ ᴋᴇ ʟɪʏᴇ ᴀᴀᴘ ʜᴀᴍᴀʀᴀ ᴘʀᴇᴍɪᴜᴍ sᴇʀᴠɪᴄᴇ ʙᴜʏ ᴋᴀʀᴏ ʏᴀ ᴀᴘɴᴇ ғʀɪᴇɴᴅs ᴋᴇ sᴀᴀᴛʜ ʙᴏᴛ sʜᴀʀᴇ ᴋᴀʀᴋᴇ ᴘʀᴇᴍɪᴜᴍ ɢᴇᴛ ᴋᴀʀᴏ.</blockquote>",
+    }
+    return texts.get(lang, texts["en"]).format(mention=mention)
 
 def _language_button_text(lang):
     return small_caps("🌐 LANGUAGE")
@@ -1488,11 +1523,18 @@ async def select_premium_plan(client, query):
         f"{_premium_flow_text(lang, 'send_payment_help')}\n\n"
         f"⚠️ {_premium_flow_text(lang, 'submission_note')}"
     )
-    await query.message.edit_text(
-        payment_text,
-        reply_markup=InlineKeyboardMarkup(buttons),
-        parse_mode=enums.ParseMode.HTML,
-    )
+    try:
+        await query.message.edit_caption(
+            caption=payment_text,
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=enums.ParseMode.HTML,
+        )
+    except Exception:
+        await query.message.edit_text(
+            payment_text,
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=enums.ParseMode.HTML,
+        )
     await query.answer("Premium plan selected.")
 
 
