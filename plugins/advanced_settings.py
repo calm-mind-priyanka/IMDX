@@ -196,7 +196,7 @@ def _main_settings_buttons(settings, grp_id, include_premium=False):
         ],
     ]
     if include_premium:
-        buttons.insert(0, [InlineKeyboardButton("💎 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ sᴇᴛᴛɪɴɢs", callback_data="premium_settings")])
+        buttons.insert(0, [InlineKeyboardButton("💎 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ sᴇᴛᴛɪɴɢs", callback_data=f"premium_settings#{grp_id}")])
     return buttons
 
 
@@ -208,7 +208,7 @@ async def show_group_list(client, target, direct_group_id=None):
     user_id = target.from_user.id
     groups = []
 
-    async for chat in db.get_all_chats():
+    async for chat in await db.get_all_chats():
         gid = chat.get("id")
         if not gid:
             continue
@@ -231,7 +231,7 @@ async def show_group_list(client, target, direct_group_id=None):
 
     if not groups:
         if _is_bot_owner(user_id):
-            markup = InlineKeyboardMarkup([[InlineKeyboardButton("💎 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ sᴇᴛᴛɪɴɢs", callback_data="premium_settings")]])
+            markup = InlineKeyboardMarkup([[InlineKeyboardButton("💎 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ sᴇᴛᴛɪɴɢs", callback_data="premium_settings#0")]])
             text = "❌ <b>ɴᴏ ɢʀᴏᴜᴘs ᴀᴠᴀɪʟᴀʙʟᴇ.</b>\n\nᴏʀ ᴍᴀɴᴀɢᴇ ɢʟᴏʙᴀʟ ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴs ʙᴇʟᴏᴡ."
             if target.chat.type == enums.ChatType.PRIVATE:
                 return await target.reply_text(text, reply_markup=markup, parse_mode=enums.ParseMode.HTML)
@@ -246,7 +246,7 @@ async def show_group_list(client, target, direct_group_id=None):
         for gid, title in groups
     ]
     if _is_bot_owner(user_id):
-        buttons.insert(0, [InlineKeyboardButton("💎 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ sᴇᴛᴛɪɴɢs", callback_data="premium_settings")])
+        buttons.insert(0, [InlineKeyboardButton("💎 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ sᴇᴛᴛɪɴɢs", callback_data="premium_settings#0")])
     markup = InlineKeyboardMarkup(buttons)
     text = "⚙️ <b>ꜱᴇʟᴇᴄᴛ ᴛʜᴇ ɢʀᴏᴜᴘ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴍᴀɴᴀɢᴇ:</b>"
 
@@ -633,45 +633,136 @@ def _premium_admin_text():
         rows.append(f"<b>{plan['name']}</b> · <code>{plan['duration']}</code> · <code>{plan['price']}</code>")
     return "💎 <b>ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ sᴇᴛᴛɪɴɢs</b>\n\n" + "\n".join(rows) + "\n\nꜱᴇʟᴇᴄᴛ ᴀ ᴘʟᴀɴ ᴛᴏ ᴄʜᴀɴɢᴇ ɪᴛ."
 
-def _premium_admin_buttons():
+
+def _premium_admin_buttons(group_id=None):
     rows = []
     for key, plan in PREMIUM_PLANS.items():
-        rows.append([InlineKeyboardButton(f"{plan['name']} · {plan['price']}", callback_data=f"premium_plan#{key}")])
+        rows.append([InlineKeyboardButton(f"{plan['name']} · {plan['price']}", callback_data=f"premium_plan#{key}#{group_id or 0}")])
+    if group_id:
+        rows.append([InlineKeyboardButton("≪ ʙᴀᴄᴋ ᴛᴏ sᴇᴛᴛɪɴɢs", callback_data=f"premium_back#{group_id}")])
     rows.append([InlineKeyboardButton("✕ ᴄʟᴏsᴇ", callback_data="premium_close")])
     return rows
+
+
+def _premium_plan_buttons(key, group_id=None):
+    rows = [
+        [InlineKeyboardButton("💰 sᴇᴛ ᴘʀɪᴄᴇ", callback_data=f"premium_edit#{key}#price#{group_id or 0}")],
+        [InlineKeyboardButton("⏳ sᴇᴛ ᴅᴜʀᴀᴛɪᴏɴ", callback_data=f"premium_edit#{key}#duration#{group_id or 0}")],
+        [InlineKeyboardButton("≪ ʙᴀᴄᴋ", callback_data=f"premium_settings#{group_id or 0}")],
+    ]
+    return rows
+
+
+def _premium_input_markup(key, field, group_id=None):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✕ ᴄᴀɴᴄᴇʟ", callback_data=f"premium_cancel#{key}#{field}#{group_id or 0}")],
+        [InlineKeyboardButton("≪ ʙᴀᴄᴋ", callback_data=f"premium_plan#{key}#{group_id or 0}")],
+    ])
+
 
 def _premium_plan_text(key):
     plan = PREMIUM_PLANS[key]
     return f"💎 <b>{plan['name']}</b>\n\n💰 Price: <code>{plan['price']}</code>\n⏳ Duration: <code>{plan['duration']}</code>\n\nChoose what you want to change."
 
-@Client.on_callback_query(filters.regex(r"^premium_(settings|plan#|edit#|close)"))
+
+@Client.on_callback_query(filters.regex(r"^premium_(settings|plan#|edit#|cancel#|back#|close)"))
 async def premium_settings_callback(client, query):
     if not _is_bot_owner(query.from_user.id):
         return await query.answer("ᴏɴʟʏ ᴛʜᴇ ʙᴏᴛ ᴏᴡɴᴇʀ ᴄᴀɴ ᴄʜᴀɴɢᴇ ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴs.", show_alert=True)
+
     data = query.data
-    if data == "premium_settings":
-        return await query.message.edit_text(_premium_admin_text(), reply_markup=InlineKeyboardMarkup(_premium_admin_buttons()), parse_mode=enums.ParseMode.HTML)
-    if data == "premium_close":
-        return await query.message.delete()
-    if data.startswith("premium_plan#"):
-        key = data.split("#", 1)[1]
-        if key not in PREMIUM_PLANS:
-            return await query.answer("Invalid plan.", show_alert=True)
-        plan = PREMIUM_PLANS[key]
-        buttons = [
-            [InlineKeyboardButton("💰 sᴇᴛ ᴘʀɪᴄᴇ", callback_data=f"premium_edit#{key}#price")],
-            [InlineKeyboardButton("⏳ sᴇᴛ ᴅᴜʀᴀᴛɪᴏɴ", callback_data=f"premium_edit#{key}#duration")],
-            [InlineKeyboardButton("⋞ ʙᴀᴄᴋ", callback_data="premium_settings")],
-        ]
-        return await query.message.edit_text(_premium_plan_text(key), reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML)
-    if data.startswith("premium_edit#"):
-        _, key, field = data.split("#")
-        if key not in PREMIUM_PLANS or field not in {"price", "duration"}:
-            return await query.answer("Invalid setting.", show_alert=True)
-        PENDING[(query.from_user.id, 0)] = {"type": f"premium_{field}", "plan": key, "origin_page": "premium_settings", "prompt_chat_id": query.message.chat.id, "prompt_message_id": query.message.id}
-        prompt = "sᴇɴᴅ ᴛʜᴇ ᴘʀɪᴄᴇ ᴏɴʟʏ, ᴇ.ɢ. <code>23</code>" if field == "price" else "sᴇɴᴅ ᴅᴜʀᴀᴛɪᴏɴ, ᴇ.ɢ. <code>7d</code>, <code>30d</code>, <code>90d</code> ᴏʀ <code>lifetime</code>"
-        return await query.message.edit_text(f"<b>{prompt}</b>\n\nCurrent: <code>{plan[field if field != 'duration' else 'duration']}</code>\n\nSend /cancel to stop.", parse_mode=enums.ParseMode.HTML)
-    await query.answer()
+    parts = data.split("#")
+    group_id = 0
+    if len(parts) > 1 and parts[-1].lstrip("-").isdigit():
+        group_id = int(parts[-1])
+
+    try:
+        if data.startswith("premium_settings"):
+            PENDING.pop((query.from_user.id, 0), None)
+            await query.answer()
+            return await query.message.edit_text(
+                _premium_admin_text(),
+                reply_markup=InlineKeyboardMarkup(_premium_admin_buttons(group_id)),
+                parse_mode=enums.ParseMode.HTML,
+            )
+
+        if data.startswith("premium_back#"):
+            PENDING.pop((query.from_user.id, 0), None)
+            await query.answer()
+            if group_id:
+                return await show_group_settings(client, query, group_id)
+            return await query.message.edit_text(
+                _premium_admin_text(),
+                reply_markup=InlineKeyboardMarkup(_premium_admin_buttons()),
+                parse_mode=enums.ParseMode.HTML,
+            )
+
+        if data == "premium_close":
+            PENDING.pop((query.from_user.id, 0), None)
+            await query.answer("Closed")
+            return await query.message.delete()
+
+        if data.startswith("premium_cancel#"):
+            await query.answer("Cancelled")
+            key = parts[1]
+            if key not in PREMIUM_PLANS:
+                return
+            PENDING.pop((query.from_user.id, 0), None)
+            return await query.message.edit_text(
+                _premium_plan_text(key),
+                reply_markup=InlineKeyboardMarkup(_premium_plan_buttons(key, group_id)),
+                parse_mode=enums.ParseMode.HTML,
+            )
+
+        if data.startswith("premium_plan#"):
+            PENDING.pop((query.from_user.id, 0), None)
+            await query.answer()
+            key = parts[1]
+            if len(parts) > 2 and parts[2].lstrip("-").isdigit():
+                group_id = int(parts[2])
+            if key not in PREMIUM_PLANS:
+                return await query.answer("Invalid plan.", show_alert=True)
+            return await query.message.edit_text(
+                _premium_plan_text(key),
+                reply_markup=InlineKeyboardMarkup(_premium_plan_buttons(key, group_id)),
+                parse_mode=enums.ParseMode.HTML,
+            )
+
+        if data.startswith("premium_edit#"):
+            await query.answer()
+            if len(parts) < 3:
+                return await query.answer("Invalid setting.", show_alert=True)
+            key, field = parts[1], parts[2]
+            if len(parts) > 3 and parts[3].lstrip("-").isdigit():
+                group_id = int(parts[3])
+            if key not in PREMIUM_PLANS or field not in {"price", "duration"}:
+                return await query.answer("Invalid setting.", show_alert=True)
+
+            PENDING[(query.from_user.id, 0)] = {
+                "type": f"premium_{field}",
+                "plan": key,
+                "origin_page": "premium_settings",
+                "group_id": group_id,
+                "prompt_chat_id": query.message.chat.id,
+                "prompt_message_id": query.message.id,
+            }
+            if field == "price":
+                prompt = "sᴇɴᴅ ᴛʜᴇ ᴘʀɪᴄᴇ ᴏɴʟʏ, ᴇ.ɢ. <code>23</code>"
+                current = PREMIUM_PLANS[key]["price"]
+            else:
+                prompt = "sᴇɴᴅ ᴅᴜʀᴀᴛɪᴏɴ, ᴇ.ɢ. <code>7d</code>, <code>30d</code>, <code>90d</code> ᴏʀ <code>lifetime</code>"
+                current = PREMIUM_PLANS[key]["duration"]
+            return await query.message.edit_text(
+                f"<b>{prompt}</b>\n\nCurrent: <code>{current}</code>\n\nᴜsᴇ ᴛʜᴇ ᴄᴀɴᴄᴇʟ ʙᴜᴛᴛᴏɴ ᴏʀ sᴇɴᴅ /cancel.",
+                reply_markup=_premium_input_markup(key, field, group_id),
+                parse_mode=enums.ParseMode.HTML,
+            )
+    except Exception as exc:
+        print(f"premium settings callback error: {exc}")
+        try:
+            return await query.answer("💔 sᴏᴍᴇᴛʜɪɴɢ ᴡᴇɴᴛ ᴡʀᴏɴɢ...", show_alert=True)
+        except Exception:
+            return
 
 @Client.on_callback_query(filters.regex(r"^(set_|advanced_settings)"))
 async def settings_callback(client, query):
@@ -904,7 +995,18 @@ async def advanced_cancel(client, message):
     page = state.get("origin_page", "main")
     if page == "premium_settings" and _is_bot_owner(uid):
         try:
-            await client.edit_message_text(state["prompt_chat_id"], state["prompt_message_id"], _premium_plan_text(state["plan"]), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💰 sᴇᴛ ᴘʀɪᴄᴇ", callback_data=f"premium_edit#{state['plan']}#price")],[InlineKeyboardButton("⏳ sᴇᴛ ᴅᴜʀᴀᴛɪᴏɴ", callback_data=f"premium_edit#{state['plan']}#duration")],[InlineKeyboardButton("⋞ ʙᴀᴄᴋ", callback_data="premium_settings")]]), parse_mode=enums.ParseMode.HTML)
+            await message.delete()
+        except Exception:
+            pass
+        try:
+            group_id = int(state.get("group_id") or 0)
+            await client.edit_message_text(
+                state["prompt_chat_id"],
+                state["prompt_message_id"],
+                _premium_plan_text(state["plan"]),
+                reply_markup=InlineKeyboardMarkup(_premium_plan_buttons(state["plan"], group_id)),
+                parse_mode=enums.ParseMode.HTML,
+            )
         except Exception:
             pass
         return
@@ -981,11 +1083,27 @@ async def advanced_input(client, message):
                 days = int(m.group(1))
                 PREMIUM_PLANS[plan_key]["days"] = days
                 PREMIUM_PLANS[plan_key]["duration"] = f"{days} day" + ("s" if days != 1 else "")
-        await mdb.save_premium_plans(PREMIUM_PLANS)
+        try:
+            await mdb.save_premium_plans(PREMIUM_PLANS)
+        except Exception as exc:
+            print(f"premium plan save error: {exc}")
+            return await _edit_prompt(
+                client,
+                state,
+                f"<b>💔 ᴄᴏᴜʟᴅ ɴᴏᴛ sᴀᴠᴇ ᴛʜɪs ᴘʟᴀɴ.</b>\n<code>{exc}</code>",
+                _premium_input_markup(plan_key, "price" if key == "premium_price" else "duration", state.get("group_id")),
+            )
         PENDING.pop((uid, 0), None)
         try: await message.delete()
         except Exception: pass
-        return await client.edit_message_text(state["prompt_chat_id"], state["prompt_message_id"], _premium_plan_text(plan_key), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💰 sᴇᴛ ᴘʀɪᴄᴇ", callback_data=f"premium_edit#{plan_key}#price")],[InlineKeyboardButton("⏳ sᴇᴛ ᴅᴜʀᴀᴛɪᴏɴ", callback_data=f"premium_edit#{plan_key}#duration")],[InlineKeyboardButton("⋞ ʙᴀᴄᴋ", callback_data="premium_settings")]]), parse_mode=enums.ParseMode.HTML)
+        group_id = int(state.get("group_id") or 0)
+        return await client.edit_message_text(
+            state["prompt_chat_id"],
+            state["prompt_message_id"],
+            _premium_plan_text(plan_key),
+            reply_markup=InlineKeyboardMarkup(_premium_plan_buttons(plan_key, group_id)),
+            parse_mode=enums.ParseMode.HTML,
+        )
 
     async def _delete_input_message():
         try:
