@@ -34,7 +34,7 @@ from utils import (
 )
 from database.users_chats_db import db
 from language import get_user_language, has_saved_language, tr, core_tr, home_tr, page_tr, small_caps, premium_plan_tr
-from plugins.premium_payments import _premium_flow_text
+from plugins.premium_payments import _premium_flow_text, premium_ads_intro
 from database.ia_filterdb import (
     Media,
     get_search_results,
@@ -50,6 +50,10 @@ BUTTONS = {}
 FILES_ID = {}
 CAP = {}
 MAX_RESULTS = {}
+
+def _result_key(message):
+    """Stable per-message key so two users/groups cannot overwrite filter state."""
+    return f"{message.chat.id}-{message.id}-{message.from_user.id if message.from_user else 0}"
 
 
 async def _delete_after(message, seconds: int, request_message=None):
@@ -1313,9 +1317,13 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 )
 
     elif query.data.startswith("send_all"):
-        ident, key = query.data.split("#")
-        user = query.message.reply_to_message.from_user.id
-        if int(user) != 0 and query.from_user.id != int(user):
+        ident, key = query.data.split("#", 1)
+        owner_id = None
+        try:
+            owner_id = int(key.rsplit("-", 1)[1])
+        except Exception:
+            pass
+        if owner_id and query.from_user.id != owner_id:
             return await query.answer(script.ALRT_TXT, show_alert=True)
         files = temp.FILES_ID.get(key)
         if not files:
@@ -1430,12 +1438,29 @@ async def cb_handler(client: Client, query: CallbackQuery):
             ],
             [InlineKeyboardButton(tr(ui_lang, "home"), callback_data="start")],
         ]
-        reply_markup = InlineKeyboardMarkup(btn)
-        await query.message.edit_text(
-            text=_premium_flow_text(ui_lang, "plans", mention=query.from_user.mention),
-            reply_markup=reply_markup,
+        await query.message.edit_caption(
+            caption=premium_ads_intro(ui_lang, query.from_user.mention),
+            reply_markup=InlineKeyboardMarkup(btn),
             parse_mode=enums.ParseMode.HTML,
         )
+
+    elif query.data == "premium_benefits":
+        btn = [
+            [InlineKeyboardButton("ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ", callback_data="free")],
+            [InlineKeyboardButton(tr(ui_lang, "home"), callback_data="start")],
+        ]
+        try:
+            await query.message.edit_caption(
+                caption=_premium_flow_text(ui_lang, "intro", mention=query.from_user.mention),
+                reply_markup=InlineKeyboardMarkup(btn),
+                parse_mode=enums.ParseMode.HTML,
+            )
+        except Exception:
+            await query.message.edit_text(
+                text=_premium_flow_text(ui_lang, "intro", mention=query.from_user.mention),
+                reply_markup=InlineKeyboardMarkup(btn),
+                parse_mode=enums.ParseMode.HTML,
+            )
 
     elif query.data == "special":
         btn = [
@@ -1474,21 +1499,14 @@ async def cb_handler(client: Client, query: CallbackQuery):
 
     elif query.data == "seeplans":
         btn = [
-            [
-                InlineKeyboardButton(
-                    _premium_flow_text(ui_lang, "continue"), callback_data="free"
-                )
-            ],
-            [InlineKeyboardButton("⪻ ʙᴀᴄᴋ ᴛᴏ ʜᴏᴍᴇ", callback_data="start")],
+            [InlineKeyboardButton(_premium_flow_text(ui_lang, "continue"), callback_data="free")],
+            [InlineKeyboardButton("⪻ ʙᴀᴄᴋ", callback_data="jisshupremium")],
         ]
         reply_markup = InlineKeyboardMarkup(btn)
         await client.edit_message_media(
-            query.message.chat.id, query.message.id, InputMediaPhoto(SUBSCRIPTION)
-        )
-        await query.message.edit_text(
-            text=_premium_flow_text(ui_lang, "plans", mention=query.from_user.mention),
+            query.message.chat.id, query.message.id,
+            InputMediaPhoto(SUBSCRIPTION, caption=_premium_flow_text(ui_lang, "intro", mention=query.from_user.mention), parse_mode=enums.ParseMode.HTML),
             reply_markup=reply_markup,
-            parse_mode=enums.ParseMode.HTML,
         )
 
     elif query.data == "getpremium":
@@ -1507,7 +1525,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         await m.delete()
         await query.message.reply_photo(
             photo=(SUBSCRIPTION),
-            caption=_premium_flow_text(ui_lang, "plans", mention=query.from_user.mention),
+            caption=_premium_flow_text(ui_lang, "intro", mention=query.from_user.mention),
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML,
         )
@@ -1517,7 +1535,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         # buttons so a payment order can be tied to a Telegram user ID.
         plan_buttons = premium_plan_buttons(ui_lang)
         plan_buttons.append([
-            InlineKeyboardButton(_premium_flow_text(ui_lang, "back"), callback_data="seeplans"),
+            InlineKeyboardButton(_premium_flow_text(ui_lang, "back"), callback_data="premium_benefits"),
             InlineKeyboardButton(_premium_flow_text(ui_lang, "close"), callback_data="close_data"),
         ])
         buttons = plan_buttons
@@ -1525,12 +1543,12 @@ async def cb_handler(client: Client, query: CallbackQuery):
         await client.edit_message_media(
             query.message.chat.id,
             query.message.id,
-            InputMediaPhoto(random.choice(PAYPICS)),
-        )
-        await query.message.edit_text(
-            text=_premium_flow_text(ui_lang, "plans", mention=query.from_user.mention),
+            InputMediaPhoto(
+                random.choice(PAYPICS),
+                caption=_premium_flow_text(ui_lang, "plans", mention=query.from_user.mention),
+                parse_mode=enums.ParseMode.HTML,
+            ),
             reply_markup=reply_markup,
-            parse_mode=enums.ParseMode.HTML,
         )
 
     elif query.data == "other":
@@ -2178,9 +2196,9 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
         message = msg.message.reply_to_message  # msg will be callback query
         search, files, offset, total_results = spoll
     req = message.from_user.id if message.from_user else 0
-    key = f"{message.chat.id}-{message.id}"
+    key = _result_key(message)
     batch_ids = files
-    temp.FILES_ID[f"{message.chat.id}-{message.id}"] = batch_ids
+    temp.FILES_ID[key] = batch_ids
     batch_link = f"batchfiles#{message.chat.id}#{message.id}#{message.from_user.id}"
     temp.CHAT[message.from_user.id] = message.chat.id
     settings = await get_settings(message.chat.id)
@@ -2254,7 +2272,6 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
                 text=tr(ui_lang, "next"), callback_data=f"next_{req}_{key}_{offset}",
             ),
         ])
-        key = f"{message.chat.id}-{message.id}"
         BUTTONS[key] = search
         req = message.from_user.id if message.from_user else 0
         try:
