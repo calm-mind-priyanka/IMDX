@@ -42,6 +42,7 @@ from database.ia_filterdb import (
 )
 import random
 import hashlib
+import os
 
 lock = asyncio.Lock()
 import traceback
@@ -51,6 +52,78 @@ BUTTONS = {}
 FILES_ID = {}
 CAP = {}
 MAX_RESULTS = {}
+
+# Extra user-help image shown when a movie/series search returns no result.
+# Kept inside the project so the bot does not depend on a third-party image URL.
+SPELLING_GUIDE_IMAGE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "assets",
+    "check_spelling_google.png",
+)
+
+
+async def _show_photo_page(query, caption, reply_markup, photo=None):
+    """Show a photo page regardless of whether the current message is text/media.
+
+    Telegram cannot convert a plain text message into media with edit_media().
+    When navigation arrives from a text page (for example Admin Commands), send
+    the requested photo as a replacement and delete the old message.
+    """
+    message = query.message
+    photo = photo or random.choice(START_IMG)
+    media_message = bool(
+        message and (
+            message.photo
+            or message.video
+            or message.animation
+            or message.document
+        )
+    )
+    if media_message:
+        return await message.edit_media(
+            media=InputMediaPhoto(
+                media=photo,
+                caption=caption,
+                parse_mode=enums.ParseMode.HTML,
+            ),
+            reply_markup=reply_markup,
+        )
+
+    new_message = await message.reply_photo(
+        photo=photo,
+        caption=caption,
+        parse_mode=enums.ParseMode.HTML,
+        reply_markup=reply_markup,
+    )
+    try:
+        await message.delete()
+    except Exception:
+        pass
+    return new_message
+
+
+async def _show_text_page(query, text, reply_markup):
+    """Show a text page regardless of whether the current message is text/media."""
+    message = query.message
+    media_message = bool(
+        message and (
+            message.photo
+            or message.video
+            or message.animation
+            or message.document
+        )
+    )
+    if media_message:
+        return await message.edit_caption(
+            caption=text,
+            reply_markup=reply_markup,
+            parse_mode=enums.ParseMode.HTML,
+        )
+    return await message.edit_text(
+        text=text,
+        reply_markup=reply_markup,
+        parse_mode=enums.ParseMode.HTML,
+    )
 
 def _result_key(message):
     """Return a compact opaque key for Telegram callback_data.
@@ -1482,12 +1555,9 @@ async def cb_handler(client: Client, query: CallbackQuery):
             [InlineKeyboardButton(tr(ui_lang, "language_button"), callback_data="global_lang:menu")],
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
-        await query.message.edit_media(
-            media=InputMediaPhoto(
-                media=random.choice(START_IMG),
-                caption=core_tr(ui_lang, "start", mention=query.from_user.mention, status=get_status()),
-                parse_mode=enums.ParseMode.HTML,
-            ),
+        await _show_photo_page(
+            query,
+            caption=core_tr(ui_lang, "start", mention=query.from_user.mention, status=get_status()),
             reply_markup=reply_markup,
         )
     elif query.data == "jisshupremium":
@@ -1650,12 +1720,9 @@ async def cb_handler(client: Client, query: CallbackQuery):
             [InlineKeyboardButton(tr(ui_lang, "home"), callback_data="start")],
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
-        await query.message.edit_media(
-            media=InputMediaPhoto(
-                media=random.choice(START_IMG),
-                caption=page_tr(ui_lang, "help"),
-                parse_mode=enums.ParseMode.HTML,
-            ),
+        await _show_photo_page(
+            query,
+            caption=page_tr(ui_lang, "help"),
             reply_markup=reply_markup,
         )
 
@@ -2530,10 +2597,18 @@ async def advantage_spell_chok(message):
                 )
             ]
         ]
-        k = await message.reply_text(
-            text=script.I_CUDNT.format(search),
-            reply_markup=InlineKeyboardMarkup(button),
-        )
+        if os.path.isfile(SPELLING_GUIDE_IMAGE):
+            k = await message.reply_photo(
+                photo=SPELLING_GUIDE_IMAGE,
+                caption=script.I_CUDNT.format(search),
+                reply_markup=InlineKeyboardMarkup(button),
+            )
+        else:
+            # Safe fallback if an incomplete deployment is missing the bundled image.
+            k = await message.reply_text(
+                text=script.I_CUDNT.format(search),
+                reply_markup=InlineKeyboardMarkup(button),
+            )
         await asyncio.sleep(120)
         await k.delete()
         try:
