@@ -350,19 +350,28 @@ for _code in list(_PREMIUM_FLOW):
         "submission_note": _PREMIUM_FLOW[_code].get("submission_note", "Your screenshot is treated only as a payment submission and will be verified."),
     })
 
-async def _update_user_notice(client, user_id, notice_id, text, reply_markup=None):
-    """Edit the user's existing payment-status message instead of stacking notices."""
-    if not notice_id:
-        return False
+async def _replace_user_notice(client, user_id, notice_id, text, reply_markup=None):
+    """Send a new Premium status message, then delete the previous status message."""
     try:
-        await client.edit_message_text(
-            chat_id=int(user_id), message_id=int(notice_id), text=text,
-            parse_mode=enums.ParseMode.HTML, reply_markup=reply_markup
+        fresh = await client.send_message(
+            int(user_id), text, parse_mode=enums.ParseMode.HTML,
+            reply_markup=reply_markup,
         )
-        return True
     except Exception as exc:
-        LOGGER.warning("Could not edit Premium user notice %s/%s: %s", user_id, notice_id, exc)
-        return False
+        LOGGER.warning("Could not send Premium user notice to %s: %s", user_id, exc)
+        return False, None
+    if notice_id and int(notice_id) != int(fresh.id):
+        try:
+            await client.delete_messages(int(user_id), int(notice_id))
+        except Exception as exc:
+            LOGGER.warning("Could not delete previous Premium user notice %s/%s: %s", user_id, notice_id, exc)
+    return True, int(fresh.id)
+
+
+async def _update_user_notice(client, user_id, notice_id, text, reply_markup=None):
+    # Compatibility wrapper: payment states now always use a fresh message.
+    ok, _ = await _replace_user_notice(client, user_id, notice_id, text, reply_markup)
+    return ok
 
 for _code, _labels in {
     "en": {"order_created_title":"Premium Order Created","plan_label":"Plan","duration_label":"Duration","price_label":"Price","user_id_label":"Order User ID","payment_status_label":"Payment status","send_payment_help":"Complete the payment, then send the payment screenshot to the dedicated payment bot.","submission_note":"Your screenshot is treated only as a payment submission and will be verified.","approved_title":"Payment Approved Successfully!","expires_label":"Expires","status_label":"Status","rejected_title":"Payment Rejected"},
@@ -466,14 +475,20 @@ async def _send_user_temp(client, user_id, text, **kwargs):
     sent = await client.send_message(user_id, text, **kwargs)
     return _schedule_temp_delete(sent)
 
-def _contact_admin_markup():
-    """Return a direct Telegram contact button using the configured owner username."""
+def _contact_admin_markup(lang="en", screenshot_message_id=None):
+    """Contact-admin + close controls for the final user-side payment message."""
     username = (OWNER_USERNAME or "").strip().lstrip("@")
-    if not username:
-        return None
-    return InlineKeyboardMarkup(
-        [[InlineKeyboardButton("💬 CONTACT ADMIN", url=f"https://t.me/{username}")]]
-    )
+    rows = []
+    if username:
+        rows.append([InlineKeyboardButton(
+            _tr(lang, "contact"), url=f"https://t.me/{username}"
+        )])
+    if screenshot_message_id:
+        close_label = _premium_flow_text(lang, "close") or "✖️ CLOSE"
+        rows.append([InlineKeyboardButton(
+            close_label, callback_data=f"payclose:{screenshot_message_id}"
+        )])
+    return InlineKeyboardMarkup(rows) if rows else None
 
 
 def _plan_key(value):
@@ -1096,8 +1111,11 @@ async def _activate_order(client, order, screenshot_message_id):
     try:
         submission = await db.get_payment_submission(user_id, screenshot_message_id)
         notice_id = (submission or {}).get("user_notice_message_id")
-        if not await _update_user_notice(client, user_id, notice_id, text):
-            await client.send_message(user_id, text, parse_mode=enums.ParseMode.HTML)
+        ok, new_notice_id = await _replace_user_notice(client, user_id, notice_id, text)
+        if ok and new_notice_id:
+            await db.update_payment_submission(
+                user_id, screenshot_message_id, {"user_notice_message_id": new_notice_id}
+            )
     except Exception as exc:
         LOGGER.warning("Could not update Premium activation notice for %s: %s", user_id, exc)
 
@@ -1154,7 +1172,10 @@ async def process_payment_submission(payment_client, message):
         "status": "matched" if order else "unmatched",
         "review_status": "pending" if order else "not_required",
     }
-    await db.record_payment_submission(submission)
+    recorded = await db.record_payment_submission(submission)
+    if not recorded:
+        LOGGER.info("Ignoring duplicate payment screenshot update for %s/%s", user_id, message.id)
+        return
 
     if not order:
         unmatched_report = (
@@ -1284,30 +1305,13 @@ async def process_payment_submission(payment_client, message):
         sender_name = " ".join(part for part in [sender.first_name, sender.last_name] if part) or "Unknown"
         sender_username = f"@{sender.username}" if sender.username else "none"
         review_text = (
-            "🟡 <b>Payment screenshot needs manual review</b>\n\n"
+            "🟡 <b>PREMIUM PAYMENT — MANUAL REVIEW</b>\n\n"
             f"👤 User: {escape(sender_name)}\n"
-            f"🔗 Username: {escape(sender_username)}\n"
-            f"🆔 User ID: <code>{user_id}</code>\n"
+            f"🆔 ID: <code>{user_id}</code>\n"
             f"📦 Plan: {escape(str(order.get('plan_duration', 'N/A')))}\n"
-            f"💰 Expected amount: {escape(str(order.get('plan_price', 'N/A')))}\n"
-            f"🆔 Screenshot message: <code>{message.id}</code>\n\n"
-            "<b>🔎 Automatic analysis report</b>\n"
-            f"• OCR engine: {escape(str(ocr_status or 'unknown').replace('_', ' ').title())}\n"
-            f"• Analysis result: {escape(ocr_result)}\n"
-            f"• Amount detected: {escape(str(amount_found) if amount_found is not None else 'NOT DETECTED')}\n"
-            f"• Amount comparison: {escape(amount_result)}\n"
-            f"• Date detected: {escape(tx_at.strftime('%d %B %Y') if tx_at else 'NOT DETECTED')}\n"
-            f"• Time detected: {escape(tx_at.strftime('%I:%M %p') if tx_at else 'NOT DETECTED')}\n"
-            f"• Date/time comparison: {escape(time_result)}\n"
-            f"• Time approval: {'ON' if PAYMENT_TIME_APPROVAL_ENABLED else 'OFF'}\n"
-            f"• Allowed transaction delay: {PAYMENT_MAX_DELAY_MINUTES} min; future tolerance: {PAYMENT_FUTURE_TOLERANCE_MINUTES} min\n"
-            f"• Payment-success signal: {escape(success_result)}\n"
-            f"• Duplicate check: {escape(duplicate_result)}\n"
-            f"• Verification confidence: {escape(confidence_text)}\n"
-            f"• OCR text read: <code>{escape((ocr_text[:900] if ocr_text else 'NO TEXT READ'))}</code>\n\n"
-            "<b>⚠️ Exact reason(s) for manual review</b>\n"
-            f"{escape(reasons_block)}\n\n"
-            "The selected Premium plan has been activated for this payment review. It is not permanent. Please review the screenshot and choose Approve or Reject."
+            f"💰 Amount: {escape(str(order.get('plan_price', 'N/A')))}\n\n"
+            f"⚠️ <b>Why review?</b> {escape(reasons_block)}\n\n"
+            "📸 Screenshot is attached below. Choose an action."
         )
         review_buttons = InlineKeyboardMarkup([
             [
@@ -1346,16 +1350,12 @@ async def process_payment_submission(payment_client, message):
             )
             submission_now = await db.get_payment_submission(user_id, message.id)
             notice_id = (submission_now or {}).get("user_notice_message_id")
-            edited = await _update_user_notice(
-                payment_client, user_id, notice_id, user_text, _contact_admin_markup()
+            ok, new_notice_id = await _replace_user_notice(
+                payment_client, user_id, notice_id, user_text, _contact_admin_markup(lang, message.id)
             )
-            if not edited:
-                fallback = await payment_client.send_message(
-                    user_id, user_text, parse_mode=enums.ParseMode.HTML,
-                    reply_markup=_contact_admin_markup()
-                )
+            if ok and new_notice_id:
                 await db.update_payment_submission(
-                    user_id, message.id, {"user_notice_message_id": int(fallback.id)}
+                    user_id, message.id, {"user_notice_message_id": new_notice_id}
                 )
         except Exception:
             pass
@@ -1398,28 +1398,13 @@ async def process_payment_submission(payment_client, message):
     confidence_text = f"{confidence}%" if isinstance(confidence, (int, float)) else "N/A"
 
     detected_report = (
-        "🟢 <b>Payment automatically approved</b>\n\n"
+        "🟢 <b>PREMIUM PAYMENT — AUTO VERIFIED</b>\n\n"
         f"👤 User: {escape(sender_name)}\n"
-        f"🔗 Username: {escape(sender_username)}\n"
-        f"🆔 User ID: <code>{user_id}</code>\n"
+        f"🆔 ID: <code>{user_id}</code>\n"
         f"📦 Plan: {escape(str(order.get('plan_duration', 'N/A')))}\n"
-        f"💰 Expected amount: {escape(str(order.get('plan_price', 'N/A')))}\n"
-        f"🆔 Screenshot message: <code>{message.id}</code>\n\n"
-        "<b>🔎 Automatic analysis report</b>\n"
-        f"• OCR engine: {escape(str(ocr_status or 'unknown').replace('_', ' ').title())}\n"
-        "• Analysis result: Automatically approved\n"
-        f"• Amount detected: {escape(str(amount_found) if amount_found is not None else 'NOT DETECTED')}\n"
-        f"• Amount comparison: {escape(amount_result)}\n"
-        f"• Date detected: {escape(tx_at.strftime('%d %B %Y') if tx_at else 'NOT DETECTED')}\n"
-        f"• Time detected: {escape(tx_at.strftime('%I:%M %p') if tx_at else 'NOT DETECTED')}\n"
-        f"• Date/time comparison: {escape(time_result)}\n"
-        f"• Time approval: {'ON' if PAYMENT_TIME_APPROVAL_ENABLED else 'OFF'}\n"
-        f"• Allowed transaction delay: {PAYMENT_MAX_DELAY_MINUTES} min; future tolerance: {PAYMENT_FUTURE_TOLERANCE_MINUTES} min\n"
-        f"• Payment-success signal: {escape(success_result)}\n"
-        "• Duplicate check: No duplicate detected\n"
-        f"• Verification confidence: {escape(confidence_text)}\n"
-        f"• OCR text read: <code>{escape((ocr_text[:900] if ocr_text else 'NO TEXT READ'))}</code>\n\n"
-        "The selected Premium plan has already been activated automatically. The screenshot is shown below. You can still reject this payment if the screenshot is wrong."
+        f"💰 Amount: {escape(str(order.get('plan_price', 'N/A')))}\n\n"
+        "✅ Payment passed automatic verification.\n"
+        "📸 Screenshot is attached below. You can still reject this payment if needed."
     )
     auto_reject_buttons = InlineKeyboardMarkup([
         [InlineKeyboardButton("❌ REJECT PAYMENT", callback_data=f"payreject:{user_id}:{message.id}")]
@@ -1817,18 +1802,33 @@ async def premium_expiry_worker(client):
 
 
 def register_payment_bot_handlers(payment_client):
-    @payment_client.on_callback_query(filters.regex(r"^pay(approve|reject):"))
+    @payment_client.on_callback_query(filters.regex(r"^pay(close|approve|reject):"))
     async def manual_payment_review_callback(client, query):
-        if not query.from_user or query.from_user.id not in _admins():
-            return await query.answer("You are not authorized.", show_alert=True)
-
         parts = query.data.split(":")
         try:
             action = parts[0]
-            user_id = int(parts[1])
-            screenshot_message_id = int(parts[2]) if len(parts) > 2 else None
+            if action == "payclose":
+                user_id = int(query.from_user.id)
+                screenshot_message_id = int(parts[1])
+            else:
+                if not query.from_user or query.from_user.id not in _admins():
+                    return await query.answer("You are not authorized.", show_alert=True)
+                user_id = int(parts[1])
+                screenshot_message_id = int(parts[2]) if len(parts) > 2 else None
         except (ValueError, IndexError):
             return await query.answer("Invalid payment request.", show_alert=True)
+
+        if action == "payclose":
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+            submission = await db.get_payment_submission(user_id, screenshot_message_id)
+            if submission:
+                await db.update_payment_submission(
+                    user_id, screenshot_message_id, {"user_notice_message_id": None}
+                )
+            return await query.answer("Closed.")
 
         submission = await db.get_payment_submission(user_id, screenshot_message_id)
         if not submission:
@@ -1892,7 +1892,14 @@ def register_payment_bot_handlers(payment_client):
                             + _tr(lang, "approved")
                         )
                         submission_now = await db.get_payment_submission(user_id, screenshot_message_id)
-                        await _update_user_notice(client, user_id, (submission_now or {}).get("user_notice_message_id"), approved_text)
+                        old_notice_id = (submission_now or {}).get("user_notice_message_id")
+                        ok, new_notice_id = await _replace_user_notice(
+                            client, user_id, old_notice_id, approved_text
+                        )
+                        if ok and new_notice_id:
+                            await db.update_payment_submission(
+                                user_id, screenshot_message_id, {"user_notice_message_id": new_notice_id}
+                            )
                     except Exception:
                         pass
             except Exception as exc:
@@ -1958,8 +1965,13 @@ def register_payment_bot_handlers(payment_client):
                 )
                 submission_now = await db.get_payment_submission(user_id, screenshot_message_id)
                 notice_id = (submission_now or {}).get("user_notice_message_id")
-                if not await _update_user_notice(client, user_id, notice_id, rejected_text, _contact_admin_markup()):
-                    await client.send_message(user_id, rejected_text, parse_mode=enums.ParseMode.HTML, reply_markup=_contact_admin_markup())
+                ok, new_notice_id = await _replace_user_notice(
+                    client, user_id, notice_id, rejected_text, _contact_admin_markup(lang, screenshot_message_id)
+                )
+                if ok and new_notice_id:
+                    await db.update_payment_submission(
+                        user_id, screenshot_message_id, {"user_notice_message_id": new_notice_id}
+                    )
             except Exception:
                 pass
             text = (
