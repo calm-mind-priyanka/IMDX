@@ -479,11 +479,15 @@ Aᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ᴀɴᴅ ᴍᴀᴋᴇ ᴍᴇ ᴀ�
 /movie_update_off - update off
 /movie_update_on - Movie Update on</blockquote></b>"""
 
-    SOURCE_TXT = """<b>
-ꜱᴏᴜʀᴄᴇ ᴄᴏᴅᴇ ʜᴇʀᴇ ◉› :<blockquote><a href="@Sandymaiwait">&lt;Click Here&gt;</a></blockquote>
+    SOURCE_TXT = """<blockquote><b>ᴘʀɪᴠᴀᴛᴇ &amp; ᴘᴀɪᴅ ʀᴇᴘᴏꜱɪᴛᴏʀʏ</b>
 
-ᴍᴀɪɴᴛᴀɪɴᴇᴅ ʙʏ : @jisshu_bots
-</b>"""
+ᴛʜɪꜱ ɪꜱ ᴀ ᴘʀɪᴠᴀᴛᴇ ᴍᴏᴅɪғɪᴇᴅ &amp; ᴘᴀɪᴅ ʀᴇᴘᴏ.
+ɪғ ʏᴏᴜ ᴡᴀɴᴛ ᴛʜɪꜱ ʀᴇᴘᴏ ᴏʀ ᴀ ꜱɪᴍɪʟᴀʀ ᴘᴀɪᴅ ʀᴇᴘᴏ ғᴏʀ ʏᴏᴜʀ ᴏᴡɴ ʙᴏᴛ,
+ʏᴏᴜ ᴄᴀɴ ᴄᴏɴᴛᴀᴄᴛ ᴛʜᴇ ᴏᴡɴᴇʀ ғᴏʀ ᴘᴜʀᴄʜᴀꜱᴇ ᴅᴇᴛᴀɪʟꜱ.
+
+<b>ꜱᴏᴜʀᴄᴇ ᴄᴏᴅᴇ ʜᴇʀᴇ ◉›</b> ᴄʟɪᴄᴋ ᴛʜᴇ ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ.
+
+ᴍᴀɪɴᴛᴀɪɴᴇᴅ ʙʏ : <a href="https://t.me/jisshu_bots">@jisshu_bots</a></blockquote>"""
     GROUP_C_TEXT = """<b><blockquote>
  --------------Set Verify-------------
 /set_verify {website link} {website api}
