@@ -32,13 +32,12 @@ class script(object):
 
 <blockquote>🌿 ᴍᴀɪɴᴛᴀɪɴᴇᴅ ʙʏ : <a href='https://t.me/+DiOcxJnNQXdmNDdl'>sandy Bots &lt;/&gt;</a></b></blockquote>"""
 
-    ABOUT_TEXT = """<blockquote><b>‣ ᴍʏ ɴᴀᴍᴇ : Jisshu filter bot
-‣ ᴄʀᴇᴀᴛᴏʀ : <a href='https://t.me/+DiOcxJnNQXdmNDdl'>sandy Bots &lt;/&gt;</a>
+    ABOUT_TEXT = """‣ ᴍʏ ɴᴀᴍᴇ : ᴊɪꜱꜱʜᴜ ꜰɪʟᴛᴇʀ ʙᴏᴛ
+‣ ᴄʀᴇᴀᴛᴏʀ : ꜱᴀɴᴅʏ ʙᴏᴛꜱ
 ‣ ʟɪʙʀᴀʀʏ : ᴘʏʀᴏɢʀᴀᴍ
 ‣ ʟᴀɴɢᴜᴀɢᴇ : ᴘʏᴛʜᴏɴ
-‣ ᴅᴀᴛᴀ ʙᴀsᴇ : ᴍᴏɴɢᴏ ᴅʙ
-‣ ʜᴏsᴛᴇᴅ ᴏɴ  :  ᴡᴇʙ
-‣ ʙᴜɪʟᴅ sᴛᴀᴛᴜs : V-4.1 [sᴛᴀʙʟᴇ]</b></blockquote>"""
+‣ ᴅᴀᴛᴀʙᴀꜱᴇ : ᴍᴏɴɢᴏ ᴅʙ
+‣ ʙᴜɪʟᴅ : ᴠ-𝟺.𝟷 [ꜱᴛᴀʙʟᴇ]"""
 
     SUPPORT_GRP_MOVIE_TEXT = """<b>ʜᴇʏ {}
 
@@ -479,15 +478,15 @@ Aᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ᴀɴᴅ ᴍᴀᴋᴇ ᴍᴇ ᴀ�
 /movie_update_off - update off
 /movie_update_on - Movie Update on</blockquote></b>"""
 
-    SOURCE_TXT = """<blockquote><b>ᴘʀɪᴠᴀᴛᴇ &amp; ᴘᴀɪᴅ ʀᴇᴘᴏꜱɪᴛᴏʀʏ</b>
+    SOURCE_TXT = """ᴘʀɪᴠᴀᴛᴇ & ᴘᴀɪᴅ ʀᴇᴘᴏꜱɪᴛᴏʀʏ
 
-ᴛʜɪꜱ ɪꜱ ᴀ ᴘʀɪᴠᴀᴛᴇ ᴍᴏᴅɪғɪᴇᴅ &amp; ᴘᴀɪᴅ ʀᴇᴘᴏ.
+ᴛʜɪꜱ ɪꜱ ᴀ ᴘʀɪᴠᴀᴛᴇ ᴍᴏᴅɪғɪᴇᴅ & ᴘᴀɪᴅ ʀᴇᴘᴏ.
 ɪғ ʏᴏᴜ ᴡᴀɴᴛ ᴛʜɪꜱ ʀᴇᴘᴏ ᴏʀ ᴀ ꜱɪᴍɪʟᴀʀ ᴘᴀɪᴅ ʀᴇᴘᴏ ғᴏʀ ʏᴏᴜʀ ᴏᴡɴ ʙᴏᴛ,
 ʏᴏᴜ ᴄᴀɴ ᴄᴏɴᴛᴀᴄᴛ ᴛʜᴇ ᴏᴡɴᴇʀ ғᴏʀ ᴘᴜʀᴄʜᴀꜱᴇ ᴅᴇᴛᴀɪʟꜱ.
 
-<b>ꜱᴏᴜʀᴄᴇ ᴄᴏᴅᴇ ʜᴇʀᴇ ◉›</b> ᴄʟɪᴄᴋ ᴛʜᴇ ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ.
+ꜱᴏᴜʀᴄᴇ ᴄᴏᴅᴇ ʜᴇʀᴇ ◉› ᴄʟɪᴄᴋ ᴛʜᴇ ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ.
 
-ᴍᴀɪɴᴛᴀɪɴᴇᴅ ʙʏ : <a href="https://t.me/Sandymaiwait">@Sandymaiwait</a></blockquote>"""
+ᴍᴀɪɴᴛᴀɪɴᴇᴅ ʙʏ : @jisshu_bots"""
     GROUP_C_TEXT = """<b><blockquote>
  --------------Set Verify-------------
 /set_verify {website link} {website api}

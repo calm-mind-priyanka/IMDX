@@ -169,7 +169,7 @@ CORE = {
     "en": {
         "start": "ʜᴇʏ {mention}, {status}\n\nɪ ᴀᴍ ᴀ ᴘᴏᴡᴇʀғᴜʟ ᴀᴜᴛᴏғɪʟᴛᴇʀ ʙᴏᴛ. ᴜsᴇ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ ᴀɴᴅ ᴘᴍ ᴛᴏ ғɪɴᴅ ᴍᴏᴠɪᴇs ᴀɴᴅ sᴇʀɪᴇs. 😍\n<blockquote>🌿 ᴍᴀɪɴᴛᴀɪɴᴇᴅ ʙʏ : <a href=\"https://t.me/+DiOcxJnNQXdmNDdl\">sandy Bots &lt;/&gt;</a></blockquote>",
         "help": "<b>ᴄʟɪᴄᴋ ᴛʜᴇ ʙᴜᴛᴛᴏɴs ʙᴇʟᴏᴡ ᴛᴏ ᴠɪᴇᴡ ᴛʜᴇ ʙᴏᴛ ᴅᴏᴄᴜᴍᴇɴᴛᴀᴛɪᴏɴ.</b>",
-        "about": "<blockquote><b>‣ ᴍʏ ɴᴀᴍᴇ : Jisshu filter bot\n‣ ᴄʀᴇᴀᴛᴏʀ : <a href='https://t.me/+DiOcxJnNQXdmNDdl'>sandy Bots &lt;/&gt;</a>\n‣ ʟɪʙʀᴀʀʏ : ᴘʏʀᴏɢʀᴀᴍ\n‣ ʟᴀɴɢᴜᴀɢᴇ : ᴘʏᴛʜᴏɴ\n‣ ᴅᴀᴛᴀ ʙᴀsᴇ : ᴍᴏɴɢᴏ ᴅʙ\n‣ ʜᴏsᴛᴇᴅ ᴏɴ : ᴡᴇʙ\n‣ ʙᴜɪʟᴅ sᴛᴀᴛᴜs : V-4.1 [sᴛᴀʙʟᴇ]</b></blockquote>",
+        "about": "‣ ᴍʏ ɴᴀᴍᴇ : ᴊɪꜱꜱʜᴜ ꜰɪʟᴛᴇʀ ʙᴏᴛ\n‣ ᴄʀᴇᴀᴛᴏʀ : ꜱᴀɴᴅʏ ʙᴏᴛꜱ\n‣ ʟɪʙʀᴀʀʏ : ᴘʏʀᴏɢʀᴀᴍ\n‣ ʟᴀɴɢᴜᴀɢᴇ : ᴘʏᴛʜᴏɴ\n‣ ᴅᴀᴛᴀ ʙᴀsᴇ : ᴍᴏɴɢᴏ ᴅʙ\n‣ ʜᴏsᴛᴇᴅ ᴏɴ : ᴡᴇʙ\n‣ ʙᴜɪʟᴅ sᴛᴀᴛᴜs : ᴠ-𝟺.𝟷 [ꜱᴛᴀʙʟᴇ]",
         "alert": "ᴡʜᴀᴛ ᴀʀᴇ ʏᴏᴜ sᴇᴀʀᴄʜɪɴɢ!?",
         "old_alert": "ʏᴏᴜ ᴀʀᴇ ᴜsɪɴɢ ᴀɴ ᴏʟᴅ ᴍᴇssᴀɢᴇ. sᴇɴᴅ ᴀ ɴᴇᴡ ʀᴇǫᴜᴇsᴛ.",
         "no_result": "<b>ᴛʜɪs ᴍᴏᴠɪᴇ ᴏʀ sᴇʀɪᴇs ᴡᴀs ɴᴏᴛ ғᴏᴜɴᴅ ɪɴ ᴛʜᴇ ᴅᴀᴛᴀʙᴀsᴇ. 🙄</b>",
@@ -284,7 +284,7 @@ def premium_plan_tr(lang, mention):
 PAGE_I18N = {
     "en": {
         "help": "<b>ᴄʟɪᴄᴋ ᴛʜᴇ ʙᴜᴛᴛᴏɴs ʙᴇʟᴏᴡ ᴛᴏ ᴠɪᴇᴡ ᴛʜᴇ ʙᴏᴛ ᴅᴏᴄᴜᴍᴇɴᴛᴀᴛɪᴏɴ.</b>",
-        "about": "<blockquote><b>‣ ᴍʏ ɴᴀᴍᴇ : Jisshu filter bot\n‣ ᴄʀᴇᴀᴛᴏʀ : sandy Bots\n‣ ʟɪʙʀᴀʀʏ : ᴘʏʀᴏɢʀᴀᴍ\n‣ ʟᴀɴɢᴜᴀɢᴇ : ᴘʏᴛʜᴏɴ\n‣ ᴅᴀᴛᴀʙᴀsᴇ : ᴍᴏɴɢᴏ ᴅʙ\n‣ ʙᴜɪʟᴅ : V-4.1 [sᴛᴀʙʟᴇ]</b></blockquote>",
+        "about": "‣ ᴍʏ ɴᴀᴍᴇ : Jisshu filter bot\n‣ ᴄʀᴇᴀᴛᴏʀ : sandy Bots\n‣ ʟɪʙʀᴀʀʏ : ᴘʏʀᴏɢʀᴀᴍ\n‣ ʟᴀɴɢᴜᴀɢᴇ : ᴘʏᴛʜᴏɴ\n‣ ᴅᴀᴛᴀʙᴀsᴇ : ᴍᴏɴɢᴏ ᴅʙ\n‣ ʙᴜɪʟᴅ : V-4.1 [sᴛᴀʙʟᴇ]",
     },
     "hi": {"help":"<b>नीचे दिए गए बटन दबाकर Bot की जानकारी देखें।</b>","about":"<blockquote><b>‣ नाम : Jisshu filter bot\n‣ क्रिएटर : sandy Bots\n‣ लाइब्रेरी : Pyrogram\n‣ भाषा : Python\n‣ डेटाबेस : MongoDB\n‣ बिल्ड : V-4.1 [stable]</b></blockquote>"},
     "ta": {"help":"<b>கீழே உள்ள பொத்தான்களை அழுத்தி Bot தகவல்களைப் பார்க்கவும்.</b>","about":"<blockquote><b>‣ பெயர் : Jisshu filter bot\n‣ உருவாக்கியவர் : sandy Bots\n‣ Library : Pyrogram\n‣ மொழி : Python\n‣ Database : MongoDB\n‣ Build : V-4.1 [stable]</b></blockquote>"},
