@@ -1742,6 +1742,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
                     [InlineKeyboardButton("⋞ ʜᴏᴍᴇ", callback_data="start")],
                 ]
             ),
+            parse_mode=enums.ParseMode.HTML,
             disable_web_page_preview=True,
         )
     elif query.data == "mydevelopers":
@@ -1754,7 +1755,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
         buttons = [
             [
                 InlineKeyboardButton(
-                    "ʀᴇᴘᴏ", url="https://github.com/JisshuTG/Jisshu-filter-bot"
+                    "ᴄᴏɴᴛᴀᴄᴛ ᴀᴅᴍɪɴ ғᴏʀ ʀᴇᴘᴏ",
+                    url="https://t.me/jisshu_bots",
                 )
             ],
             [
