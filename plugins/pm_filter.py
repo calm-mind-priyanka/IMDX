@@ -43,6 +43,7 @@ from database.ia_filterdb import (
 import random
 import hashlib
 import os
+import html
 
 lock = asyncio.Lock()
 import traceback
@@ -2592,16 +2593,34 @@ async def advantage_spell_chok(message):
                 )
             ]
         ]
+        # Give the user a clear correction workflow: copy the exact title from
+        # Google and send it back using the bot's expected naming format.
+        guide_caption = f"""🤧 <b>I couldn't find any movie or series with this name:</b>
+
+<code>{html.escape(search)}</code>
+
+📋 <b>COPY THE CORRECT NAME, PASTE &amp; SEND</b>
+
+<b>FORMAT RULES:</b>
+🎬 <b>Webseries:</b> <code>Reacher S04E07</code> ✅
+❌ Not: <code>Reacher season 12 episode 7</code>
+
+🎥 <b>Movie:</b> <code>Dhurandhar The Revenge</code> ✅
+❌ Not: <code>Dhurandhar: The Revenge</code>
+
+🔎 Tap <b>CHECK SPELLING ON GOOGLE</b>, copy the <b>exact correct name</b> from Google, then paste and send it here using the format above."""
         if os.path.isfile(SPELLING_GUIDE_IMAGE):
             k = await message.reply_photo(
                 photo=SPELLING_GUIDE_IMAGE,
-                caption=script.I_CUDNT.format(search),
+                caption=guide_caption,
+                parse_mode=enums.ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup(button),
             )
         else:
             # Safe fallback if an incomplete deployment is missing the bundled image.
             k = await message.reply_text(
-                text=script.I_CUDNT.format(search),
+                text=guide_caption,
+                parse_mode=enums.ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup(button),
             )
         await asyncio.sleep(120)
