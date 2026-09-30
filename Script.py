@@ -32,12 +32,7 @@ class script(object):
 
 <blockquote>🌿 ᴍᴀɪɴᴛᴀɪɴᴇᴅ ʙʏ : <a href='https://t.me/+DiOcxJnNQXdmNDdl'>sandy Bots &lt;/&gt;</a></b></blockquote>"""
 
-    ABOUT_TEXT = """‣ ᴍʏ ɴᴀᴍᴇ : ᴊɪꜱꜱʜᴜ ꜰɪʟᴛᴇʀ ʙᴏᴛ
-‣ ᴄʀᴇᴀᴛᴏʀ : ᴊɪꜱꜱʜᴜ
-‣ ʟɪʙʀᴀʀʏ : ᴘʏʀᴏɢʀᴀᴍ
-‣ ʟᴀɴɢᴜᴀɢᴇ : ᴘʏᴛʜᴏɴ
-‣ ᴅᴀᴛᴀʙᴀꜱᴇ : ᴍᴏɴɢᴏ ᴅʙ
-‣ ʙᴜɪʟᴅ : ᴠ-𝟺.𝟷 [ꜱᴛᴀʙʟᴇ]"""
+    ABOUT_TEXT = ""
 
     SUPPORT_GRP_MOVIE_TEXT = """<b>ʜᴇʏ {}
 
@@ -486,7 +481,7 @@ Aᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ᴀɴᴅ ᴍᴀᴋᴇ ᴍᴇ ᴀ�
 
 ꜱᴏᴜʀᴄᴇ ᴄᴏᴅᴇ ʜᴇʀᴇ ◉› ᴄʟɪᴄᴋ ᴛʜᴇ ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ.
 
-ᴍᴀɪɴᴛᴀɪɴᴇᴅ ʙʏ : @Sandymaiwait"""
+ᴍᴀɪɴᴛᴀɪɴᴇᴅ ʙʏ : @jisshu_bots"""
     GROUP_C_TEXT = """<b><blockquote>
  --------------Set Verify-------------
 /set_verify {website link} {website api}
