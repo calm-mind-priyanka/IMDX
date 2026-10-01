@@ -209,7 +209,7 @@ async def _verification_recovery_worker(client):
                 try:
                     sent = await client.send_message(
                         user_id,
-                        care_tr(ui_lang, "title") + "\n\n" + care_tr(ui_lang, "body"),
+                        care_reminder_tr(ui_lang, "title") + "\n\n" + care_reminder_tr(ui_lang, "body"),
                         reply_markup=InlineKeyboardMarkup(buttons),
                         parse_mode=enums.ParseMode.HTML,
                     )
@@ -303,7 +303,7 @@ async def verification_feedback_receiver(client, message):
         await message.reply_text(care_tr(ui_lang, "feedback_failed"), parse_mode=enums.ParseMode.HTML)
     raise StopPropagation
 
-from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr, verify_tr, care_tr, small_caps
+from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr, verify_tr, care_tr, care_reminder_tr, small_caps
 
 logger = logging.getLogger(__name__)
 movie_series_db = JsTopDB(DATABASE_URI)
