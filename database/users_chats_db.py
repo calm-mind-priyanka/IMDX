@@ -177,30 +177,27 @@ class Database:
         return await self.misc.update_one(myquery, newvalues)
 
     async def is_user_verified(self, user_id):
+        """Return whether the Step-1/master verification is still inside its 24h window.
+
+        This is intentionally a rolling 24-hour window from the successful
+        Step-1 verification time. It is NOT reset at midnight. Step 2 and Step 3
+        keep their existing independent gap logic below.
+        """
         user = await self.get_notcopy_user(user_id)
         try:
-            pastDate = user["last_verified"]
+            past_date = user["last_verified"]
         except Exception:
             user = await self.get_notcopy_user(user_id)
-            pastDate = user["last_verified"]
+            past_date = user["last_verified"]
+
         ist_timezone = pytz.timezone("Asia/Kolkata")
-        pastDate = pastDate.astimezone(ist_timezone)
+        past_date = past_date.astimezone(ist_timezone)
         current_time = datetime.datetime.now(tz=ist_timezone)
-        seconds_since_midnight = (
-            current_time
-            - datetime.datetime(
-                current_time.year,
-                current_time.month,
-                current_time.day,
-                0,
-                0,
-                0,
-                tzinfo=ist_timezone,
-            )
-        ).total_seconds()
-        time_diff = current_time - pastDate
-        total_seconds = time_diff.total_seconds()
-        return total_seconds <= seconds_since_midnight
+        time_diff = current_time - past_date
+
+        # Step 1 is the master recycle window: exactly 24 hours from the
+        # successful Step-1 callback. Do not use calendar-day/midnight logic.
+        return datetime.timedelta(0) <= time_diff <= datetime.timedelta(hours=24)
 
     async def user_verified(self, user_id):
         user = await self.get_notcopy_user(user_id)
@@ -286,9 +283,20 @@ class Database:
                 return second_time < pastDate
         return False
 
-    async def create_verify_id(self, user_id: int, hash):
-        res = {"user_id": user_id, "hash": hash, "verified": False}
+    async def create_verify_id(self, user_id: int, hash, **metadata):
+        res = {"user_id": int(user_id), "hash": hash, "verified": False, **metadata}
         return await self.verify_id.insert_one(res)
+
+    async def get_latest_verification_for_delivery(self, user_id: int, group_id: int, delivery_key: str):
+        """Return the newest verification record for this user/file delivery."""
+        return await self.verify_id.find_one(
+            {
+                "user_id": int(user_id),
+                "group_id": int(group_id),
+                "delivery_key": str(delivery_key),
+            },
+            sort=[("created_at", -1)],
+        )
 
     async def get_verify_id_info(self, user_id: int, hash):
         return await self.verify_id.find_one({"user_id": user_id, "hash": hash})
