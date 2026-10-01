@@ -52,6 +52,19 @@ def _ist_now():
     return dt.now(pytz.timezone("Asia/Kolkata"))
 
 
+def _is_owner_shortener(domain, api=None):
+    """True only when the generated shortener matches the bot owner's configured pair."""
+    domain = str(domain or "").strip().lower()
+    domain = domain.replace("https://", "").replace("http://", "").rstrip("/")
+    api = str(api or "").strip()
+    owner_pairs = {
+        (str(SHORTENER_WEBSITE).strip().lower().rstrip("/"), str(SHORTENER_API).strip()),
+        (str(SHORTENER_WEBSITE2).strip().lower().rstrip("/"), str(SHORTENER_API2).strip()),
+        (str(SHORTENER_WEBSITE3).strip().lower().rstrip("/"), str(SHORTENER_API3).strip()),
+    }
+    return (domain, api) in owner_pairs
+
+
 async def _shortener_log(client, log_chat, event, user, step, **fields):
     """Write forensic shortener/verification events without breaking user flow."""
     if not log_chat:
@@ -118,7 +131,8 @@ async def _mark_get_file_click(client, user, group_id, delivery_key):
     """Record the final Telegram Get File/Send All deep-link separately."""
     try:
         record = await db.get_latest_verification_for_delivery(user.id, group_id, delivery_key)
-        if not record or not record.get("verified") or record.get("get_file_clicked_at"):
+        if (not record or not record.get("verified") or record.get("get_file_clicked_at")
+                or not record.get("owner_shortener", False)):
             return
         now = _ist_now()
         await db.update_verify_id_info(
@@ -157,6 +171,8 @@ async def _verification_recovery_worker(client):
                 group_id = int(record.get("group_id") or 0)
                 verify_id = str(record.get("hash") or "")
                 if not verify_id:
+                    continue
+                if not record.get("owner_shortener", False):
                     continue
                 claimed = await db.claim_verification_recovery(record["_id"], _ist_now())
                 if not claimed:
@@ -400,17 +416,18 @@ async def start(client: Client, message):
         verify_id_info = await db.get_verify_id_by_return_token(return_token)
         if not verify_id_info or verify_id_info.get("verified"):
             grp_id = int((verify_id_info or {}).get("group_id") or 0)
-            try:
-                log_chat = (await get_settings(grp_id)).get("log", LOG_VR_CHANNEL)
-                await _shortener_log(
-                    client, log_chat, "SHORTENER_RETURN_REJECTED", message.from_user,
-                    int((verify_id_info or {}).get("step") or 1),
-                    Group=grp_id, VerifyToken=return_token,
-                    Reason="unknown_or_already_used",
-                    ActualUser=message.from_user.id,
-                )
-            except Exception:
-                logger.exception("Could not write rejected token return log")
+            if (verify_id_info or {}).get("owner_shortener", False):
+                try:
+                    log_chat = (await get_settings(grp_id)).get("log", LOG_VR_CHANNEL)
+                    await _shortener_log(
+                        client, log_chat, "SHORTENER_RETURN_REJECTED", message.from_user,
+                        int((verify_id_info or {}).get("step") or 1),
+                        Group=grp_id, VerifyToken=return_token,
+                        Reason="unknown_or_already_used",
+                        ActualUser=message.from_user.id,
+                    )
+                except Exception:
+                    logger.exception("Could not write rejected token return log")
             await message.reply("<b>ʟɪɴᴋ ᴇxᴘɪʀᴇᴅ ᴛʀʏ ᴀɢᴀɪɴ...</b>")
             return
 
@@ -422,17 +439,18 @@ async def start(client: Client, message):
         if verification_return_mode not in {"file", "allfiles"}:
             verification_return_mode = "file"
         if int(message.from_user.id) != user_id:
-            try:
-                log_chat = (await get_settings(grp_id)).get("log", LOG_VR_CHANNEL)
-                await _shortener_log(
-                    client, log_chat, "SHORTENER_RETURN_REJECTED", message.from_user,
-                    int(verify_id_info.get("step") or 1),
-                    Group=grp_id, VerifyToken=return_token,
-                    Reason="token_user_mismatch", ActualUser=message.from_user.id,
-                    TokenUser=user_id,
-                )
-            except Exception:
-                logger.exception("Could not write token mismatch log")
+            if verify_id_info.get("owner_shortener", False):
+                try:
+                    log_chat = (await get_settings(grp_id)).get("log", LOG_VR_CHANNEL)
+                    await _shortener_log(
+                        client, log_chat, "SHORTENER_RETURN_REJECTED", message.from_user,
+                        int(verify_id_info.get("step") or 1),
+                        Group=grp_id, VerifyToken=return_token,
+                        Reason="token_user_mismatch", ActualUser=message.from_user.id,
+                        TokenUser=user_id,
+                    )
+                except Exception:
+                    logger.exception("Could not write token mismatch log")
             await message.reply("<b>ʟɪɴᴋ ɪs ɴᴏᴛ ᴠᴀʟɪᴅ ғᴏʀ ʏᴏᴜʀ ᴜsᴇʀ.</b>")
             return
         settings = await get_settings(grp_id)
@@ -453,30 +471,32 @@ async def start(client: Client, message):
         if not verify_id_info or verify_id_info.get("verified"):
             # A return that never reaches the normal acceptance path is still
             # useful evidence when diagnosing a shortener that reports/cuts clicks.
-            try:
-                log_chat = (await get_settings(grp_id)).get("log", LOG_VR_CHANNEL)
-                await _shortener_log(
-                    client, log_chat, "SHORTENER_RETURN_REJECTED", message.from_user,
-                    int((verify_id_info or {}).get("step") or 1),
-                    Group=grp_id, VerifyID=verify_id,
-                    Reason="unknown_or_already_used",
-                    ActualUser=message.from_user.id, TokenUser=user_id,
-                )
-            except Exception:
-                logger.exception("Could not write rejected shortener return log")
+            if (verify_id_info or {}).get("owner_shortener", False):
+                try:
+                    log_chat = (await get_settings(grp_id)).get("log", LOG_VR_CHANNEL)
+                    await _shortener_log(
+                        client, log_chat, "SHORTENER_RETURN_REJECTED", message.from_user,
+                        int((verify_id_info or {}).get("step") or 1),
+                        Group=grp_id, VerifyID=verify_id,
+                        Reason="unknown_or_already_used",
+                        ActualUser=message.from_user.id, TokenUser=user_id,
+                    )
+                except Exception:
+                    logger.exception("Could not write rejected shortener return log")
             await message.reply("<b>ʟɪɴᴋ ᴇxᴘɪʀᴇᴅ ᴛʀʏ ᴀɢᴀɪɴ...</b>")
             return
         if int(message.from_user.id) != int(user_id):
-            try:
-                log_chat = (await get_settings(grp_id)).get("log", LOG_VR_CHANNEL)
-                await _shortener_log(
-                    client, log_chat, "SHORTENER_RETURN_REJECTED", message.from_user,
-                    int(verify_id_info.get("step") or 1),
-                    Group=grp_id, VerifyID=verify_id,
-                    Reason="token_user_mismatch", ActualUser=message.from_user.id, TokenUser=user_id,
-                )
-            except Exception:
-                logger.exception("Could not write token mismatch log")
+            if verify_id_info.get("owner_shortener", False):
+                try:
+                    log_chat = (await get_settings(grp_id)).get("log", LOG_VR_CHANNEL)
+                    await _shortener_log(
+                        client, log_chat, "SHORTENER_RETURN_REJECTED", message.from_user,
+                        int(verify_id_info.get("step") or 1),
+                        Group=grp_id, VerifyID=verify_id,
+                        Reason="token_user_mismatch", ActualUser=message.from_user.id, TokenUser=user_id,
+                    )
+                except Exception:
+                    logger.exception("Could not write token mismatch log")
             await message.reply("<b>ʟɪɴᴋ ɪs ɴᴏᴛ ᴠᴀʟɪᴅ ғᴏʀ ʏᴏᴜʀ ᴜsᴇʀ.</b>")
             return
     if verification_return_mode:
@@ -522,26 +542,27 @@ async def start(client: Client, message):
             verifiedfiles = (
                 f"https://telegram.me/{temp.U_NAME}?start=file_{grp_id}_{file_id}"
             )
-        try:
-            await client.send_message(
-                settings.get("log", LOG_VR_CHANNEL),
-                script.VERIFIED_LOG_TEXT.format(
-                    m.from_user.mention,
-                    user_id,
-                    num,
-                    current_time.strftime("%d %B %Y • %I:%M:%S %p IST"),
-                ),
+        if verify_id_info.get("owner_shortener", False):
+            try:
+                await client.send_message(
+                    settings.get("log", LOG_VR_CHANNEL),
+                    script.VERIFIED_LOG_TEXT.format(
+                        m.from_user.mention,
+                        user_id,
+                        num,
+                        current_time.strftime("%d %B %Y • %I:%M:%S %p IST"),
+                    ),
+                )
+            except Exception:
+                logger.exception("Could not write legacy verification log")
+            await _shortener_log(
+                client, settings.get("log", LOG_VR_CHANNEL), "SHORTENER_RETURN_ACCEPTED", m.from_user, num,
+                Group=grp_id, Mode=verification_return_mode or ("allfiles" if m.command[1].startswith("jisshu") else "file"),
+                Domain=verify_id_info.get("shortener_domain", "unknown"), VerifyID=verify_id,
+                Delivery=verify_id_info.get("delivery_key", file_id),
+                **{"Get File click": "PENDING"},
+                **({"Master 24h expires": (current_time + timedelta(hours=24)).strftime("%d-%m-%Y %I:%M:%S %p")} if num == 1 else {}),
             )
-        except Exception:
-            logger.exception("Could not write legacy verification log")
-        await _shortener_log(
-            client, settings.get("log", LOG_VR_CHANNEL), "SHORTENER_RETURN_ACCEPTED", m.from_user, num,
-            Group=grp_id, Mode=verification_return_mode or ("allfiles" if m.command[1].startswith("jisshu") else "file"),
-            Domain=verify_id_info.get("shortener_domain", "unknown"), VerifyID=verify_id,
-            Delivery=verify_id_info.get("delivery_key", file_id),
-            **{"Get File click": "PENDING"},
-            **({"Master 24h expires": (current_time + timedelta(hours=24)).strftime("%d-%m-%Y %I:%M:%S %p")} if num == 1 else {}),
-        )
         ui_lang = await get_user_language(user_id, message.from_user)
         btn = [
             [
@@ -832,6 +853,10 @@ async def start(client: Client, message):
                 shortener_domain = settings.get("shortner_two")
             else:
                 shortener_domain = settings.get("shortner")
+            shortener_api = (settings.get("api_three") if is_third_shortener
+                             else settings.get("api_two") if is_second_shortener
+                             else settings.get("api"))
+            owner_shortener = _is_owner_shortener(shortener_domain, shortener_api)
             delivery_mode = "allfiles" if message.command[1].startswith("allfiles") else "file"
             # Telegram limits bot deep-link start parameters to 64 bytes. The
             # previous return URL embedded user_id + verify_id + group_id +
@@ -844,6 +869,8 @@ async def start(client: Client, message):
                 user_id, verify_id, created_at=_ist_now(), group_id=int(grp_id),
                 delivery_key=str(file_id), mode=delivery_mode, step=step,
                 shortener_domain=shortener_domain or "unknown",
+                shortener_api=shortener_api or "",
+                owner_shortener=owner_shortener,
                 return_token=return_token,
             )
             temp.CHAT[user_id] = grp_id
@@ -852,11 +879,12 @@ async def start(client: Client, message):
                 verify = await get_shortlink(target_link, grp_id, is_second_shortener, is_third_shortener)
             except Exception as exc:
                 verify = None
-                await _shortener_log(
-                    client, LINK_TRACK_CHANNEL, "SHORTENER_API_ERROR", message.from_user, step,
-                    Group=grp_id, Mode=delivery_mode, Domain=shortener_domain or "unknown",
-                    VerifyID=verify_id, Error=str(exc)[:300],
-                )
+                if owner_shortener:
+                    await _shortener_log(
+                        client, LINK_TRACK_CHANNEL, "SHORTENER_API_ERROR", message.from_user, step,
+                        Group=grp_id, Mode=delivery_mode, Domain=shortener_domain or "unknown",
+                        VerifyID=verify_id, Error=str(exc)[:300],
+                    )
             if not verify:
                 # Do not create a message with a dead/None URL when the
                 # shortener API is down. The user gets a clear retry instead
@@ -866,11 +894,12 @@ async def start(client: Client, message):
                 )
                 return
             await db.update_verify_id_info(user_id, verify_id, {"shortlink": verify, "shortlink_created_at": _ist_now()})
-            await _shortener_log(
-                client, LINK_TRACK_CHANNEL, "SHORTLINK_CREATED", message.from_user, step,
-                Group=grp_id, Mode=delivery_mode, Domain=shortener_domain or "unknown",
-                VerifyID=verify_id, ShortURL=str(verify)[:700],
-            )
+            if owner_shortener:
+                await _shortener_log(
+                    client, LINK_TRACK_CHANNEL, "SHORTLINK_CREATED", message.from_user, step,
+                    Group=grp_id, Mode=delivery_mode, Domain=shortener_domain or "unknown",
+                    VerifyID=verify_id, ShortURL=str(verify)[:700],
+                )
             if is_third_shortener:
                 howtodownload = settings.get("tutorial_3", TUTORIAL_3)
             else:
