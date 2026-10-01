@@ -460,6 +460,32 @@ CARE = {
 "ne":{"title":"🤝 <b>Verification Help</b>","body":"तपाईंले verification सुरु गर्नुभएको थियो, तर process अझै पूरा भएको देखिँदैन।\n\nसमस्या भए तलको guide हेर्नुहोस् वा के समस्या भयो हामीलाई भन्नुहोस्। Direct file चाहियो भने plans हेर्न सक्नुहुन्छ।","continue":"🔁 Verification जारी राख्नुहोस्","tutorial":"🎬 Verification कसरी गर्ने","plans":"💎 Direct File / Plans","feedback":"🆘 समस्या बताउनुहोस्","feedback_title":"📝 <b>के समस्या भयो बताउनुहोस्</b>","feedback_body":"आफ्नो message यहाँ पठाउनुहोस्। Text, photo, document वा screenshot पठाउन सक्नुहुन्छ।\n\nतपाईंको verification details सहित bot owner लाई पठाइदिन्छु।","feedback_sent":"<b>✅ तपाईंको feedback पठाइयो। धन्यवाद!</b>","feedback_failed":"<b>⚠️ Feedback पठाउन सकिएन। फेरि प्रयास गर्नुहोस्।</b>","expired":"यो verification request अब उपलब्ध छैन।"},
 }
 
+
+# Short customer-care reminder used when a verification link was generated but
+# the user has not completed the verification flow yet. Keep this separate
+# from the fuller CARE guide so the reminder can stay concise.
+CARE_REMINDER = {
+"en":{"title":"🔔 <b>Quick Verification Reminder</b>","body":"Your verification link is ready, but the process is not complete yet.\n\n👉 Please click the <b>Verify</b> button and complete the verification to get your file.\n\n💎 Or use <b>Plans / Premium</b> if you want direct access without verification."},
+"hi":{"title":"🔔 <b>Verification Reminder</b>","body":"आपका verification link तैयार है, लेकिन process अभी पूरा नहीं हुआ है।\n\n👉 कृपया <b>Verify</b> button पर click करके verification पूरा करें और अपनी file प्राप्त करें।\n\n💎 या बिना verification direct access के लिए <b>Plans / Premium</b> देखें।"},
+"ta":{"title":"🔔 <b>Verification Reminder</b>","body":"உங்கள் verification link தயாராக உள்ளது, ஆனால் process இன்னும் complete ஆகவில்லை.\n\n👉 <b>Verify</b> button-ஐ click செய்து verification-ஐ complete செய்து உங்கள் file-ஐ பெறுங்கள்.\n\n💎 Verification வேண்டாம் என்றால் <b>Plans / Premium</b> பார்க்கலாம்."},
+"te":{"title":"🔔 <b>Verification Reminder</b>","body":"మీ verification link సిద్ధంగా ఉంది, కానీ process ఇంకా పూర్తి కాలేదు.\n\n👉 <b>Verify</b> button పై click చేసి verification పూర్తి చేసి మీ file పొందండి.\n\n💎 Verification లేకుండా direct access కోసం <b>Plans / Premium</b> చూడండి."},
+"kn":{"title":"🔔 <b>Verification Reminder</b>","body":"ನಿಮ್ಮ verification link ಸಿದ್ಧವಾಗಿದೆ, ಆದರೆ process ಇನ್ನೂ ಪೂರ್ಣವಾಗಿಲ್ಲ.\n\n👉 <b>Verify</b> button ಕ್ಲಿಕ್ ಮಾಡಿ verification ಪೂರ್ಣಗೊಳಿಸಿ ನಿಮ್ಮ file ಪಡೆಯಿರಿ.\n\n💎 Verification ಬೇಡವೆಂದರೆ direct access ಗಾಗಿ <b>Plans / Premium</b> ನೋಡಿ."},
+"ml":{"title":"🔔 <b>Verification Reminder</b>","body":"നിങ്ങളുടെ verification link തയ്യാറാണ്, പക്ഷേ process ഇതുവരെ പൂർത്തിയായിട്ടില്ല.\n\n👉 <b>Verify</b> button click ചെയ്ത് verification പൂർത്തിയാക്കി നിങ്ങളുടെ file നേടുക.\n\n💎 Verification വേണ്ടെങ്കിൽ direct access-ിനായി <b>Plans / Premium</b> നോക്കാം."},
+"bn":{"title":"🔔 <b>Verification Reminder</b>","body":"আপনার verification link তৈরি হয়েছে, কিন্তু process এখনও সম্পূর্ণ হয়নি।\n\n👉 <b>Verify</b> button-এ click করে verification সম্পূর্ণ করুন এবং আপনার file নিন।\n\n💎 Verification ছাড়া direct access চাইলে <b>Plans / Premium</b> দেখুন।"},
+"mr":{"title":"🔔 <b>Verification Reminder</b>","body":"तुमची verification link तयार आहे, पण process अजून पूर्ण झालेली नाही.\n\n👉 <b>Verify</b> button वर click करून verification पूर्ण करा आणि तुमची file मिळवा.\n\n💎 Verification नको असल्यास direct access साठी <b>Plans / Premium</b> पहा."},
+"gu":{"title":"🔔 <b>Verification Reminder</b>","body":"તમારી verification link તૈયાર છે, પરંતુ process હજુ પૂર્ણ થયું નથી.\n\n👉 <b>Verify</b> button પર click કરીને verification પૂર્ણ કરો અને તમારી file મેળવો.\n\n💎 Verification વગર direct access માટે <b>Plans / Premium</b> જુઓ."},
+"pa":{"title":"🔔 <b>Verification Reminder</b>","body":"ਤੁਹਾਡੀ verification link ਤਿਆਰ ਹੈ, ਪਰ process ਹਾਲੇ ਪੂਰੀ ਨਹੀਂ ਹੋਈ।\n\n👉 <b>Verify</b> button ਤੇ click ਕਰਕੇ verification ਪੂਰੀ ਕਰੋ ਅਤੇ ਆਪਣੀ file ਲਵੋ।\n\n💎 Verification ਤੋਂ ਬਿਨਾਂ direct access ਲਈ <b>Plans / Premium</b> ਵੇਖੋ।"},
+"ur":{"title":"🔔 <b>Verification Reminder</b>","body":"آپ کا verification link تیار ہے، لیکن process ابھی مکمل نہیں ہوئی۔\n\n👉 <b>Verify</b> button پر click کرکے verification مکمل کریں اور اپنی file حاصل کریں۔\n\n💎 Verification کے بغیر direct access کے لیے <b>Plans / Premium</b> دیکھیں۔"},
+"as":{"title":"🔔 <b>Verification Reminder</b>","body":"আপোনাৰ verification link সাজু আছে, কিন্তু processটো এতিয়াও সম্পূৰ্ণ হোৱা নাই।\n\n👉 <b>Verify</b> button-ত click কৰি verification সম্পূৰ্ণ কৰক আৰু আপোনাৰ file লাভ কৰক।\n\n💎 Verification নকৰাকৈ direct accessৰ বাবে <b>Plans / Premium</b> চাওক।"},
+"ne":{"title":"🔔 <b>Verification Reminder</b>","body":"तपाईंको verification link तयार छ, तर process अझै पूरा भएको छैन।\n\n👉 <b>Verify</b> button मा click गरेर verification पूरा गर्नुहोस् र आफ्नो file प्राप्त गर्नुहोस्।\n\n💎 Verification बिना direct access का लागि <b>Plans / Premium</b> हेर्नुहोस्."},
+"hinglish":{"title":"🔔 <b>Quick Verification Reminder</b>","body":"Aapka verification link ready hai, lekin process abhi complete nahi hua.\n\n👉 Please <b>Verify</b> button par click karke verification complete karo aur apni file pao.\n\n💎 Verification nahi karna ho to direct access ke liye <b>Plans / Premium</b> dekho."},
+}
+
+def care_reminder_tr(lang, key):
+    return CARE_REMINDER.get(lang, CARE_REMINDER[DEFAULT_LANGUAGE]).get(
+        key, CARE_REMINDER[DEFAULT_LANGUAGE][key]
+    )
+
 def care_tr(lang, key):
     return CARE.get(lang, CARE[DEFAULT_LANGUAGE]).get(key, CARE[DEFAULT_LANGUAGE][key])
 
