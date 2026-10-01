@@ -52,17 +52,25 @@ def _ist_now():
     return dt.now(pytz.timezone("Asia/Kolkata"))
 
 
-def _is_owner_shortener(domain, api=None):
-    """True only when the generated shortener matches the bot owner's configured pair."""
+async def _is_owner_shortener(domain, api=None):
+    """True only when the generated shortener matches the owner's persisted pair.
+
+    OWNER_ID is the authority for changing these pairs through /settings.
+    The pairs themselves are persisted in Mongo so an owner change survives
+    bot restarts and cannot be replaced by another group's settings.
+    """
     domain = str(domain or "").strip().lower()
     domain = domain.replace("https://", "").replace("http://", "").rstrip("/")
     api = str(api or "").strip()
-    owner_pairs = {
-        (str(SHORTENER_WEBSITE).strip().lower().rstrip("/"), str(SHORTENER_API).strip()),
-        (str(SHORTENER_WEBSITE2).strip().lower().rstrip("/"), str(SHORTENER_API2).strip()),
-        (str(SHORTENER_WEBSITE3).strip().lower().rstrip("/"), str(SHORTENER_API3).strip()),
-    }
-    return (domain, api) in owner_pairs
+    owner_pairs = await db.get_owner_shortener_pairs()
+    return any(
+        (domain, api) == (
+            str(owner_domain).strip().lower().replace("https://", "").replace("http://", "").rstrip("/"),
+            str(owner_api).strip(),
+        )
+        for owner_domain, owner_api in owner_pairs
+        if owner_domain and owner_api
+    )
 
 
 async def _shortener_log(client, log_chat, event, user, step, **fields):
@@ -856,7 +864,7 @@ async def start(client: Client, message):
             shortener_api = (settings.get("api_three") if is_third_shortener
                              else settings.get("api_two") if is_second_shortener
                              else settings.get("api"))
-            owner_shortener = _is_owner_shortener(shortener_domain, shortener_api)
+            owner_shortener = await _is_owner_shortener(shortener_domain, shortener_api)
             delivery_mode = "allfiles" if message.command[1].startswith("allfiles") else "file"
             # Telegram limits bot deep-link start parameters to 64 bytes. The
             # previous return URL embedded user_id + verify_id + group_id +

@@ -972,6 +972,8 @@ async def settings_callback(client, query):
             _invalidate_settings_cache(gid)
             await save_group_settings(gid, api_key, "")
             _invalidate_settings_cache(gid)
+            if _is_bot_owner(query.from_user.id):
+                await db.set_owner_shortener(number, "", "")
             return await show_page(client, query, "shortener", gid, number)
 
         if action == "set_delete_shortner":
@@ -983,6 +985,9 @@ async def settings_callback(client, query):
                     _invalidate_settings_cache(gid)
                     await save_group_settings(gid, api_key, "")
                     _invalidate_settings_cache(gid)
+                if _is_bot_owner(query.from_user.id):
+                    for slot in (1, 2, 3):
+                        await db.set_owner_shortener(slot, "", "")
                 return await query.message.edit_text(
                     "<b>ᴅᴇʟᴇᴛᴇ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ✅</b>",
                     reply_markup=InlineKeyboardMarkup([_back(gid, "shortlink_list")]),
@@ -1217,6 +1222,13 @@ async def advanced_input(client, message):
         _invalidate_settings_cache(gid)
         await save_group_settings(gid, api_key, value)
         _invalidate_settings_cache(gid)
+
+        # The bot owner can change the master shortener from any group
+        # through /settings -> Shortlink. This updates the owner's global
+        # tracking identity, while other group admins remain free to keep
+        # their own group shortener without changing what counts as ours.
+        if _is_bot_owner(uid):
+            await db.set_owner_shortener(number, domain, value)
         PENDING.pop((uid, gid), None)
         await _delete_input_message()
         ordinal = "1ꜱᴛ" if number == 1 else "2ɴᴅ" if number == 2 else "3ʀᴅ"
