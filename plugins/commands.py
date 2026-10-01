@@ -5,7 +5,7 @@ import random
 import asyncio
 import string
 import pytz
-from datetime import datetime as dt
+from datetime import datetime as dt, timedelta
 from Script import script
 from pyrogram import Client, filters, enums
 from pyrogram.errors import ChatAdminRequired
@@ -42,6 +42,55 @@ from utils import (
 import re
 import base64
 from info import *
+
+
+def _ist_now():
+    return dt.now(pytz.timezone("Asia/Kolkata"))
+
+
+async def _shortener_log(client, log_chat, event, user, step, **fields):
+    """Write forensic shortener/verification events without breaking user flow."""
+    if not log_chat:
+        return
+    now = _ist_now()
+    lines = [
+        f"<b>🔎 SHORTENER TRACK — {event}</b>",
+        f"👤 User: {user.mention} [<code>{user.id}</code>]",
+        f"🔢 Step: <code>{step}/3</code>",
+        f"📅 Date: <code>{now.strftime('%d-%m-%Y')}</code>",
+        f"🕒 Time: <code>{now.strftime('%I:%M:%S %p')}</code>",
+    ]
+    for label, value in fields.items():
+        if value is not None and value != "":
+            lines.append(f"{label}: <code>{value}</code>")
+    try:
+        await client.send_message(int(log_chat), "\n".join(lines), disable_web_page_preview=True)
+    except Exception:
+        logger.exception("Could not write shortener diagnostic log")
+
+
+async def _mark_get_file_click(client, user, group_id, delivery_key):
+    """Record the final Telegram Get File/Send All deep-link separately."""
+    try:
+        record = await db.get_latest_verification_for_delivery(user.id, group_id, delivery_key)
+        if not record or not record.get("verified") or record.get("get_file_clicked_at"):
+            return
+        now = _ist_now()
+        await db.update_verify_id_info(
+            user.id, record["hash"],
+            {"get_file_clicked_at": now, "get_file_clicked": True},
+        )
+        settings = await get_settings(group_id)
+        step = int(record.get("step") or record.get("verification_step") or 1)
+        await _shortener_log(
+            client, settings.get("log", LOG_VR_CHANNEL), "GET_FILE_CLICKED", user, step,
+            Group=group_id, Mode=record.get("mode", "file"),
+            Domain=record.get("shortener_domain", "unknown"),
+            VerifyID=record.get("hash", ""), Delivery=delivery_key,
+            **{"Shortener return": "YES"},
+        )
+    except Exception:
+        logger.exception("Could not record Get File click")
 from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr, verify_tr, small_caps
 
 logger = logging.getLogger(__name__)
@@ -168,8 +217,34 @@ async def start(client: Client, message):
         grp_id = int(grp_id or 0)
         settings = await get_settings(grp_id)
         verify_id_info = await db.get_verify_id_info(user_id, verify_id)
-        if not verify_id_info or verify_id_info["verified"]:
+        if not verify_id_info or verify_id_info.get("verified"):
+            # A return that never reaches the normal acceptance path is still
+            # useful evidence when diagnosing a shortener that reports/cuts clicks.
+            try:
+                log_chat = (await get_settings(grp_id)).get("log", LOG_VR_CHANNEL)
+                await _shortener_log(
+                    client, log_chat, "SHORTENER_RETURN_REJECTED", message.from_user,
+                    int((verify_id_info or {}).get("step") or 1),
+                    Group=grp_id, VerifyID=verify_id,
+                    Reason="unknown_or_already_used",
+                    ActualUser=message.from_user.id, TokenUser=user_id,
+                )
+            except Exception:
+                logger.exception("Could not write rejected shortener return log")
             await message.reply("<b>ʟɪɴᴋ ᴇxᴘɪʀᴇᴅ ᴛʀʏ ᴀɢᴀɪɴ...</b>")
+            return
+        if int(message.from_user.id) != int(user_id):
+            try:
+                log_chat = (await get_settings(grp_id)).get("log", LOG_VR_CHANNEL)
+                await _shortener_log(
+                    client, log_chat, "SHORTENER_RETURN_REJECTED", message.from_user,
+                    int(verify_id_info.get("step") or 1),
+                    Group=grp_id, VerifyID=verify_id,
+                    Reason="token_user_mismatch", ActualUser=message.from_user.id, TokenUser=user_id,
+                )
+            except Exception:
+                logger.exception("Could not write token mismatch log")
+            await message.reply("<b>ʟɪɴᴋ ɪs ɴᴏᴛ ᴠᴀʟɪᴅ ғᴏʀ ʏᴏᴜʀ ᴜsᴇʀ.</b>")
             return
         ist_timezone = pytz.timezone("Asia/Kolkata")
         if await db.user_verified(user_id):
@@ -182,11 +257,22 @@ async def start(client: Client, message):
             )
         current_time = dt.now(tz=ist_timezone)
         result = await db.update_notcopy_user(user_id, {key: current_time})
-        await db.update_verify_id_info(user_id, verify_id, {"verified": True})
         if key == "third_time_verified":
             num = 3
         else:
             num = 2 if key == "second_time_verified" else 1
+        verification_update = {
+            "verified": True,
+            "verified_at": current_time,
+            "verification_step": num,
+            "return_accepted": True,
+        }
+        # Step 1 is the master recycle event. Record its rolling 24-hour
+        # expiry for diagnostics; Step 2/3 do not reset this timer.
+        if num == 1:
+            verification_update["master_24h_started_at"] = current_time
+            verification_update["master_24h_expires_at"] = current_time + timedelta(hours=24)
+        await db.update_verify_id_info(user_id, verify_id, verification_update)
         msg = verify_tr(
             await get_user_language(user_id, message.from_user),
             "done",
@@ -202,14 +288,25 @@ async def start(client: Client, message):
             verifiedfiles = (
                 f"https://telegram.me/{temp.U_NAME}?start=file_{grp_id}_{file_id}"
             )
-        await client.send_message(
-            settings["log"],
-            script.VERIFIED_LOG_TEXT.format(
-                m.from_user.mention,
-                user_id,
-                dt.now(pytz.timezone("Asia/Kolkata")).strftime("%d %B %Y"),
-                num,
-            ),
+        try:
+            await client.send_message(
+                settings.get("log", LOG_VR_CHANNEL),
+                script.VERIFIED_LOG_TEXT.format(
+                    m.from_user.mention,
+                    user_id,
+                    num,
+                    current_time.strftime("%d %B %Y • %I:%M:%S %p IST"),
+                ),
+            )
+        except Exception:
+            logger.exception("Could not write legacy verification log")
+        await _shortener_log(
+            client, settings.get("log", LOG_VR_CHANNEL), "SHORTENER_RETURN_ACCEPTED", m.from_user, num,
+            Group=grp_id, Mode="allfiles" if m.command[1].startswith("jisshu") else "file",
+            Domain=verify_id_info.get("shortener_domain", "unknown"), VerifyID=verify_id,
+            Delivery=verify_id_info.get("delivery_key", file_id),
+            **{"Get File click": "PENDING"},
+            **({"Master 24h expires": (current_time + timedelta(hours=24)).strftime("%d-%m-%Y %I:%M:%S %p")} if num == 1 else {}),
         )
         ui_lang = await get_user_language(user_id, message.from_user)
         btn = [
@@ -368,6 +465,12 @@ async def start(client: Client, message):
     except:
         pre, grp_id, file_id = "", 0, data
 
+    # A verified Telegram deep-link is the final Get File/Send All click.
+    # Track it separately from shortener completion so redirect/click problems
+    # can be diagnosed from the log channel.
+    if pre in ("file", "allfiles"):
+        await _mark_get_file_click(client, m.from_user, int(grp_id), str(file_id))
+
     # filemode/allfilesmode are reached only after the user has completed the
     # File Mode shortlink. They must bypass the verification gate and then be
     # sent as normal files with the group's original caption/buttons.
@@ -486,17 +589,33 @@ async def start(client: Client, message):
 
         if (not file_mode_completed) and verification_enabled and primary_shortener_available and ((not user_verified) or is_second_shortener or is_third_shortener):
             verify_id = "".join(random.choices(string.ascii_uppercase + string.digits, k=7))
-            await db.create_verify_id(user_id, verify_id)
-            temp.CHAT[user_id] = grp_id
-            if message.command[1].startswith("allfiles"):
-                verify = await get_shortlink(
-                    f"https://telegram.me/{temp.U_NAME}?start=jisshu_{user_id}_{verify_id}_{grp_id}_{file_id}",
-                    grp_id, is_second_shortener, is_third_shortener,
-                )
+            step = 3 if is_third_shortener else (2 if is_second_shortener else 1)
+            if is_third_shortener:
+                shortener_domain = settings.get("shortner_three")
+            elif is_second_shortener:
+                shortener_domain = settings.get("shortner_two")
             else:
-                verify = await get_shortlink(
-                    f"https://telegram.me/{temp.U_NAME}?start=notcopy_{user_id}_{verify_id}_{grp_id}_{file_id}",
-                    grp_id, is_second_shortener, is_third_shortener,
+                shortener_domain = settings.get("shortner")
+            delivery_mode = "allfiles" if message.command[1].startswith("allfiles") else "file"
+            await db.create_verify_id(
+                user_id, verify_id, created_at=_ist_now(), group_id=int(grp_id),
+                delivery_key=str(file_id), mode=delivery_mode, step=step,
+                shortener_domain=shortener_domain or "unknown",
+            )
+            temp.CHAT[user_id] = grp_id
+            target_link = (
+                f"https://telegram.me/{temp.U_NAME}?start=jisshu_{user_id}_{verify_id}_{grp_id}_{file_id}"
+                if delivery_mode == "allfiles"
+                else f"https://telegram.me/{temp.U_NAME}?start=notcopy_{user_id}_{verify_id}_{grp_id}_{file_id}"
+            )
+            try:
+                verify = await get_shortlink(target_link, grp_id, is_second_shortener, is_third_shortener)
+            except Exception as exc:
+                verify = None
+                await _shortener_log(
+                    client, settings.get("log", LOG_VR_CHANNEL), "SHORTENER_API_ERROR", message.from_user, step,
+                    Group=grp_id, Mode=delivery_mode, Domain=shortener_domain or "unknown",
+                    VerifyID=verify_id, Error=str(exc)[:300],
                 )
             if not verify:
                 # Do not create a message with a dead/None URL when the
@@ -506,6 +625,12 @@ async def start(client: Client, message):
                     "<b>⚠️ ᴛʜᴇ sʜᴏʀᴛʟɪɴᴋ sᴇʀᴠɪᴄᴇ ɪs ᴛᴇᴍᴘᴏʀᴀʀɪʟʏ ᴜɴᴀᴠᴀɪʟᴀʙʟᴇ. ᴘʟᴇᴀsᴇ ᴛʀʏ ᴀɢᴀɪɴ ʟᴀᴛᴇʀ.</b>"
                 )
                 return
+            await db.update_verify_id_info(user_id, verify_id, {"shortlink": verify, "shortlink_created_at": _ist_now()})
+            await _shortener_log(
+                client, settings.get("log", LOG_VR_CHANNEL), "SHORTLINK_CREATED", message.from_user, step,
+                Group=grp_id, Mode=delivery_mode, Domain=shortener_domain or "unknown",
+                VerifyID=verify_id, ShortURL=str(verify)[:700],
+            )
             if is_third_shortener:
                 howtodownload = settings.get("tutorial_3", TUTORIAL_3)
             else:
@@ -1184,7 +1309,7 @@ async def set_shortner(c, m):
         )
         link = (await c.get_chat(m.chat.id)).invite_link
         grp_link = f"[{m.chat.title}]({link})"
-        log_message = f"#New_Shortner_Set_For_1st_Verify\n\nName - {user_info}\nId - `{user_id}`\n\nDomain name - {URL}\nApi - `{API}`\nGroup link - {grp_link}"
+        log_message = f"#New_Shortner_Set_For_1st_Verify\n\nName - {user_info}\nId - `{user_id}`\n\nDomain name - {URL}\nApi - `<masked>`\nGroup link - {grp_link}"
         await c.send_message(
             LOG_API_CHANNEL, log_message, disable_web_page_preview=True
         )
@@ -1235,7 +1360,7 @@ async def set_shortner_2(c, m):
         )
         link = (await c.get_chat(m.chat.id)).invite_link
         grp_link = f"[{m.chat.title}]({link})"
-        log_message = f"#New_Shortner_Set_For_2nd_Verify\n\nName - {user_info}\nId - `{user_id}`\n\nDomain name - {URL}\nApi - `{API}`\nGroup link - {grp_link}"
+        log_message = f"#New_Shortner_Set_For_2nd_Verify\n\nName - {user_info}\nId - `{user_id}`\n\nDomain name - {URL}\nApi - `<masked>`\nGroup link - {grp_link}"
         await c.send_message(
             LOG_API_CHANNEL, log_message, disable_web_page_preview=True
         )
@@ -1295,7 +1420,7 @@ async def set_shortner_3(c, m):
             user_info = f"{m.from_user.mention}"
         link = (await c.get_chat(m.chat.id)).invite_link
         grp_link = f"[{m.chat.title}]({link})"
-        log_message = f"#New_Shortner_Set_For_3rd_Verify\n\nName - {user_info}\nId - `{user_id}`\n\nDomain name - {URL}\nApi - `{API}`\nGroup link - {grp_link}"
+        log_message = f"#New_Shortner_Set_For_3rd_Verify\n\nName - {user_info}\nId - `{user_id}`\n\nDomain name - {URL}\nApi - `<masked>`\nGroup link - {grp_link}"
         await c.send_message(
             LOG_API_CHANNEL, log_message, disable_web_page_preview=True
         )
@@ -1346,9 +1471,9 @@ async def set_log(client, message):
         f"<b>✅ sᴜᴄᴄᴇssꜰᴜʟʟʏ sᴇᴛ ʏᴏᴜʀ ʟᴏɢ ᴄʜᴀɴɴᴇʟ ꜰᴏʀ {title}\n\nɪᴅ `{log}`</b>",
         disable_web_page_preview=True,
     )
-    user_id = m.from_user.id
+    user_id = message.from_user.id
     user_info = (
-        f"@{m.from_user.username}" if m.from_user.username else f"{m.from_user.mention}"
+        f"@{message.from_user.username}" if message.from_user.username else f"{message.from_user.mention}"
     )
     link = (await client.get_chat(message.chat.id)).invite_link
     grp_link = f"[{message.chat.title}]({link})"

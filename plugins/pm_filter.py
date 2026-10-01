@@ -1724,8 +1724,22 @@ async def cb_handler(client: Client, query: CallbackQuery):
 
     elif query.data == "about":
         ui_lang = await get_user_language(query.from_user.id, query.from_user)
+        me = await client.get_me()
+        bot_name = me.first_name or me.username or "Telegram Bot"
+        bot_identity = f'<a href="https://t.me/{me.username}">{bot_name}</a>' if me.username else bot_name
+        creator_name = OWNER_USERNAME.lstrip("@") if OWNER_USERNAME else str(OWNER_ID)
+        creator_identity = f'<a href="https://t.me/{creator_name}">@{creator_name}</a>' if OWNER_USERNAME else f'<a href="tg://user?id={OWNER_ID}">Owner</a>'
+        about_text = (
+            f"‣ ʙᴏᴛ ɴᴀᴍᴇ : {bot_identity}\n"
+            f"‣ ʙᴏᴛ ᴜsᴇʀɴᴀᴍᴇ : @{me.username if me.username else 'N/A'}\n"
+            f"‣ ᴄʀᴇᴀᴛᴏʀ : {creator_identity}\n"
+            f"‣ ʟɪʙʀᴀʀʏ : <code>Pyrogram</code>\n"
+            f"‣ ʟᴀɴɢᴜᴀɢᴇ : <code>Python</code>\n"
+            f"‣ ᴅᴀᴛᴀʙᴀsᴇ : <code>MongoDB</code>\n"
+            f"‣ ʙᴜɪʟᴅ : <code>{BUILD_VERSION}</code>"
+        )
         await query.message.edit_text(
-            page_tr(ui_lang, "about"),
+            about_text,
             reply_markup=InlineKeyboardMarkup(
                 [
                     [
