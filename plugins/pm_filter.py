@@ -166,8 +166,11 @@ def _delete_time_text(seconds: int) -> str:
     return f"{seconds} second" if seconds == 1 else f"{seconds} seconds"
 
 async def _group_id_for_query(query):
+    # A direct PM is not a group. Never reuse a stale temp.CHAT group here,
+    # otherwise the user's own Telegram ID (or an old group ID) can leak into
+    # verification/file links and later appear as a fake group in logs.
     if query.message.chat.type == enums.ChatType.PRIVATE:
-        return temp.CHAT.get(query.from_user.id, query.message.chat.id)
+        return 0
     return query.message.chat.id
 
 
@@ -2300,7 +2303,9 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
     if not spoll:
         message = msg
         search = message.text
-        chat_id = message.chat.id
+        # Direct PM uses global/default settings, but its origin ID is 0.
+        # Group searches continue to use that group's settings.
+        chat_id = message.chat.id if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP] else 0
         settings = await get_settings(chat_id)
         try:
             max_results = max(1, min(20, int(settings.get("max_results", MAX_BTN))))
@@ -2338,9 +2343,14 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
     key = _result_key(message)
     batch_ids = files
     temp.FILES_ID[key] = batch_ids
+    origin_group_id = (
+        message.chat.id
+        if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]
+        else 0
+    )
     batch_link = f"batchfiles#{message.chat.id}#{message.id}#{message.from_user.id}"
-    temp.CHAT[message.from_user.id] = message.chat.id
-    settings = await get_settings(message.chat.id)
+    temp.CHAT[message.from_user.id] = origin_group_id
+    settings = await get_settings(origin_group_id)
     try:
         max_results = max(1, min(20, int(settings.get("max_results", MAX_BTN))))
     except (TypeError, ValueError):
@@ -2355,13 +2365,13 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
     if settings["link"]:
         btn = []
         for file_num, file in enumerate(files, start=1):
-            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{message.chat.id}_{file.file_id}>[{get_size(file.file_size)}] {formate_file_name(file.file_name)}</a></b>"""
+            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{origin_group_id}_{file.file_id}>[{get_size(file.file_size)}] {formate_file_name(file.file_name)}</a></b>"""
     else:
         btn = [
             [
                 InlineKeyboardButton(
                     text=f"🔗 {get_size(file.file_size)}≽ {formate_file_name(file.file_name)}",
-                    url=f"https://telegram.dog/{temp.U_NAME}?start=file_{message.chat.id}_{file.file_id}",
+                    url=f"https://telegram.dog/{temp.U_NAME}?start=file_{origin_group_id}_{file.file_id}",
                 ),
             ]
             for file in files

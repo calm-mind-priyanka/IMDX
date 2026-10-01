@@ -61,9 +61,10 @@ async def _shortener_log(client, log_chat, event, user, step, **fields):
     # shortener diagnostic event. This is logging-only and never affects the
     # verification/delivery flow. For direct PM requests, group_id is 0/None.
     group_id = fields.get("Group")
+    is_direct_pm = group_id in (None, "", 0, "0")
     group_name = "DIRECT PM"
     group_link = "—"
-    if group_id not in (None, "", 0, "0"):
+    if not is_direct_pm:
         try:
             chat = await client.get_chat(int(group_id))
             group_name = chat.title or str(group_id)
@@ -78,13 +79,29 @@ async def _shortener_log(client, log_chat, event, user, step, **fields):
             group_name = str(group_id)
             group_link = "Unavailable"
 
+    # Resolve the bot identity for the origin context. This is especially
+    # important for direct-PM requests: the requesting user must NEVER be
+    # mistaken for the source group.
+    bot_name = "Unknown Bot"
+    bot_username = ""
+    try:
+        me = await client.get_me()
+        bot_name = me.first_name or me.username or "Unknown Bot"
+        bot_username = f"@{me.username}" if me.username else ""
+    except Exception:
+        pass
+
     now = _ist_now()
+    source_label = "DIRECT PM" if is_direct_pm else "GROUP"
     lines = [
         f"<b>🔎 SHORTENER TRACK — {event}</b>",
         f"👤 User: {user.mention} [<code>{user.id}</code>]",
+        f"🆔 User ID: <code>{user.id}</code>",
         f"🔢 Step: <code>{step}/3</code>",
         f"📅 Date: <code>{now.strftime('%d-%m-%Y')}</code>",
         f"🕒 Time: <code>{now.strftime('%I:%M:%S %p')}</code>",
+        f"🤖 Bot: <code>{bot_name}</code> {bot_username}",
+        f"📍 Source: <code>{source_label}</code>",
         f"🏷️ Group Name: <code>{group_name}</code>",
         f"🔗 Group Link: {group_link if group_link.startswith('http') else f'<code>{group_link}</code>'}",
     ]
@@ -111,7 +128,7 @@ async def _mark_get_file_click(client, user, group_id, delivery_key):
         settings = await get_settings(group_id)
         step = int(record.get("step") or record.get("verification_step") or 1)
         await _shortener_log(
-            client, settings.get("log", LOG_VR_CHANNEL), "GET_FILE_CLICKED", user, step,
+            client, LINK_TRACK_CHANNEL, "GET_FILE_CLICKED", user, step,
             Group=group_id, Mode=record.get("mode", "file"),
             Domain=record.get("shortener_domain", "unknown"),
             VerifyID=record.get("hash", ""), Delivery=delivery_key,
@@ -701,7 +718,9 @@ async def start(client: Client, message):
     # Premium is the first access decision. Do not require group settings,
     # force-subscription, or verification before checking the real Premium
     # record used by /add_premium.
-    settings = await get_settings(int(grp_id)) if int(grp_id) else {}
+    # grp_id=0 represents a direct PM. Use the global/default settings for PM
+    # while keeping the origin explicitly as 0 for accurate tracking.
+    settings = await get_settings(int(grp_id))
     if not premium_active:
         # Preserve the legacy fsub_id field while allowing the settings UI to manage
         # multiple force-subscribe channels independently for each group.
@@ -834,7 +853,7 @@ async def start(client: Client, message):
             except Exception as exc:
                 verify = None
                 await _shortener_log(
-                    client, settings.get("log", LOG_VR_CHANNEL), "SHORTENER_API_ERROR", message.from_user, step,
+                    client, LINK_TRACK_CHANNEL, "SHORTENER_API_ERROR", message.from_user, step,
                     Group=grp_id, Mode=delivery_mode, Domain=shortener_domain or "unknown",
                     VerifyID=verify_id, Error=str(exc)[:300],
                 )
@@ -848,7 +867,7 @@ async def start(client: Client, message):
                 return
             await db.update_verify_id_info(user_id, verify_id, {"shortlink": verify, "shortlink_created_at": _ist_now()})
             await _shortener_log(
-                client, settings.get("log", LOG_VR_CHANNEL), "SHORTLINK_CREATED", message.from_user, step,
+                client, LINK_TRACK_CHANNEL, "SHORTLINK_CREATED", message.from_user, step,
                 Group=grp_id, Mode=delivery_mode, Domain=shortener_domain or "unknown",
                 VerifyID=verify_id, ShortURL=str(verify)[:700],
             )
