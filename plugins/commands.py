@@ -7,7 +7,7 @@ import string
 import pytz
 from datetime import datetime as dt, timedelta
 from Script import script
-from pyrogram import Client, filters, enums
+from pyrogram import Client, filters, enums, StopPropagation
 from pyrogram.errors import ChatAdminRequired
 from pyrogram.types import (
     InlineKeyboardButton,
@@ -43,6 +43,10 @@ import re
 import base64
 from info import *
 
+# Verification recovery/customer-care settings. Defaults are intentionally conservative.
+VERIFY_RECOVERY_DELAY = int(os.environ.get("VERIFY_RECOVERY_DELAY", "300"))
+VERIFY_RECOVERY_DELETE = int(os.environ.get("VERIFY_RECOVERY_DELETE", "300"))
+
 
 def _ist_now():
     return dt.now(pytz.timezone("Asia/Kolkata"))
@@ -52,6 +56,28 @@ async def _shortener_log(client, log_chat, event, user, step, **fields):
     """Write forensic shortener/verification events without breaking user flow."""
     if not log_chat:
         return
+
+    # Add the originating group's exact title and a usable group link to every
+    # shortener diagnostic event. This is logging-only and never affects the
+    # verification/delivery flow. For direct PM requests, group_id is 0/None.
+    group_id = fields.get("Group")
+    group_name = "DIRECT PM"
+    group_link = "—"
+    if group_id not in (None, "", 0, "0"):
+        try:
+            chat = await client.get_chat(int(group_id))
+            group_name = chat.title or str(group_id)
+            if chat.username:
+                group_link = f"https://t.me/{chat.username}"
+            elif getattr(chat, "invite_link", None):
+                group_link = chat.invite_link
+            else:
+                group_link = "Private / Invite link unavailable"
+        except Exception:
+            # Do not let an unavailable chat lookup break verification logs.
+            group_name = str(group_id)
+            group_link = "Unavailable"
+
     now = _ist_now()
     lines = [
         f"<b>🔎 SHORTENER TRACK — {event}</b>",
@@ -59,6 +85,8 @@ async def _shortener_log(client, log_chat, event, user, step, **fields):
         f"🔢 Step: <code>{step}/3</code>",
         f"📅 Date: <code>{now.strftime('%d-%m-%Y')}</code>",
         f"🕒 Time: <code>{now.strftime('%I:%M:%S %p')}</code>",
+        f"🏷️ Group Name: <code>{group_name}</code>",
+        f"🔗 Group Link: {group_link if group_link.startswith('http') else f'<code>{group_link}</code>'}",
     ]
     for label, value in fields.items():
         if value is not None and value != "":
@@ -91,7 +119,150 @@ async def _mark_get_file_click(client, user, group_id, delivery_key):
         )
     except Exception:
         logger.exception("Could not record Get File click")
-from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr, verify_tr, small_caps
+
+
+async def _verification_recovery_worker(client):
+    """Customer-care worker for verification attempts abandoned mid-flow."""
+    delay = max(60, int(globals().get("VERIFY_RECOVERY_DELAY", 300)))
+    delete_after = max(60, int(globals().get("VERIFY_RECOVERY_DELETE", 300)))
+    while True:
+        try:
+            cutoff = _ist_now() - timedelta(seconds=delay)
+            attempts = await db.get_pending_verification_recovery(cutoff)
+            latest = {}
+            for record in attempts:
+                key = (int(record.get("user_id", 0)), int(record.get("group_id", 0)))
+                if key not in latest:
+                    latest[key] = record
+
+            for record in latest.values():
+                user_id = int(record.get("user_id"))
+                group_id = int(record.get("group_id") or 0)
+                verify_id = str(record.get("hash") or "")
+                if not verify_id:
+                    continue
+                claimed = await db.claim_verification_recovery(record["_id"], _ist_now())
+                if not claimed:
+                    continue
+
+                settings = await get_settings(group_id)
+                tutorial_key = {
+                    1: "tutorial",
+                    2: "tutorial_2",
+                    3: "tutorial_3",
+                }.get(int(record.get("step") or record.get("verification_step") or 1), "tutorial")
+                tutorial = settings.get(tutorial_key) or globals().get(
+                    {"tutorial": "TUTORIAL", "tutorial_2": "TUTORIAL_2", "tutorial_3": "TUTORIAL_3"}[tutorial_key]
+                )
+                shortlink = record.get("shortlink")
+                ui_lang = await get_user_language(user_id)
+                buttons = []
+                if shortlink:
+                    buttons.append([InlineKeyboardButton(care_tr(ui_lang, "continue"), url=str(shortlink))])
+                if tutorial:
+                    buttons.append([InlineKeyboardButton(care_tr(ui_lang, "tutorial"), url=str(tutorial))])
+                buttons.append([
+                    InlineKeyboardButton(care_tr(ui_lang, "plans"), callback_data="seeplans"),
+                    InlineKeyboardButton(care_tr(ui_lang, "feedback"), callback_data=f"verify_help:{verify_id}"),
+                ])
+                try:
+                    sent = await client.send_message(
+                        user_id,
+                        care_tr(ui_lang, "title") + "\n\n" + care_tr(ui_lang, "body"),
+                        reply_markup=InlineKeyboardMarkup(buttons),
+                        parse_mode=enums.ParseMode.HTML,
+                    )
+                    await db.update_verify_id_info(
+                        user_id,
+                        verify_id,
+                        {"recovery_message_id": sent.id, "recovery_message_sent_at": _ist_now()},
+                    )
+                    await _shortener_log(
+                        client,
+                        settings.get("log", LOG_VR_CHANNEL),
+                        "VERIFICATION_RECOVERY_SENT",
+                        await client.get_users(user_id),
+                        int(record.get("step") or record.get("verification_step") or 1),
+                        Group=group_id,
+                        Mode=record.get("mode", "file"),
+                        Domain=record.get("shortener_domain", "unknown"),
+                        VerifyID=verify_id,
+                        ShortURL=str(shortlink or "")[:700],
+                    )
+                    asyncio.create_task(_delete_recovery_message_later(client, user_id, sent.id, delete_after))
+                except Exception:
+                    logger.exception("Could not send verification recovery message to %s", user_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Verification recovery worker failed")
+        await asyncio.sleep(60)
+
+
+async def _delete_recovery_message_later(client, user_id, message_id, delay):
+    try:
+        await asyncio.sleep(delay)
+        await client.delete_messages(user_id, message_id)
+    except Exception:
+        pass
+
+
+@Client.on_callback_query(filters.regex(r"^verify_help:"), group=-1)
+async def verification_help_callback(client, query):
+    verify_id = query.data.split(":", 1)[1].strip()
+    record = await db.get_verify_id_by_hash_for_recovery(verify_id)
+    if not record:
+        ui_lang = await get_user_language(query.from_user.id, query.from_user)
+        await query.answer(care_tr(ui_lang, "expired"), show_alert=True)
+        raise StopPropagation
+    await db.create_support_feedback_session(
+        query.from_user.id,
+        verify_id,
+        int(record.get("group_id") or 0),
+        int(record.get("step") or record.get("verification_step") or 1),
+        int((await get_settings(int(record.get("group_id") or 0))).get("log", LOG_VR_CHANNEL)),
+    )
+    await db.update_verify_id_info(query.from_user.id, verify_id, {"feedback_requested_at": _ist_now()})
+    ui_lang = await get_user_language(query.from_user.id, query.from_user)
+    await query.message.reply_text(
+        care_tr(ui_lang, "feedback_title") + "\n\n" + care_tr(ui_lang, "feedback_body"),
+        parse_mode=enums.ParseMode.HTML,
+    )
+    await query.answer()
+    raise StopPropagation
+
+
+@Client.on_message(filters.private & filters.incoming & (filters.text | filters.photo | filters.document), group=-1)
+async def verification_feedback_receiver(client, message):
+    session = await db.get_support_feedback_session(message.from_user.id)
+    if not session:
+        return
+    log_chat = int(session.get("log_chat") or LOG_VR_CHANNEL)
+    verify_id = session.get("verify_id", "")
+    group_id = int(session.get("group_id") or 0)
+    step = int(session.get("step") or 1)
+    try:
+        user_info = await client.get_users(message.from_user.id)
+        header = (
+            "<b>🆘 VERIFICATION FEEDBACK</b>\n\n"
+            f"👤 User: {user_info.mention} [<code>{user_info.id}</code>]\n"
+            f"🔢 Step: <code>{step}/3</code>\n"
+            f"🆔 VerifyID: <code>{verify_id}</code>\n"
+            f"🏷️ Group ID: <code>{group_id}</code>\n\n"
+            "📩 User message/attachment is below."
+        )
+        await client.send_message(log_chat, header, parse_mode=enums.ParseMode.HTML)
+        await message.copy(log_chat)
+        await db.clear_support_feedback_session(message.from_user.id)
+        ui_lang = await get_user_language(message.from_user.id, message.from_user)
+        await message.reply_text(care_tr(ui_lang, "feedback_sent"), parse_mode=enums.ParseMode.HTML)
+    except Exception:
+        logger.exception("Could not forward verification feedback")
+        ui_lang = await get_user_language(message.from_user.id, message.from_user)
+        await message.reply_text(care_tr(ui_lang, "feedback_failed"), parse_mode=enums.ParseMode.HTML)
+    raise StopPropagation
+
+from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr, verify_tr, care_tr, small_caps
 
 logger = logging.getLogger(__name__)
 movie_series_db = JsTopDB(DATABASE_URI)
