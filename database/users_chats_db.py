@@ -27,6 +27,7 @@ class Database:
         self.botcol = mydb.botcol
         self.premium_orders = mydb.premium_orders
         self.payment_submissions = mydb.payment_submissions
+        self.support_feedback = mydb.support_feedback
 
     default = {
         "spell_check": SPELL_CHECK,
@@ -286,6 +287,42 @@ class Database:
     async def create_verify_id(self, user_id: int, hash, **metadata):
         res = {"user_id": int(user_id), "hash": hash, "verified": False, **metadata}
         return await self.verify_id.insert_one(res)
+
+    async def get_pending_verification_recovery(self, cutoff):
+        cursor = self.verify_id.find({
+            "verified": False,
+            "shortlink": {"$exists": True, "$ne": ""},
+            "shortlink_created_at": {"$lte": cutoff},
+            "recovery_sent_at": {"$exists": False},
+        }).sort("shortlink_created_at", -1).limit(200)
+        return await cursor.to_list(length=200)
+
+    async def claim_verification_recovery(self, record_id, now):
+        return await self.verify_id.find_one_and_update(
+            {"_id": record_id, "verified": False, "recovery_sent_at": {"$exists": False}},
+            {"$set": {"recovery_sent_at": now}},
+            return_document=ReturnDocument.AFTER,
+        )
+
+    async def get_verify_id_by_hash_for_recovery(self, hash):
+        return await self.verify_id.find_one({"hash": str(hash)})
+
+    async def create_support_feedback_session(self, user_id, verify_id, group_id, step, log_chat):
+        return await self.support_feedback.update_one(
+            {"user_id": int(user_id)},
+            {"$set": {
+                "user_id": int(user_id), "verify_id": str(verify_id),
+                "group_id": int(group_id), "step": int(step),
+                "log_chat": int(log_chat), "created_at": datetime.datetime.now(pytz.timezone("Asia/Kolkata")),
+            }},
+            upsert=True,
+        )
+
+    async def get_support_feedback_session(self, user_id):
+        return await self.support_feedback.find_one({"user_id": int(user_id)})
+
+    async def clear_support_feedback_session(self, user_id):
+        return await self.support_feedback.delete_one({"user_id": int(user_id)})
 
     async def get_latest_verification_for_delivery(self, user_id: int, group_id: int, delivery_key: str):
         """Return the newest verification record for this user/file delivery."""
