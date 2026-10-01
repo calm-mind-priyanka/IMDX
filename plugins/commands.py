@@ -195,7 +195,8 @@ async def start(client: Client, message):
     user_id = m.from_user.id
     # IMPORTANT: verification/shortlink deep-links are handled before the
     # first-time language picker. A shortener return is also a /start link;
-    # blocking it here leaves the user stuck at /start.
+    # blocking it here leaves the user stuck at /start. New verification
+    # returns use a short server-side token instead of embedding delivery state.
     if message.chat.type == enums.ChatType.PRIVATE and len(m.command) == 2 and m.command[1].startswith("settings_"):
         from plugins.advanced_settings import show_group_list, show_group_settings
         try:
@@ -203,11 +204,54 @@ async def start(client: Client, message):
         except (TypeError, ValueError):
             return await show_group_list(client, message)
         return await show_group_settings(client, message, grp_id)
-    if len(m.command) == 2 and m.command[1].startswith(("notcopy_", "jisshu_")):
+    verification_return_mode = None
+    if len(m.command) == 2 and m.command[1].startswith("vr_"):
+        # New verification-return links carry only a short opaque token.
+        # The original user/group/delivery data stays in MongoDB.
+        return_token = m.command[1][3:]
+        verify_id_info = await db.get_verify_id_by_return_token(return_token)
+        if not verify_id_info or verify_id_info.get("verified"):
+            grp_id = int((verify_id_info or {}).get("group_id") or 0)
+            try:
+                log_chat = (await get_settings(grp_id)).get("log", LOG_VR_CHANNEL)
+                await _shortener_log(
+                    client, log_chat, "SHORTENER_RETURN_REJECTED", message.from_user,
+                    int((verify_id_info or {}).get("step") or 1),
+                    Group=grp_id, VerifyToken=return_token,
+                    Reason="unknown_or_already_used",
+                    ActualUser=message.from_user.id,
+                )
+            except Exception:
+                logger.exception("Could not write rejected token return log")
+            await message.reply("<b>ʟɪɴᴋ ᴇxᴘɪʀᴇᴅ ᴛʀʏ ᴀɢᴀɪɴ...</b>")
+            return
+
+        user_id = int(verify_id_info["user_id"])
+        verify_id = str(verify_id_info.get("hash") or "")
+        grp_id = int(verify_id_info.get("group_id") or 0)
+        file_id = str(verify_id_info.get("delivery_key") or "")
+        verification_return_mode = verify_id_info.get("mode", "file")
+        if verification_return_mode not in {"file", "allfiles"}:
+            verification_return_mode = "file"
+        if int(message.from_user.id) != user_id:
+            try:
+                log_chat = (await get_settings(grp_id)).get("log", LOG_VR_CHANNEL)
+                await _shortener_log(
+                    client, log_chat, "SHORTENER_RETURN_REJECTED", message.from_user,
+                    int(verify_id_info.get("step") or 1),
+                    Group=grp_id, VerifyToken=return_token,
+                    Reason="token_user_mismatch", ActualUser=message.from_user.id,
+                    TokenUser=user_id,
+                )
+            except Exception:
+                logger.exception("Could not write token mismatch log")
+            await message.reply("<b>ʟɪɴᴋ ɪs ɴᴏᴛ ᴠᴀʟɪᴅ ғᴏʀ ʏᴏᴜʀ ᴜsᴇʀ.</b>")
+            return
+        settings = await get_settings(grp_id)
+    elif len(m.command) == 2 and m.command[1].startswith(("notcopy_", "jisshu_")):
         parts = m.command[1].split("_", 4)
-        # New links include grp_id, making the verification return independent
-        # of temp.CHAT (which is cleared when the bot restarts). Old links remain
-        # supported for backward compatibility.
+        # Legacy verification links remain supported for backward compatibility.
+        # New links use the short server-side token above.
         if len(parts) == 5:
             _, userid, verify_id, grp_id, file_id = parts
         else:
@@ -215,6 +259,7 @@ async def start(client: Client, message):
             grp_id = temp.CHAT.get(int(userid), 0)
         user_id = int(userid)
         grp_id = int(grp_id or 0)
+        verification_return_mode = "allfiles" if m.command[1].startswith("jisshu") else "file"
         settings = await get_settings(grp_id)
         verify_id_info = await db.get_verify_id_info(user_id, verify_id)
         if not verify_id_info or verify_id_info.get("verified"):
@@ -246,6 +291,7 @@ async def start(client: Client, message):
                 logger.exception("Could not write token mismatch log")
             await message.reply("<b>ʟɪɴᴋ ɪs ɴᴏᴛ ᴠᴀʟɪᴅ ғᴏʀ ʏᴏᴜʀ ᴜsᴇʀ.</b>")
             return
+    if verification_return_mode:
         ist_timezone = pytz.timezone("Asia/Kolkata")
         if await db.user_verified(user_id):
             key = "third_time_verified"
@@ -280,7 +326,7 @@ async def start(client: Client, message):
             num=num,
             duration=get_readable_time(TWO_VERIFY_GAP),
         )
-        if message.command[1].startswith("jisshu"):
+        if verification_return_mode == "allfiles":
             verifiedfiles = (
                 f"https://telegram.me/{temp.U_NAME}?start=allfiles_{grp_id}_{file_id}"
             )
@@ -302,7 +348,7 @@ async def start(client: Client, message):
             logger.exception("Could not write legacy verification log")
         await _shortener_log(
             client, settings.get("log", LOG_VR_CHANNEL), "SHORTENER_RETURN_ACCEPTED", m.from_user, num,
-            Group=grp_id, Mode="allfiles" if m.command[1].startswith("jisshu") else "file",
+            Group=grp_id, Mode=verification_return_mode or ("allfiles" if m.command[1].startswith("jisshu") else "file"),
             Domain=verify_id_info.get("shortener_domain", "unknown"), VerifyID=verify_id,
             Delivery=verify_id_info.get("delivery_key", file_id),
             **{"Get File click": "PENDING"},
@@ -597,17 +643,21 @@ async def start(client: Client, message):
             else:
                 shortener_domain = settings.get("shortner")
             delivery_mode = "allfiles" if message.command[1].startswith("allfiles") else "file"
+            # Telegram limits bot deep-link start parameters to 64 bytes. The
+            # previous return URL embedded user_id + verify_id + group_id +
+            # file_id and could exceed that limit before Telegram invoked /start.
+            # Keep that state server-side and expose only a short opaque token.
+            return_token = "".join(
+                random.choices(string.ascii_letters + string.digits, k=16)
+            )
             await db.create_verify_id(
                 user_id, verify_id, created_at=_ist_now(), group_id=int(grp_id),
                 delivery_key=str(file_id), mode=delivery_mode, step=step,
                 shortener_domain=shortener_domain or "unknown",
+                return_token=return_token,
             )
             temp.CHAT[user_id] = grp_id
-            target_link = (
-                f"https://telegram.me/{temp.U_NAME}?start=jisshu_{user_id}_{verify_id}_{grp_id}_{file_id}"
-                if delivery_mode == "allfiles"
-                else f"https://telegram.me/{temp.U_NAME}?start=notcopy_{user_id}_{verify_id}_{grp_id}_{file_id}"
-            )
+            target_link = f"https://telegram.me/{temp.U_NAME}?start=vr_{return_token}"
             try:
                 verify = await get_shortlink(target_link, grp_id, is_second_shortener, is_third_shortener)
             except Exception as exc:
