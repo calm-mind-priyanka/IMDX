@@ -115,6 +115,12 @@ async def Jisshu_start():
         )
 
     JisshuBot.loop.create_task(check_expired_premium(JisshuBot))
+    try:
+        from plugins.commands import _verification_recovery_worker
+        JisshuBot.loop.create_task(_verification_recovery_worker(JisshuBot))
+        logging.info("Verification recovery/customer-care worker started.")
+    except Exception:
+        logging.exception("Failed to start verification recovery/customer-care worker.")
     logging.info(
         f"{me.first_name} with for Pyrogram v{__version__} (Layer {layer}) started on {me.username}."
     )
