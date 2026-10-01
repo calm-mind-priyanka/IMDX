@@ -73,6 +73,51 @@ class Database:
         else:
             return self.default.copy()
 
+    async def get_owner_shortener_pairs(self):
+        """Return the bot-owner shortener identities persisted from owner settings.
+
+        The environment values in info.py are the initial defaults. Once the
+        bot owner changes a shortener through the settings UI, the new
+        domain/API pair is persisted here so ownership survives restarts.
+        """
+        doc = await self.misc.find_one({"_id": "owner_shorteners"})
+        if doc and isinstance(doc.get("pairs"), list):
+            pairs = []
+            for item in doc["pairs"][:3]:
+                if isinstance(item, dict):
+                    pairs.append((str(item.get("domain", "")).strip(), str(item.get("api", "")).strip()))
+                else:
+                    pairs.append(("", ""))
+            while len(pairs) < 3:
+                pairs.append(("", ""))
+            return pairs
+        return [
+            (str(SHORTENER_WEBSITE).strip(), str(SHORTENER_API).strip()),
+            (str(SHORTENER_WEBSITE2).strip(), str(SHORTENER_API2).strip()),
+            (str(SHORTENER_WEBSITE3).strip(), str(SHORTENER_API3).strip()),
+        ]
+
+    async def set_owner_shortener(self, slot, domain, api):
+        """Persist one owner shortener slot (1, 2 or 3)."""
+        slot = int(slot)
+        if slot not in (1, 2, 3):
+            raise ValueError("owner shortener slot must be 1, 2 or 3")
+        pairs = await self.get_owner_shortener_pairs()
+        while len(pairs) < 3:
+            pairs.append(("", ""))
+        pairs[slot - 1] = (str(domain or "").strip(), str(api or "").strip())
+        await self.misc.update_one(
+            {"_id": "owner_shorteners"},
+            {"$set": {
+                "pairs": [
+                    {"domain": d, "api": a} for d, a in pairs
+                ],
+                "owner_id": int(OWNER_ID),
+            }},
+            upsert=True,
+        )
+        return pairs
+
     async def find_join_req(self, id):
         return bool(await self.req.find_one({"id": id}))
 
