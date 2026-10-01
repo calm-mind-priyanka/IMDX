@@ -284,12 +284,14 @@ User - {}"""
 
 🔹 <b>sᴛᴇᴘ 3:</b> ᴄᴏᴍᴘʟᴇᴛᴇ ᴛʜᴇ ғɪɴᴀʟ ᴠᴇʀɪғɪᴄᴀᴛɪᴏɴ ᴛᴏ ᴜɴʟᴏᴄᴋ ᴛʜᴇ ғɪʟᴇ.</b>"""
 
-    VERIFIED_LOG_TEXT = """<b><u>☄ є∂ιтн ᴜsᴇʀ ᴠᴇʀɪꜰɪᴇᴅ sᴜᴄᴄᴇssꜰᴜʟʟʏ ☄</u>
+    VERIFIED_LOG_TEXT = """<b><u>🔐 ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʀᴇᴛᴜʀɴ ᴀᴄᴄᴇᴘᴛᴇᴅ</u></b>
 
-⚡️ ɴᴀᴍᴇ:- {} [ <code>{}</code> ] 
-📆 ᴅᴀᴛᴇ:- <code>{} </code></b>
+👤 ᴜsᴇʀ: {}
+🆔 ᴜsᴇʀ ɪᴅ: <code>{}</code>
+🔢 sᴛᴇᴘ: <code>{}/3</code>
+📅 ᴅᴀᴛᴇ / ᴛɪᴍᴇ: <code>{}</code>
 
-#edith_verified_{}_completed"""
+<b>Get File click: PENDING</b>"""
 
     MOVIES_UPDATE_TXT = """<b>#𝑵𝒆𝒘_𝑭𝒊𝒍𝒆_𝑨𝒅𝒅𝒆𝒅 ✅
 **🍿 Title:** {title}

@@ -284,10 +284,12 @@ async def get_shortlink(
             api, site = settings["api"], settings["shortner"]
     shortzy = Shortzy(api, site)
     try:
-        link = await shortzy.convert(link)
+        return await shortzy.convert(link)
     except Exception:
-        link = await shortzy.get_quick_link(link)
-    return link
+        try:
+            return await shortzy.get_quick_link(link)
+        except Exception:
+            return None
 
 
 def get_file_id(message: "Message") -> Any:
