@@ -54,32 +54,35 @@ def _ist_now():
 
 
 async def _is_owner_shortener(domain, api=None):
-    """True only when the generated shortener matches the owner's persisted pair.
-
-    OWNER_ID is the authority for changing these pairs through /settings.
-    The pairs themselves are persisted in Mongo so an owner change survives
-    bot restarts and cannot be replaced by another group's settings.
-    """
+    """Return True only for one of the three shorteners owned by OWNER_ID."""
+    try:
+        int(OWNER_ID)
+    except (TypeError, ValueError):
+        return False
     domain = str(domain or "").strip().lower()
     domain = domain.replace("https://", "").replace("http://", "").rstrip("/")
     api = str(api or "").strip()
+    if not domain or not api:
+        return False
     owner_pairs = await db.get_owner_shortener_pairs()
-    # Also recognize the current environment-configured owner shorteners.
-    # Persisted Mongo pairs may predate a Koyeb env update, so they must not
-    # silently disable tracking for the currently configured owner API.
-    owner_pairs = list(owner_pairs or []) + [
-        (SHORTENER_WEBSITE, SHORTENER_API),
-        (SHORTENER_WEBSITE2, SHORTENER_API2),
-        (SHORTENER_WEBSITE3, SHORTENER_API3),
-    ]
     return any(
         (domain, api) == (
             str(owner_domain).strip().lower().replace("https://", "").replace("http://", "").rstrip("/"),
             str(owner_api).strip(),
         )
-        for owner_domain, owner_api in owner_pairs
+        for owner_domain, owner_api in (owner_pairs or [])
         if owner_domain and owner_api
     )
+
+
+def _is_owner_tracking_record(record):
+    """Only verification attempts explicitly stamped with BOT OWNER_ID are trackable."""
+    if not record or not record.get("owner_shortener", False):
+        return False
+    try:
+        return int(record.get("owner_id")) == int(OWNER_ID)
+    except (TypeError, ValueError):
+        return False
 
 
 async def _shortener_log(client, log_chat, event, user, step, **fields):
@@ -162,7 +165,7 @@ async def _mark_get_file_click(client, user, group_id, delivery_key):
     try:
         record = await db.get_latest_verification_for_delivery(user.id, group_id, delivery_key)
         if (not record or not record.get("verified") or record.get("get_file_clicked_at")
-                or not record.get("owner_shortener", False)):
+                or not _is_owner_tracking_record(record)):
             return
         now = _ist_now()
         await db.update_verify_id_info(
@@ -216,7 +219,7 @@ async def _verification_recovery_worker(client):
                 user_id = int(record.get("user_id"))
                 group_id = int(record.get("group_id") or 0)
                 verify_id = str(record.get("hash") or "")
-                if not verify_id or not record.get("owner_shortener", False):
+                if not verify_id or not _is_owner_tracking_record(record):
                     continue
 
                 claimed = await db.claim_verification_recovery(record["_id"], now, stage=stage)
@@ -446,7 +449,7 @@ async def start(client: Client, message):
         verify_id_info = await db.get_verify_id_by_return_token(return_token)
         if not verify_id_info or verify_id_info.get("verified"):
             grp_id = int((verify_id_info or {}).get("group_id") or 0)
-            if (verify_id_info or {}).get("owner_shortener", False):
+            if _is_owner_tracking_record(verify_id_info or {}):
                 try:
                     log_chat = LOG_VR_CHANNEL
                     await _shortener_log(
@@ -469,7 +472,7 @@ async def start(client: Client, message):
         if verification_return_mode not in {"file", "allfiles"}:
             verification_return_mode = "file"
         if int(message.from_user.id) != user_id:
-            if verify_id_info.get("owner_shortener", False):
+            if _is_owner_tracking_record(verify_id_info):
                 try:
                     log_chat = LOG_VR_CHANNEL
                     await _shortener_log(
@@ -501,7 +504,7 @@ async def start(client: Client, message):
         if not verify_id_info or verify_id_info.get("verified"):
             # A return that never reaches the normal acceptance path is still
             # useful evidence when diagnosing a shortener that reports/cuts clicks.
-            if (verify_id_info or {}).get("owner_shortener", False):
+            if _is_owner_tracking_record(verify_id_info or {}):
                 try:
                     log_chat = LOG_VR_CHANNEL
                     await _shortener_log(
@@ -516,7 +519,7 @@ async def start(client: Client, message):
             await message.reply("<b>ʟɪɴᴋ ᴇxᴘɪʀᴇᴅ ᴛʀʏ ᴀɢᴀɪɴ...</b>")
             return
         if int(message.from_user.id) != int(user_id):
-            if verify_id_info.get("owner_shortener", False):
+            if _is_owner_tracking_record(verify_id_info):
                 try:
                     log_chat = LOG_VR_CHANNEL
                     await _shortener_log(
@@ -572,7 +575,7 @@ async def start(client: Client, message):
             verifiedfiles = (
                 f"https://telegram.me/{temp.U_NAME}?start=file_{grp_id}_{file_id}"
             )
-        if verify_id_info.get("owner_shortener", False):
+        if _is_owner_tracking_record(verify_id_info):
             try:
                 date_text = current_time.strftime("%-d %B %Y time %-I:%M%p %A")
                 verification_log = "\n".join([
@@ -895,6 +898,7 @@ async def start(client: Client, message):
                 shortener_domain=shortener_domain or "unknown",
                 shortener_api=shortener_api or "",
                 owner_shortener=owner_shortener,
+                owner_id=(int(OWNER_ID) if owner_shortener else None),
                 return_token=return_token,
             )
             temp.CHAT[user_id] = grp_id

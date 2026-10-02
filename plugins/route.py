@@ -40,7 +40,13 @@ async def verification_click_tracker(request: web.Request):
         {"shortlink_clicked": True, "shortlink_clicked_at": now},
     )
 
-    if not already_clicked:
+    owner_tracking = False
+    try:
+        owner_tracking = bool(record.get("owner_shortener", False)) and int(record.get("owner_id")) == int(OWNER_ID)
+    except (TypeError, ValueError):
+        owner_tracking = False
+
+    if not already_clicked and owner_tracking:
         try:
             user = await JisshuBot.get_users(int(record.get("user_id")))
             group_id = int(record.get("group_id") or 0)
