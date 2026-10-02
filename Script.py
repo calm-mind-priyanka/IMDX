@@ -287,13 +287,10 @@ User - {}"""
     VERIFIED_LOG_TEXT = """<b>🔐 ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʀᴇᴛᴜʀɴ ᴀᴄᴄᴇᴘᴛᴇᴅ</b>
 
 #VerificationCompleted
-👤 ᴜsᴇʀ: {}
-🆔 ᴜsᴇʀ ɪᴅ: <code>{}</code>
-🔢 sᴛᴇᴘ: <code>{}/3</code>
-📆 ᴅᴀᴛᴇ: <code>{}</code>
-⏰ ᴛɪᴍᴇ: <code>{}</code>
-
-<b>Get File click: PENDING</b>"""
+👤 ᴜꜱᴇʀ: {} [ {} ]
+📆 ᴅᴀᴛᴇ: {}
+Get File click: PENDING
+📊 ꜱᴛᴀᴛᴜꜱ: #Verificaton_{}_Completed"""
 
     MOVIES_UPDATE_TXT = """<b>#𝑵𝒆𝒘_𝑭𝒊𝒍𝒆_𝑨𝒅𝒅𝒆𝒅 ✅
 **🍿 Title:** {title}
