@@ -72,6 +72,7 @@ async def Jisshu_start():
     temp.BANNED_CHATS = b_chats
     await Media.ensure_indexes()
     await db.ensure_premium_indexes()
+    await db.ensure_verification_indexes()
     await mdb.load_premium_plans()
     me = await JisshuBot.get_me()
     temp.ME = me.id

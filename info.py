@@ -69,7 +69,8 @@ LOG_API_CHANNEL = int(environ.get("LOG_API_CHANNEL", "-1002433610423"))
 LOG_VR_CHANNEL = int(environ.get("LOG_VR_CHANNEL", "-1004442919011"))
 # Dedicated channel for link/shortener creation and click tracking.
 # Falls back to LOG_VR_CHANNEL until LINK_TRACK_CHANNEL is configured.
-LINK_TRACK_CHANNEL = int(environ.get("LINK_TRACK_CHANNEL", str(LOG_VR_CHANNEL)))
+LINK_TRACK_CHANNEL = int(environ.get("LINK_TRACK_CHANNEL", "0"))
+# LINK_TRACK_CHANNEL must be explicitly configured as a separate channel.
 # Verification-success/rejection/recovery diagnostics remain in LOG_VR_CHANNEL.
 BUILD_VERSION = environ.get("BUILD_VERSION", "stable")
 

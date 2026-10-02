@@ -284,12 +284,14 @@ User - {}"""
 
 🔹 <b>sᴛᴇᴘ 3:</b> ᴄᴏᴍᴘʟᴇᴛᴇ ᴛʜᴇ ғɪɴᴀʟ ᴠᴇʀɪғɪᴄᴀᴛɪᴏɴ ᴛᴏ ᴜɴʟᴏᴄᴋ ᴛʜᴇ ғɪʟᴇ.</b>"""
 
-    VERIFIED_LOG_TEXT = """<b><u>🔐 ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʀᴇᴛᴜʀɴ ᴀᴄᴄᴇᴘᴛᴇᴅ</u></b>
+    VERIFIED_LOG_TEXT = """<b>🔐 ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʀᴇᴛᴜʀɴ ᴀᴄᴄᴇᴘᴛᴇᴅ</b>
 
+#VerificationCompleted
 👤 ᴜsᴇʀ: {}
 🆔 ᴜsᴇʀ ɪᴅ: <code>{}</code>
 🔢 sᴛᴇᴘ: <code>{}/3</code>
-📅 ᴅᴀᴛᴇ / ᴛɪᴍᴇ: <code>{}</code>
+📆 ᴅᴀᴛᴇ: <code>{}</code>
+⏰ ᴛɪᴍᴇ: <code>{}</code>
 
 <b>Get File click: PENDING</b>"""
 
