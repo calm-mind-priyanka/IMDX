@@ -333,20 +333,64 @@ class Database:
         res = {"user_id": int(user_id), "hash": hash, "verified": False, **metadata}
         return await self.verify_id.insert_one(res)
 
-    async def get_pending_verification_recovery(self, cutoff):
+    async def get_pending_verification_quick_reminders(self, cutoff):
+        """Attempts where a shortlink was generated but the user has not returned yet."""
         cursor = self.verify_id.find({
             "verified": False,
+            "owner_shortener": True,
             "shortlink": {"$exists": True, "$ne": ""},
             "shortlink_created_at": {"$lte": cutoff},
-            "recovery_sent_at": {"$exists": False},
+            "return_accepted_at": {"$exists": False},
+            "quick_reminder_sent_at": {"$exists": False},
         }).sort("shortlink_created_at", -1).limit(200)
+        return await cursor.to_list(length=200)
+
+    async def claim_verification_quick_reminder(self, record_id, now):
+        return await self.verify_id.find_one_and_update(
+            {
+                "_id": record_id,
+                "verified": False,
+                "owner_shortener": True,
+                "return_accepted_at": {"$exists": False},
+                "quick_reminder_sent_at": {"$exists": False},
+            },
+            {"$set": {"quick_reminder_sent_at": now}},
+            return_document=ReturnDocument.AFTER,
+        )
+
+    async def get_pending_verification_recovery(self, cutoff):
+        """Attempts where the user returned, but verification remains incomplete."""
+        cursor = self.verify_id.find({
+            "verified": False,
+            "owner_shortener": True,
+            "return_accepted_at": {"$exists": True, "$lte": cutoff},
+            "full_recovery_sent_at": {"$exists": False},
+        }).sort("return_accepted_at", -1).limit(200)
         return await cursor.to_list(length=200)
 
     async def claim_verification_recovery(self, record_id, now):
         return await self.verify_id.find_one_and_update(
-            {"_id": record_id, "verified": False, "recovery_sent_at": {"$exists": False}},
-            {"$set": {"recovery_sent_at": now}},
+            {
+                "_id": record_id,
+                "verified": False,
+                "owner_shortener": True,
+                "return_accepted_at": {"$exists": True},
+                "full_recovery_sent_at": {"$exists": False},
+            },
+            {"$set": {"full_recovery_sent_at": now, "recovery_sent_at": now}},
             return_document=ReturnDocument.AFTER,
+        )
+
+    async def mark_verification_recovery_sent(self, record_id, now):
+        return await self.verify_id.update_one(
+            {
+                "_id": record_id,
+                "verified": False,
+                "owner_shortener": True,
+                "return_accepted_at": {"$exists": True},
+                "full_recovery_sent_at": {"$exists": False},
+            },
+            {"$set": {"full_recovery_sent_at": now, "recovery_sent_at": now}},
         )
 
     async def get_verify_id_by_hash_for_recovery(self, hash):
