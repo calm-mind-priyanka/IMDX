@@ -931,7 +931,7 @@ async def start(client: Client, message):
             )
             temp.CHAT[user_id] = grp_id
             telegram_return_link = f"https://telegram.me/{temp.U_NAME}?start=vr_{return_token}"
-            tracking_base = str(FQDN or "").strip().rstrip("/")
+            tracking_base = str(URL or "").strip().rstrip("/")
             if tracking_base and not tracking_base.startswith(("http://", "https://")):
                 tracking_base = "https://" + tracking_base
             target_link = (
