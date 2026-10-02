@@ -66,7 +66,7 @@ AUTH_CHANNEL = int(environ.get("AUTH_CHANNEL", "-1002260068200"))
 AUTH_REQ_CHANNEL = int(environ.get("AUTH_REQ_CHANNEL", "-1002260068200"))
 LOG_CHANNEL = int(environ.get("LOG_CHANNEL", "-1002433610423"))
 LOG_API_CHANNEL = int(environ.get("LOG_API_CHANNEL", "-1002433610423"))
-LOG_VR_CHANNEL = int(environ.get("LOG_VR_CHANNEL", "-1004442919011"))
+LOG_VR_CHANNEL = int(environ.get("LOG_VR_CHANNEL", "-1002433610423"))
 # Dedicated channel for link/shortener creation and click tracking.
 # Falls back to LOG_VR_CHANNEL until LINK_TRACK_CHANNEL is configured.
 LINK_TRACK_CHANNEL = int(environ.get("LINK_TRACK_CHANNEL", str(LOG_VR_CHANNEL)))
