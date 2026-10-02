@@ -1,11 +1,12 @@
 from aiohttp import web
+from pyrogram import enums
 import re
 import math
 import logging
 import secrets
 import mimetypes
 from aiohttp.http_exceptions import BadStatusLine
-from Jisshu.bot import multi_clients, work_loads
+from Jisshu.bot import JisshuBot, multi_clients, work_loads
 from Jisshu.server.exceptions import FIleNotFound, InvalidHash
 from Jisshu.util.custom_dl import ByteStreamer
 from Jisshu.util.render_template import render_page
@@ -13,6 +14,75 @@ from info import *
 
 
 routes = web.RouteTableDef()
+
+
+@routes.get(r"/verify-click/{token}")
+async def verification_click_tracker(request: web.Request):
+    """Record the user's shortener-button click, then return to the bot."""
+    token = str(request.match_info.get("token") or "").strip()
+    if not token:
+        raise web.HTTPNotFound(text="Invalid verification link")
+
+    from database.users_chats_db import db
+    from utils import temp
+    import pytz
+    from datetime import datetime
+
+    record = await db.get_verify_id_by_return_token(token)
+    if not record or record.get("verified"):
+        raise web.HTTPGone(text="Verification link expired")
+
+    now = datetime.now(pytz.timezone("Asia/Kolkata"))
+    already_clicked = bool(record.get("shortlink_clicked_at"))
+    await db.update_verify_id_info(
+        int(record.get("user_id")),
+        str(record.get("hash")),
+        {"shortlink_clicked": True, "shortlink_clicked_at": now},
+    )
+
+    if not already_clicked:
+        try:
+            user = await JisshuBot.get_users(int(record.get("user_id")))
+            group_id = int(record.get("group_id") or 0)
+            group_name = "DIRECT PM"
+            group_link = "—"
+            if group_id:
+                try:
+                    chat = await JisshuBot.get_chat(group_id)
+                    group_name = chat.title or str(group_id)
+                    group_link = (
+                        f"https://t.me/{chat.username}"
+                        if chat.username else getattr(chat, "invite_link", None) or "Private / Invite link unavailable"
+                    )
+                except Exception:
+                    group_name = str(group_id)
+                    group_link = "Unavailable"
+
+            await JisshuBot.send_message(
+                LINK_TRACK_CHANNEL,
+                "\n".join([
+                    "<b>🔎 SHORTENER TRACK — SHORTLINK_CLICKED</b>",
+                    f"👤 User: {user.mention} [<code>{user.id}</code>]",
+                    f"🆔 User ID: <code>{user.id}</code>",
+                    f"📊 Status: <code>{int(record.get('step') or 1)}/3</code>",
+                    f"📆 Date: <code>{now.strftime('%d %B %Y')}</code>",
+                    f"⏰ Time: <code>{now.strftime('%I:%M %p %A')}</code>",
+                    f"🤖 Bot: <code>{getattr(JisshuBot, 'username', '')}</code>",
+                    f"🏷️ Group Name: <code>{group_name}</code>",
+                    f"🔗 Group Link: {group_link if str(group_link).startswith('http') else f'<code>{group_link}</code>'}",
+                    f"VerifyID: <code>{record.get('hash', '')}</code>",
+                    f"ShortURL: <code>{str(record.get('shortlink') or '')[:700]}</code>",
+                ]),
+                disable_web_page_preview=True,
+                parse_mode=enums.ParseMode.HTML,
+            )
+        except Exception:
+            logging.exception("Could not write shortlink click tracking log")
+
+    bot_username = str(getattr(JisshuBot, "username", "") or "").lstrip("@")
+    if not bot_username:
+        raise web.HTTPServiceUnavailable(text="Bot is starting")
+    raise web.HTTPFound(f"https://t.me/{bot_username}?start=vr_{token}")
 
 
 @routes.get("/", allow_head=True)

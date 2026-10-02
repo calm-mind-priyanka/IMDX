@@ -44,7 +44,8 @@ import base64
 from info import *
 
 # Verification recovery/customer-care settings. Defaults are intentionally conservative.
-VERIFY_RECOVERY_DELAY = int(os.environ.get("VERIFY_RECOVERY_DELAY", "300"))
+VERIFY_RECOVERY_DELAY = int(os.environ.get("VERIFY_RECOVERY_DELAY", "30"))
+VERIFY_MIDFLOW_DELAY = int(os.environ.get("VERIFY_MIDFLOW_DELAY", "120"))
 VERIFY_RECOVERY_DELETE = int(os.environ.get("VERIFY_RECOVERY_DELETE", "300"))
 
 
@@ -63,6 +64,14 @@ async def _is_owner_shortener(domain, api=None):
     domain = domain.replace("https://", "").replace("http://", "").rstrip("/")
     api = str(api or "").strip()
     owner_pairs = await db.get_owner_shortener_pairs()
+    # Also recognize the current environment-configured owner shorteners.
+    # Persisted Mongo pairs may predate a Koyeb env update, so they must not
+    # silently disable tracking for the currently configured owner API.
+    owner_pairs = list(owner_pairs or []) + [
+        (SHORTENER_WEBSITE, SHORTENER_API),
+        (SHORTENER_WEBSITE2, SHORTENER_API2),
+        (SHORTENER_WEBSITE3, SHORTENER_API3),
+    ]
     return any(
         (domain, api) == (
             str(owner_domain).strip().lower().replace("https://", "").replace("http://", "").rstrip("/"),
@@ -161,28 +170,43 @@ async def _mark_get_file_click(client, user, group_id, delivery_key):
 
 
 async def _verification_recovery_worker(client):
-    """Customer-care worker for verification attempts abandoned mid-flow."""
-    delay = max(60, int(globals().get("VERIFY_RECOVERY_DELAY", 300)))
+    """Send separate reminders for unclicked links and abandoned mid-flow returns."""
+    delay = max(30, int(globals().get("VERIFY_RECOVERY_DELAY", 30)))
+    midflow_delay = max(60, int(globals().get("VERIFY_MIDFLOW_DELAY", 120)))
     delete_after = max(60, int(globals().get("VERIFY_RECOVERY_DELETE", 300)))
+    owner_name = str(globals().get("OWNER_USERNAME", "") or "").lstrip("@").strip()
+    owner_url = f"https://t.me/{owner_name}" if owner_name else None
+
     while True:
         try:
-            cutoff = _ist_now() - timedelta(seconds=delay)
-            attempts = await db.get_pending_verification_recovery(cutoff)
-            latest = {}
-            for record in attempts:
-                key = (int(record.get("user_id", 0)), int(record.get("group_id", 0)))
-                if key not in latest:
-                    latest[key] = record
+            now = _ist_now()
+            generated_cutoff = now - timedelta(seconds=delay)
+            midflow_cutoff = now - timedelta(seconds=midflow_delay)
 
-            for record in latest.values():
+            generated = await db.get_pending_verification_recovery(generated_cutoff, stage="generated")
+            midflow = await db.get_pending_verification_recovery(midflow_cutoff, stage="midflow")
+
+            candidates = []
+            for record in generated:
+                candidates.append(("generated", record))
+            for record in midflow:
+                candidates.append(("midflow", record))
+
+            latest = {}
+            for stage, record in candidates:
+                key = (int(record.get("user_id", 0)), int(record.get("group_id", 0)))
+                previous = latest.get(key)
+                if previous is None or record.get("created_at") > previous[1].get("created_at"):
+                    latest[key] = (stage, record)
+
+            for stage, record in latest.values():
                 user_id = int(record.get("user_id"))
                 group_id = int(record.get("group_id") or 0)
                 verify_id = str(record.get("hash") or "")
-                if not verify_id:
+                if not verify_id or not record.get("owner_shortener", False):
                     continue
-                if not record.get("owner_shortener", False):
-                    continue
-                claimed = await db.claim_verification_recovery(record["_id"], _ist_now())
+
+                claimed = await db.claim_verification_recovery(record["_id"], now, stage=stage)
                 if not claimed:
                     continue
 
@@ -198,37 +222,56 @@ async def _verification_recovery_worker(client):
                 shortlink = record.get("shortlink")
                 ui_lang = await get_user_language(user_id)
                 buttons = []
+
                 if shortlink:
-                    buttons.append([InlineKeyboardButton(care_tr(ui_lang, "continue"), url=str(shortlink))])
+                    buttons.append([InlineKeyboardButton(
+                        "🔗 ᴄᴏɴᴛɪɴᴜᴇ ᴠᴇʀɪꜰʏɪɴɢ", url=str(shortlink)
+                    )])
                 if tutorial:
-                    buttons.append([InlineKeyboardButton(care_tr(ui_lang, "tutorial"), url=str(tutorial))])
+                    buttons.append([InlineKeyboardButton(
+                        care_tr(ui_lang, "tutorial"), url=str(tutorial)
+                    )])
+                if owner_url:
+                    buttons.append([InlineKeyboardButton(
+                        "👨‍💻 ᴄᴏɴᴛᴀᴄᴛ ᴏᴡɴᴇʀ", url=owner_url
+                    )])
                 buttons.append([
-                    InlineKeyboardButton(care_tr(ui_lang, "plans"), callback_data="seeplans"),
-                    InlineKeyboardButton(care_tr(ui_lang, "feedback"), callback_data=f"verify_help:{verify_id}"),
+                    InlineKeyboardButton(care_tr(ui_lang, "plans"), callback_data="seeplans")
                 ])
+
+                if stage == "generated":
+                    title = "🔔 <b>ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʀᴇᴍɪɴᴅᴇʀ</b>"
+                    body = (
+                        "ʏᴏᴜʀ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʟɪɴᴋ ɪs ʀᴇᴀᴅʏ, ʙᴜᴛ ᴛʜᴇ ᴠᴇʀɪꜰʏ ʙᴜᴛᴛᴏɴ ʜᴀs ɴᴏᴛ ʙᴇᴇɴ ᴜsᴇᴅ ʏᴇᴛ.\n\n"
+                        "👉 ᴄʟɪᴄᴋ ᴛʜᴇ ᴠᴇʀɪꜰʏ ʙᴜᴛᴛᴏɴ ᴀʙᴏᴠᴇ ᴛᴏ ᴄᴏɴᴛɪɴᴜᴇ."
+                    )
+                    event = "VERIFICATION_REMINDER_UNCLICKED"
+                else:
+                    title = "🔔 <b>ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ᴘʀᴏᴄᴇss ʀᴇᴍɪɴᴅᴇʀ</b>"
+                    body = (
+                        "ʏᴏᴜ ᴏᴘᴇɴᴇᴅ ᴛʜᴇ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʟɪɴᴋ, ʙᴜᴛ ᴛʜᴇ ʀᴇᴛᴜʀɴ ʜᴀs ɴᴏᴛ ʙᴇᴇɴ ʀᴇᴄᴇɪᴠᴇᴅ ʏᴇᴛ.\n\n"
+                        "👉 ᴜsᴇ ᴛʜᴇ ɢᴜɪᴅᴇ ᴏʀ ᴄᴏɴᴛᴀᴄᴛ ᴛʜᴇ ᴏᴡɴᴇʀ ɪꜰ ʏᴏᴜ ɢᴏᴛ sᴛᴜᴄᴋ."
+                    )
+                    event = "VERIFICATION_REMINDER_MIDFLOW"
+
                 try:
+                    user = await client.get_users(user_id)
                     sent = await client.send_message(
-                        user_id,
-                        care_reminder_tr(ui_lang, "title") + "\n\n" + care_reminder_tr(ui_lang, "body"),
+                        user_id, title + "\n\n" + body,
                         reply_markup=InlineKeyboardMarkup(buttons),
                         parse_mode=enums.ParseMode.HTML,
                     )
+                    field = "recovery_message_id" if stage == "generated" else "midflow_recovery_message_id"
                     await db.update_verify_id_info(
-                        user_id,
-                        verify_id,
-                        {"recovery_message_id": sent.id, "recovery_message_sent_at": _ist_now()},
+                        user_id, verify_id,
+                        {field: sent.id, "recovery_message_sent_at": now},
                     )
                     await _shortener_log(
-                        client,
-                        settings.get("log", LOG_VR_CHANNEL),
-                        "VERIFICATION_RECOVERY_SENT",
-                        await client.get_users(user_id),
+                        client, LOG_VR_CHANNEL, event, user,
                         int(record.get("step") or record.get("verification_step") or 1),
-                        Group=group_id,
-                        Mode=record.get("mode", "file"),
+                        Group=group_id, Mode=record.get("mode", "file"),
                         Domain=record.get("shortener_domain", "unknown"),
-                        VerifyID=verify_id,
-                        ShortURL=str(shortlink or "")[:700],
+                        VerifyID=verify_id, ShortURL=str(shortlink or "")[:700],
                     )
                     asyncio.create_task(_delete_recovery_message_later(client, user_id, sent.id, delete_after))
                 except Exception:
@@ -237,7 +280,7 @@ async def _verification_recovery_worker(client):
             raise
         except Exception:
             logger.exception("Verification recovery worker failed")
-        await asyncio.sleep(60)
+        await asyncio.sleep(30)
 
 
 async def _delete_recovery_message_later(client, user_id, message_id, delay):
@@ -250,58 +293,24 @@ async def _delete_recovery_message_later(client, user_id, message_id, delay):
 
 @Client.on_callback_query(filters.regex(r"^verify_help:"), group=-1)
 async def verification_help_callback(client, query):
-    verify_id = query.data.split(":", 1)[1].strip()
-    record = await db.get_verify_id_by_hash_for_recovery(verify_id)
-    if not record:
-        ui_lang = await get_user_language(query.from_user.id, query.from_user)
-        await query.answer(care_tr(ui_lang, "expired"), show_alert=True)
-        raise StopPropagation
-    await db.create_support_feedback_session(
-        query.from_user.id,
-        verify_id,
-        int(record.get("group_id") or 0),
-        int(record.get("step") or record.get("verification_step") or 1),
-        int((await get_settings(int(record.get("group_id") or 0))).get("log", LOG_VR_CHANNEL)),
-    )
-    await db.update_verify_id_info(query.from_user.id, verify_id, {"feedback_requested_at": _ist_now()})
+    """Legacy callback compatibility: never enter a feedback-capture mode."""
+    owner_name = str(OWNER_USERNAME or "").lstrip("@").strip()
     ui_lang = await get_user_language(query.from_user.id, query.from_user)
-    await query.message.reply_text(
-        care_tr(ui_lang, "feedback_title") + "\n\n" + care_tr(ui_lang, "feedback_body"),
-        parse_mode=enums.ParseMode.HTML,
-    )
+    if owner_name:
+        await query.message.reply_text(
+            "<b>🆘 ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʜᴇʟᴘ</b>\n\n"
+            "ɪꜰ ʏᴏᴜ ᴀʀᴇ sᴛᴜᴄᴋ ᴅᴜʀɪɴɢ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ, "
+            "ᴄᴏɴᴛᴀᴄᴛ ᴛʜᴇ ᴏᴡɴᴇʀ ᴅɪʀᴇᴄᴛʟʏ.",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("👨‍💻 ᴄᴏɴᴛᴀᴄᴛ ᴏᴡɴᴇʀ", url=f"https://t.me/{owner_name}")
+            ]]),
+            parse_mode=enums.ParseMode.HTML,
+        )
+    else:
+        await query.answer(care_tr(ui_lang, "expired"), show_alert=True)
     await query.answer()
     raise StopPropagation
 
-
-@Client.on_message(filters.private & filters.incoming & (filters.text | filters.photo | filters.document), group=-1)
-async def verification_feedback_receiver(client, message):
-    session = await db.get_support_feedback_session(message.from_user.id)
-    if not session:
-        return
-    log_chat = int(session.get("log_chat") or LOG_VR_CHANNEL)
-    verify_id = session.get("verify_id", "")
-    group_id = int(session.get("group_id") or 0)
-    step = int(session.get("step") or 1)
-    try:
-        user_info = await client.get_users(message.from_user.id)
-        header = (
-            "<b>🆘 VERIFICATION FEEDBACK</b>\n\n"
-            f"👤 User: {user_info.mention} [<code>{user_info.id}</code>]\n"
-            f"🔢 Step: <code>{step}/3</code>\n"
-            f"🆔 VerifyID: <code>{verify_id}</code>\n"
-            f"🏷️ Group ID: <code>{group_id}</code>\n\n"
-            "📩 User message/attachment is below."
-        )
-        await client.send_message(log_chat, header, parse_mode=enums.ParseMode.HTML)
-        await message.copy(log_chat)
-        await db.clear_support_feedback_session(message.from_user.id)
-        ui_lang = await get_user_language(message.from_user.id, message.from_user)
-        await message.reply_text(care_tr(ui_lang, "feedback_sent"), parse_mode=enums.ParseMode.HTML)
-    except Exception:
-        logger.exception("Could not forward verification feedback")
-        ui_lang = await get_user_language(message.from_user.id, message.from_user)
-        await message.reply_text(care_tr(ui_lang, "feedback_failed"), parse_mode=enums.ParseMode.HTML)
-    raise StopPropagation
 
 from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr, verify_tr, care_tr, care_reminder_tr, small_caps
 
@@ -426,7 +435,7 @@ async def start(client: Client, message):
             grp_id = int((verify_id_info or {}).get("group_id") or 0)
             if (verify_id_info or {}).get("owner_shortener", False):
                 try:
-                    log_chat = (await get_settings(grp_id)).get("log", LOG_VR_CHANNEL)
+                    log_chat = LOG_VR_CHANNEL
                     await _shortener_log(
                         client, log_chat, "SHORTENER_RETURN_REJECTED", message.from_user,
                         int((verify_id_info or {}).get("step") or 1),
@@ -449,7 +458,7 @@ async def start(client: Client, message):
         if int(message.from_user.id) != user_id:
             if verify_id_info.get("owner_shortener", False):
                 try:
-                    log_chat = (await get_settings(grp_id)).get("log", LOG_VR_CHANNEL)
+                    log_chat = LOG_VR_CHANNEL
                     await _shortener_log(
                         client, log_chat, "SHORTENER_RETURN_REJECTED", message.from_user,
                         int(verify_id_info.get("step") or 1),
@@ -481,7 +490,7 @@ async def start(client: Client, message):
             # useful evidence when diagnosing a shortener that reports/cuts clicks.
             if (verify_id_info or {}).get("owner_shortener", False):
                 try:
-                    log_chat = (await get_settings(grp_id)).get("log", LOG_VR_CHANNEL)
+                    log_chat = LOG_VR_CHANNEL
                     await _shortener_log(
                         client, log_chat, "SHORTENER_RETURN_REJECTED", message.from_user,
                         int((verify_id_info or {}).get("step") or 1),
@@ -496,7 +505,7 @@ async def start(client: Client, message):
         if int(message.from_user.id) != int(user_id):
             if verify_id_info.get("owner_shortener", False):
                 try:
-                    log_chat = (await get_settings(grp_id)).get("log", LOG_VR_CHANNEL)
+                    log_chat = LOG_VR_CHANNEL
                     await _shortener_log(
                         client, log_chat, "SHORTENER_RETURN_REJECTED", message.from_user,
                         int(verify_id_info.get("step") or 1),
@@ -553,18 +562,19 @@ async def start(client: Client, message):
         if verify_id_info.get("owner_shortener", False):
             try:
                 await client.send_message(
-                    settings.get("log", LOG_VR_CHANNEL),
+                    LOG_VR_CHANNEL,
                     script.VERIFIED_LOG_TEXT.format(
                         m.from_user.mention,
                         user_id,
                         num,
-                        current_time.strftime("%d %B %Y • %I:%M:%S %p IST"),
+                        current_time.strftime("%d %B %Y"),
+                        current_time.strftime("%I:%M %p %A"),
                     ),
                 )
             except Exception:
                 logger.exception("Could not write legacy verification log")
             await _shortener_log(
-                client, settings.get("log", LOG_VR_CHANNEL), "SHORTENER_RETURN_ACCEPTED", m.from_user, num,
+                client, LOG_VR_CHANNEL, "SHORTENER_RETURN_ACCEPTED", m.from_user, num,
                 Group=grp_id, Mode=verification_return_mode or ("allfiles" if m.command[1].startswith("jisshu") else "file"),
                 Domain=verify_id_info.get("shortener_domain", "unknown"), VerifyID=verify_id,
                 Delivery=verify_id_info.get("delivery_key", file_id),
@@ -882,7 +892,15 @@ async def start(client: Client, message):
                 return_token=return_token,
             )
             temp.CHAT[user_id] = grp_id
-            target_link = f"https://telegram.me/{temp.U_NAME}?start=vr_{return_token}"
+            telegram_return_link = f"https://telegram.me/{temp.U_NAME}?start=vr_{return_token}"
+            tracking_base = str(FQDN or "").strip().rstrip("/")
+            if tracking_base and not tracking_base.startswith(("http://", "https://")):
+                tracking_base = "https://" + tracking_base
+            target_link = (
+                f"{tracking_base}/verify-click/{return_token}"
+                if tracking_base
+                else telegram_return_link
+            )
             try:
                 verify = await get_shortlink(target_link, grp_id, is_second_shortener, is_third_shortener)
             except Exception as exc:
@@ -894,6 +912,12 @@ async def start(client: Client, message):
                         VerifyID=verify_id, Error=str(exc)[:300],
                     )
             if not verify:
+                if owner_shortener:
+                    await _shortener_log(
+                        client, LINK_TRACK_CHANNEL, "SHORTENER_API_ERROR", message.from_user, step,
+                        Group=grp_id, Mode=delivery_mode, Domain=shortener_domain or "unknown",
+                        VerifyID=verify_id, Error="shortener returned no URL",
+                    )
                 # Do not create a message with a dead/None URL when the
                 # shortener API is down. The user gets a clear retry instead
                 # of the handler silently failing.
