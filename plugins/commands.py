@@ -442,11 +442,36 @@ async def start(client: Client, message):
             return await show_group_list(client, message)
         return await show_group_settings(client, message, grp_id)
     verification_return_mode = None
-    if len(m.command) == 2 and m.command[1].startswith("vr_"):
+    # Telegram normally exposes deep-link payloads through message.command, but
+    # some clients/redirect chains can leave the payload only in message.text.
+    # Normalize both forms so a shortener return can never fall through to the
+    # ordinary /start handler and appear to be stuck.
+    start_payload = ""
+    try:
+        if len(getattr(m, "command", []) or []) >= 2:
+            start_payload = str(m.command[1] or "").strip()
+        if not start_payload and getattr(m, "text", None):
+            parts = str(m.text).split(maxsplit=1)
+            if len(parts) == 2:
+                start_payload = parts[1].strip()
+    except Exception:
+        start_payload = ""
+
+    logger.info("/start received: user=%s payload=%s", user_id, start_payload[:80])
+    if start_payload.startswith("vr_"):
+        logger.info("Processing verification return token for user=%s", user_id)
         # New verification-return links carry only a short opaque token.
         # The original user/group/delivery data stays in MongoDB.
-        return_token = m.command[1][3:]
-        verify_id_info = await db.get_verify_id_by_return_token(return_token)
+        return_token = start_payload[3:].strip()
+        if not return_token:
+            await message.reply_text("<b>⚠️ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʟɪɴᴋ ɪs ɪɴᴠᴀʟɪᴅ. ᴘʟᴇᴀsᴇ ɢᴇɴᴇʀᴀᴛᴇ ᴀ ɴᴇᴡ ᴏɴᴇ.</b>", parse_mode=enums.ParseMode.HTML)
+            return
+        try:
+            verify_id_info = await db.get_verify_id_by_return_token(return_token)
+        except Exception:
+            logger.exception("Verification return token lookup failed: %s", return_token)
+            await message.reply_text("<b>⚠️ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ sᴇʀᴠɪᴄᴇ ɪs ᴛᴇᴍᴘᴏʀᴀʀɪʟʏ ᴜɴᴀᴠᴀɪʟᴀʙʟᴇ. ᴘʟᴇᴀsᴇ ᴛʀʏ ᴛʜᴇ ʟɪɴᴋ ᴀɢᴀɪɴ.</b>", parse_mode=enums.ParseMode.HTML)
+            return
         if not verify_id_info or verify_id_info.get("verified"):
             grp_id = int((verify_id_info or {}).get("group_id") or 0)
             if _is_owner_tracking_record(verify_id_info or {}):
@@ -466,6 +491,7 @@ async def start(client: Client, message):
 
         user_id = int(verify_id_info["user_id"])
         verify_id = str(verify_id_info.get("hash") or "")
+        logger.info("Verification token resolved: token=%s user=%s verify_id=%s group=%s", return_token, user_id, verify_id, verify_id_info.get("group_id"))
         grp_id = int(verify_id_info.get("group_id") or 0)
         file_id = str(verify_id_info.get("delivery_key") or "")
         verification_return_mode = verify_id_info.get("mode", "file")
@@ -486,19 +512,20 @@ async def start(client: Client, message):
                     logger.exception("Could not write token mismatch log")
             await message.reply("<b>ʟɪɴᴋ ɪs ɴᴏᴛ ᴠᴀʟɪᴅ ғᴏʀ ʏᴏᴜʀ ᴜsᴇʀ.</b>")
             return
-        settings = await get_settings(grp_id)
-    elif len(m.command) == 2 and m.command[1].startswith(("notcopy_", "jisshu_")):
-        parts = m.command[1].split("_", 4)
+        # Settings are not required to accept the return token; avoiding this
+        # extra DB dependency makes the shortener return path more reliable.
+    elif start_payload.startswith(("notcopy_", "jisshu_")):
+        parts = start_payload.split("_", 4)
         # Legacy verification links remain supported for backward compatibility.
         # New links use the short server-side token above.
         if len(parts) == 5:
             _, userid, verify_id, grp_id, file_id = parts
         else:
-            _, userid, verify_id, file_id = m.command[1].split("_", 3)
+            _, userid, verify_id, file_id = start_payload.split("_", 3)
             grp_id = temp.CHAT.get(int(userid), 0)
         user_id = int(userid)
         grp_id = int(grp_id or 0)
-        verification_return_mode = "allfiles" if m.command[1].startswith("jisshu") else "file"
+        verification_return_mode = "allfiles" if start_payload.startswith("jisshu") else "file"
         settings = await get_settings(grp_id)
         verify_id_info = await db.get_verify_id_info(user_id, verify_id)
         if not verify_id_info or verify_id_info.get("verified"):
@@ -560,6 +587,7 @@ async def start(client: Client, message):
             verification_update["master_24h_started_at"] = current_time
             verification_update["master_24h_expires_at"] = current_time + timedelta(hours=24)
         await db.update_verify_id_info(user_id, verify_id, verification_update)
+        logger.info("Verification return accepted: user=%s verify_id=%s step=%s", user_id, verify_id, num)
         msg = verify_tr(
             await get_user_language(user_id, message.from_user),
             "done",

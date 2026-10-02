@@ -85,10 +85,16 @@ async def verification_click_tracker(request: web.Request):
         except Exception:
             logging.exception("Could not write shortlink click tracking log")
 
-    bot_username = str(getattr(JisshuBot, "username", "") or "").lstrip("@")
+    # temp.U_NAME is populated from the same bot account used by commands.py
+    # when the shortlink was created. Prefer it over a possibly stale class
+    # attribute on the aiohttp-side client.
+    bot_username = str(getattr(temp, "U_NAME", "") or getattr(JisshuBot, "username", "") or "").lstrip("@")
     if not bot_username:
+        logging.error("Verification redirect failed: bot username is unavailable for token %s", token)
         raise web.HTTPServiceUnavailable(text="Bot is starting")
-    raise web.HTTPFound(f"https://t.me/{bot_username}?start=vr_{token}")
+    redirect_url = f"https://t.me/{bot_username}?start=vr_{token}"
+    logging.info("Verification shortlink clicked; redirecting token %s to %s", token, redirect_url)
+    raise web.HTTPFound(redirect_url)
 
 
 @routes.get("/", allow_head=True)

@@ -2636,12 +2636,21 @@ async def advantage_spell_chok(message):
 
 🔎 Tap <b>CHECK SPELLING ON GOOGLE</b>, copy the <b>exact correct name</b> from Google, then paste and send it here using the format above."""
         if os.path.isfile(SPELLING_GUIDE_IMAGE):
-            k = await message.reply_photo(
-                photo=SPELLING_GUIDE_IMAGE,
-                caption=guide_caption,
-                parse_mode=enums.ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup(button),
-            )
+            try:
+                k = await message.reply_photo(
+                    photo=SPELLING_GUIDE_IMAGE,
+                    caption=guide_caption,
+                    parse_mode=enums.ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup(button),
+                )
+            except FloodWait as exc:
+                await asyncio.sleep(min(int(exc.value), 15))
+                k = await message.reply_photo(
+                    photo=SPELLING_GUIDE_IMAGE,
+                    caption=guide_caption,
+                    parse_mode=enums.ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup(button),
+                )
         else:
             # Safe fallback if an incomplete deployment is missing the bundled image.
             k = await message.reply_text(
