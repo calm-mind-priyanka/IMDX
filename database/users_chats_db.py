@@ -75,23 +75,25 @@ class Database:
             return self.default.copy()
 
     async def get_owner_shortener_pairs(self):
-        """Return the bot-owner shortener identities persisted from owner settings.
-
-        The environment values in info.py are the initial defaults. Once the
-        bot owner changes a shortener through the settings UI, the new
-        domain/API pair is persisted here so ownership survives restarts.
-        """
+        """Return only shortener slots registered to the current BOT OWNER_ID."""
         doc = await self.misc.find_one({"_id": "owner_shorteners"})
-        if doc and isinstance(doc.get("pairs"), list):
-            pairs = []
-            for item in doc["pairs"][:3]:
-                if isinstance(item, dict):
-                    pairs.append((str(item.get("domain", "")).strip(), str(item.get("api", "")).strip()))
-                else:
+        if doc:
+            try:
+                if int(doc.get("owner_id")) != int(OWNER_ID):
+                    return [("", ""), ("", ""), ("", "")]
+            except (TypeError, ValueError):
+                return [("", ""), ("", ""), ("", "")]
+            if isinstance(doc.get("pairs"), list):
+                pairs = []
+                for item in doc["pairs"][:3]:
+                    if isinstance(item, dict):
+                        pairs.append((str(item.get("domain", "")).strip(), str(item.get("api", "")).strip()))
+                    else:
+                        pairs.append(("", ""))
+                while len(pairs) < 3:
                     pairs.append(("", ""))
-            while len(pairs) < 3:
-                pairs.append(("", ""))
-            return pairs
+                return pairs
+        # Initial environment shorteners belong to the bot owner.
         return [
             (str(SHORTENER_WEBSITE).strip(), str(SHORTENER_API).strip()),
             (str(SHORTENER_WEBSITE2).strip(), str(SHORTENER_API2).strip()),
