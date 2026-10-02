@@ -1,3 +1,4 @@
+import logging
 import datetime
 import pytz
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -330,22 +331,63 @@ class Database:
         return False
 
     async def create_verify_id(self, user_id: int, hash, **metadata):
-        res = {"user_id": int(user_id), "hash": hash, "verified": False, **metadata}
+        # A new verification attempt supersedes older unfinished attempts for the
+        # same user/group. This prevents stale reminders from older file requests.
+        group_id = int(metadata.get("group_id") or 0)
+        await self.verify_id.update_many(
+            {
+                "user_id": int(user_id),
+                "group_id": group_id,
+                "verified": False,
+                "superseded_at": {"$exists": False},
+            },
+            {"$set": {"superseded_at": datetime.datetime.now(pytz.timezone("Asia/Kolkata"))}},
+        )
+        res = {
+            "user_id": int(user_id),
+            "hash": hash,
+            "verified": False,
+            "shortlink_clicked": False,
+            "return_accepted": False,
+            **metadata,
+        }
         return await self.verify_id.insert_one(res)
 
-    async def get_pending_verification_recovery(self, cutoff):
-        cursor = self.verify_id.find({
+    async def get_pending_verification_recovery(self, cutoff, stage="generated"):
+        base_query = {
             "verified": False,
+            "superseded_at": {"$exists": False},
             "shortlink": {"$exists": True, "$ne": ""},
-            "shortlink_created_at": {"$lte": cutoff},
-            "recovery_sent_at": {"$exists": False},
-        }).sort("shortlink_created_at", -1).limit(200)
+        }
+        if stage == "midflow":
+            base_query.update({
+                "shortlink_clicked_at": {"$exists": True, "$lte": cutoff},
+                "midflow_recovery_sent_at": {"$exists": False},
+            })
+        else:
+            base_query.update({
+                "shortlink_created_at": {"$exists": True, "$lte": cutoff},
+                "shortlink_clicked_at": {"$exists": False},
+                "recovery_sent_at": {"$exists": False},
+            })
+        cursor = self.verify_id.find(base_query).sort("shortlink_created_at", -1).limit(200)
         return await cursor.to_list(length=200)
 
-    async def claim_verification_recovery(self, record_id, now):
+    async def claim_verification_recovery(self, record_id, now, stage="generated"):
+        field = "recovery_sent_at" if stage == "generated" else "midflow_recovery_sent_at"
+        query = {
+            "_id": record_id,
+            "verified": False,
+            "superseded_at": {"$exists": False},
+            field: {"$exists": False},
+        }
+        if stage == "midflow":
+            query["shortlink_clicked_at"] = {"$exists": True}
+        else:
+            query["shortlink_clicked_at"] = {"$exists": False}
         return await self.verify_id.find_one_and_update(
-            {"_id": record_id, "verified": False, "recovery_sent_at": {"$exists": False}},
-            {"$set": {"recovery_sent_at": now}},
+            query,
+            {"$set": {field: now}},
             return_document=ReturnDocument.AFTER,
         )
 
@@ -506,6 +548,21 @@ class Database:
     # ------------------------------------------------------------------
     # Premium payment / subscription helpers
     # ------------------------------------------------------------------
+    async def ensure_verification_indexes(self):
+        """Create safe non-unique indexes used by verification tracking/recovery."""
+        indexes = [
+            [("return_token", 1)],
+            [("hash", 1)],
+            [("user_id", 1), ("group_id", 1), ("created_at", -1)],
+            [("verified", 1), ("shortlink_created_at", 1), ("shortlink_clicked_at", 1)],
+        ]
+        for keys in indexes:
+            try:
+                await self.verify_id.create_index(keys)
+            except Exception:
+                # Index creation must never prevent the bot from starting.
+                logging.exception("Could not create verification index: %s", keys)
+
     async def ensure_premium_indexes(self):
         await self.premium_orders.create_index("user_id", unique=True)
         await self.premium_orders.create_index([
