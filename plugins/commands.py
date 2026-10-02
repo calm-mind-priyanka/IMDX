@@ -83,13 +83,10 @@ async def _is_owner_shortener(domain, api=None):
 
 
 async def _shortener_log(client, log_chat, event, user, step, **fields):
-    """Write forensic shortener/verification events without breaking user flow."""
+    """Write shortener tracking events in the exact requested compact format."""
     if not log_chat:
         return
 
-    # Add the originating group's exact title and a usable group link to every
-    # shortener diagnostic event. This is logging-only and never affects the
-    # verification/delivery flow. For direct PM requests, group_id is 0/None.
     group_id = fields.get("Group")
     is_direct_pm = group_id in (None, "", 0, "0")
     group_name = "DIRECT PM"
@@ -105,13 +102,9 @@ async def _shortener_log(client, log_chat, event, user, step, **fields):
             else:
                 group_link = "Private / Invite link unavailable"
         except Exception:
-            # Do not let an unavailable chat lookup break verification logs.
             group_name = str(group_id)
             group_link = "Unavailable"
 
-    # Resolve the bot identity for the origin context. This is especially
-    # important for direct-PM requests: the requesting user must NEVER be
-    # mistaken for the source group.
     bot_name = "Unknown Bot"
     bot_username = ""
     try:
@@ -122,24 +115,44 @@ async def _shortener_log(client, log_chat, event, user, step, **fields):
         pass
 
     now = _ist_now()
-    source_label = "DIRECT PM" if is_direct_pm else "GROUP"
+    date_text = now.strftime("%-d %B %Y time %-I:%M%p %A")
+    status = f"{int(step or 1)}/3"
     lines = [
         f"<b>🔎 SHORTENER TRACK — {event}</b>",
-        f"👤 User: {user.mention} [<code>{user.id}</code>]",
-        f"🆔 User ID: <code>{user.id}</code>",
-        f"🔢 Step: <code>{step}/3</code>",
-        f"📅 Date: <code>{now.strftime('%d-%m-%Y')}</code>",
-        f"🕒 Time: <code>{now.strftime('%I:%M:%S %p')}</code>",
-        f"🤖 Bot: <code>{bot_name}</code> {bot_username}",
-        f"📍 Source: <code>{source_label}</code>",
-        f"🏷️ Group Name: <code>{group_name}</code>",
-        f"🔗 Group Link: {group_link if group_link.startswith('http') else f'<code>{group_link}</code>'}",
+        f"👤 ᴜꜱᴇʀ: {user.mention} [ <code>{user.id}</code> ]",
+        f"📊 ꜱᴛᴀᴛᴜꜱ: {status}",
+        f"📆 ᴅᴀᴛᴇ: {date_text}",
+        f"🤖 Bot: {bot_name} {bot_username}".rstrip(),
+        f"🏷️ Group Name: {group_name}",
+        f"🔗 Group Link: {group_link}",
+        f"Group: {0 if is_direct_pm else group_id}",
     ]
-    for label, value in fields.items():
-        if value is not None and value != "":
-            lines.append(f"{label}: <code>{value}</code>")
+
+    mode = fields.get("Mode")
+    if mode is not None and mode != "":
+        lines.append(f"Mode: {mode}")
+    domain = fields.get("Domain")
+    if domain:
+        lines.append(f"Domain: {domain}")
+    api_key = fields.get("Api key")
+    if api_key:
+        lines.append(f"Api key: {api_key}")
+    short_url = fields.get("ShortURL")
+    if short_url:
+        lines.append(f"ShortURL: {short_url}")
+
+    # Keep diagnostics that are not part of the user-facing requested template
+    # out of SHORTLINK_CREATED/SHORTLINK_CLICKED messages. Error events may add
+    # their reason for debugging.
+    if event == "SHORTENER_API_ERROR" and fields.get("Error"):
+        lines.append(f"Error: {fields['Error']}")
+
     try:
-        await client.send_message(int(log_chat), "\n".join(lines), disable_web_page_preview=True)
+        await client.send_message(
+            int(log_chat),
+            "\n".join(lines),
+            disable_web_page_preview=True,
+        )
     except Exception:
         logger.exception("Could not write shortener diagnostic log")
 
@@ -561,26 +574,19 @@ async def start(client: Client, message):
             )
         if verify_id_info.get("owner_shortener", False):
             try:
-                await client.send_message(
-                    LOG_VR_CHANNEL,
-                    script.VERIFIED_LOG_TEXT.format(
-                        m.from_user.mention,
-                        user_id,
-                        num,
-                        current_time.strftime("%d %B %Y"),
-                        current_time.strftime("%I:%M %p %A"),
-                    ),
-                )
+                date_text = current_time.strftime("%-d %B %Y time %-I:%M%p %A")
+                verification_log = "\n".join([
+                    "<b>🔐 ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʀᴇᴛᴜʀɴ ᴀᴄᴄᴇᴘᴛᴇᴅ</b>",
+                    "",
+                    "#VerificationCompleted",
+                    f"👤 ᴜꜱᴇʀ: {m.from_user.mention} [ {user_id} ]",
+                    f"📆 ᴅᴀᴛᴇ: {date_text}",
+                    "Get File click: PENDING",
+                    f"📊 ꜱᴛᴀᴛᴜꜱ: #Verificaton_{num}_Completed",
+                ])
+                await client.send_message(LOG_VR_CHANNEL, verification_log)
             except Exception:
-                logger.exception("Could not write legacy verification log")
-            await _shortener_log(
-                client, LOG_VR_CHANNEL, "SHORTENER_RETURN_ACCEPTED", m.from_user, num,
-                Group=grp_id, Mode=verification_return_mode or ("allfiles" if m.command[1].startswith("jisshu") else "file"),
-                Domain=verify_id_info.get("shortener_domain", "unknown"), VerifyID=verify_id,
-                Delivery=verify_id_info.get("delivery_key", file_id),
-                **{"Get File click": "PENDING"},
-                **({"Master 24h expires": (current_time + timedelta(hours=24)).strftime("%d-%m-%Y %I:%M:%S %p")} if num == 1 else {}),
-            )
+                logger.exception("Could not write verification return log")
         ui_lang = await get_user_language(user_id, message.from_user)
         btn = [
             [
@@ -930,7 +936,7 @@ async def start(client: Client, message):
                 await _shortener_log(
                     client, LINK_TRACK_CHANNEL, "SHORTLINK_CREATED", message.from_user, step,
                     Group=grp_id, Mode=delivery_mode, Domain=shortener_domain or "unknown",
-                    VerifyID=verify_id, ShortURL=str(verify)[:700],
+                    **{"Api key": shortener_api or ""}, VerifyID=verify_id, ShortURL=str(verify)[:700],
                 )
             if is_third_shortener:
                 howtodownload = settings.get("tutorial_3", TUTORIAL_3)
