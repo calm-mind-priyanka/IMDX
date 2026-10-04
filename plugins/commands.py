@@ -46,7 +46,8 @@ from info import *
 # Verification recovery/customer-care settings. Defaults are intentionally conservative.
 VERIFY_RECOVERY_DELAY = int(os.environ.get("VERIFY_RECOVERY_DELAY", "30"))
 VERIFY_MIDFLOW_DELAY = int(os.environ.get("VERIFY_MIDFLOW_DELAY", "120"))
-VERIFY_RECOVERY_DELETE = int(os.environ.get("VERIFY_RECOVERY_DELETE", "300"))
+VERIFY_RECOVERY_DELETE = int(os.environ.get("VERIFY_RECOVERY_DELETE", "600"))
+HOME_AUTO_DELETE = max(60, int(os.environ.get("HOME_AUTO_DELETE", "600")))
 
 
 def _ist_now():
@@ -237,43 +238,73 @@ async def _verification_recovery_worker(client):
                 )
                 shortlink = record.get("shortlink")
                 ui_lang = await get_user_language(user_id)
+                bot_username = str(temp.U_NAME or "bot").lstrip("@")
+                greeting = _file_mode_greeting()
                 buttons = []
-                # Reminder actions intentionally use the existing global language system.
-                # The two reminder stages remain separate, while feedback is optional and
-                # never changes verification state.
+
+                # Keep the SAME shortlink/verification attempt. A reminder must
+                # never create a new shortener URL.
                 if shortlink:
-                    continue_label = care_tr(ui_lang, "continue")
-                    buttons.append([InlineKeyboardButton(continue_label, url=str(shortlink))])
+                    buttons.append([InlineKeyboardButton(
+                        care_tr(ui_lang, "continue"), url=str(shortlink)
+                    )])
+
+                # "How to Verify" is now a real help page: it opens a video
+                # button plus a Back button, rather than immediately leaving
+                # the reminder message.
                 if tutorial:
                     buttons.append([InlineKeyboardButton(
-                        care_tr(ui_lang, "tutorial"), url=str(tutorial)
+                        care_reminder_button_tr(ui_lang, "how_to_verify"),
+                        callback_data=f"verify_help_page:{verify_id}",
                     )])
+
+                buttons.append([
+                    InlineKeyboardButton(
+                        care_reminder_button_tr(ui_lang, "premium"),
+                        callback_data="getpremium",
+                    ),
+                    InlineKeyboardButton(
+                        care_reminder_button_tr(ui_lang, "sos"),
+                        callback_data=f"verify_feedback_menu:{verify_id}",
+                    ),
+                ])
                 if owner_url:
                     buttons.append([InlineKeyboardButton(
-                        "👨‍💻 ᴄᴏɴᴛᴀᴄᴛ ᴏᴡɴᴇʀ", url=owner_url
+                        care_reminder_button_tr(ui_lang, "contact_owner"), url=owner_url
                     )])
 
-                # Optional one-tap feedback. It records the user's reason only; it
-                # never marks the verification complete, cancels it, or changes timers.
-                buttons.append([InlineKeyboardButton(
-                    care_tr(ui_lang, "feedback"),
-                    callback_data=f"verify_feedback_menu:{verify_id}",
-                )])
-                buttons.append([
-                    InlineKeyboardButton(care_tr(ui_lang, "plans"), callback_data="seeplans")
-                ])
-
-                if stage == "generated":
-                    title = care_reminder_tr(ui_lang, "title")
-                    body = care_reminder_tr(ui_lang, "body")
-                    event = "VERIFICATION_REMINDER_UNCLICKED"
-                else:
-                    title = care_tr(ui_lang, "title")
-                    body = care_tr(ui_lang, "body")
-                    event = "VERIFICATION_REMINDER_MIDFLOW"
+                title = care_reminder_tr(
+                    ui_lang, "title", mention=user.mention,
+                    bot_username=bot_username
+                )
+                body = care_reminder_tr(
+                    ui_lang, "body", mention=user.mention,
+                    bot_username=bot_username, greeting=greeting
+                )
+                event = (
+                    "VERIFICATION_REMINDER_UNCLICKED"
+                    if stage == "generated"
+                    else "VERIFICATION_REMINDER_MIDFLOW"
+                )
 
                 try:
                     user = await client.get_users(user_id)
+
+                    # The second reminder replaces the first reminder for the
+                    # same verification attempt. It keeps the same shortlink,
+                    # verify-id and verification state, so no old link is lost.
+                    old_ids = []
+                    if stage == "midflow":
+                        old_ids = [record.get("recovery_message_id")]
+                    elif record.get("midflow_recovery_message_id"):
+                        old_ids = [record.get("midflow_recovery_message_id")]
+                    for old_id in old_ids:
+                        if old_id:
+                            try:
+                                await client.delete_messages(user_id, int(old_id))
+                            except Exception:
+                                pass
+
                     sent = await client.send_message(
                         user_id, title + "\n\n" + body,
                         reply_markup=InlineKeyboardMarkup(buttons),
@@ -381,6 +412,82 @@ async def verification_feedback_callback(client, query):
     raise StopPropagation
 
 
+@Client.on_callback_query(filters.regex(r"^verify_help_page:"), group=-1)
+async def verification_help_page(client, query):
+    verify_id = query.data.split(":", 1)[1].strip()
+    record = await db.get_verify_id_info(query.from_user.id, verify_id)
+    ui_lang = await get_user_language(query.from_user.id, query.from_user)
+    if not record or record.get("verified") or record.get("superseded_at"):
+        await query.answer(care_tr(ui_lang, "expired"), show_alert=True)
+        return
+
+    settings = await get_settings(int(record.get("group_id") or 0))
+    step = int(record.get("step") or record.get("verification_step") or 1)
+    tutorial_key = {1: "tutorial", 2: "tutorial_2", 3: "tutorial_3"}.get(step, "tutorial")
+    tutorial = settings.get(tutorial_key) or globals().get(
+        {"tutorial": "TUTORIAL", "tutorial_2": "TUTORIAL_2", "tutorial_3": "TUTORIAL_3"}[tutorial_key]
+    )
+    rows = []
+    if tutorial:
+        rows.append([InlineKeyboardButton(
+            care_reminder_button_tr(ui_lang, "watch_guide"), url=str(tutorial)
+        )])
+    rows.append([InlineKeyboardButton(
+        care_reminder_button_tr(ui_lang, "back_to_reminder"),
+        callback_data=f"verify_help_back:{verify_id}",
+    )])
+    text = care_reminder_tr(
+        ui_lang, "help_title",
+        bot_username=str(temp.U_NAME or "bot").lstrip("@"),
+    ) + "\n\n" + care_reminder_tr(ui_lang, "help_body")
+    await query.answer()
+    await query.message.edit_text(
+        text, reply_markup=InlineKeyboardMarkup(rows),
+        parse_mode=enums.ParseMode.HTML,
+    )
+    raise StopPropagation
+
+
+@Client.on_callback_query(filters.regex(r"^verify_help_back:"), group=-1)
+async def verification_help_back(client, query):
+    verify_id = query.data.split(":", 1)[1].strip()
+    record = await db.get_verify_id_info(query.from_user.id, verify_id)
+    ui_lang = await get_user_language(query.from_user.id, query.from_user)
+    if not record or record.get("verified") or record.get("superseded_at"):
+        await query.answer(care_tr(ui_lang, "expired"), show_alert=True)
+        return
+    shortlink = record.get("shortlink")
+    buttons = []
+    if shortlink:
+        buttons.append([InlineKeyboardButton(care_tr(ui_lang, "continue"), url=str(shortlink))])
+    buttons.append([InlineKeyboardButton(
+        care_reminder_button_tr(ui_lang, "how_to_verify"),
+        callback_data=f"verify_help_page:{verify_id}",
+    )])
+    buttons.append([
+        InlineKeyboardButton(care_reminder_button_tr(ui_lang, "premium"), callback_data="getpremium"),
+        InlineKeyboardButton(care_reminder_button_tr(ui_lang, "sos"), callback_data=f"verify_feedback_menu:{verify_id}"),
+    ])
+    owner_name = str(OWNER_USERNAME or "").lstrip("@").strip()
+    if owner_name:
+        buttons.append([InlineKeyboardButton(
+            care_reminder_button_tr(ui_lang, "contact_owner"),
+            url=f"https://t.me/{owner_name}",
+        )])
+    user = await client.get_users(query.from_user.id)
+    text = care_reminder_tr(
+        ui_lang, "title", mention=user.mention,
+        bot_username=str(temp.U_NAME or "bot").lstrip("@"),
+    ) + "\n\n" + care_reminder_tr(
+        ui_lang, "body", mention=user.mention,
+        bot_username=str(temp.U_NAME or "bot").lstrip("@"),
+        greeting=_file_mode_greeting(),
+    )
+    await query.answer()
+    await query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML)
+    raise StopPropagation
+
+
 @Client.on_callback_query(filters.regex(r"^verify_help:"), group=-1)
 async def verification_help_callback(client, query):
     """Legacy callback compatibility: never enter a feedback-capture mode."""
@@ -402,7 +509,7 @@ async def verification_help_callback(client, query):
     raise StopPropagation
 
 
-from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr, verify_tr, care_tr, care_reminder_tr, care_feedback_reason_tr, small_caps
+from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr, verify_tr, care_tr, care_reminder_tr, care_feedback_reason_tr, care_reminder_button_tr, small_caps
 
 logger = logging.getLogger(__name__)
 movie_series_db = JsTopDB(DATABASE_URI)
@@ -416,6 +523,7 @@ def _global_home_markup(lang):
         [InlineKeyboardButton(home_tr(lang, "help"), callback_data="help"), InlineKeyboardButton(home_tr(lang, "about"), callback_data="about")],
         [InlineKeyboardButton(home_tr(lang, "earn"), callback_data="earn")],
         [InlineKeyboardButton(tr(lang, "language_button"), callback_data="global_lang:menu")],
+        [InlineKeyboardButton(home_tr(lang, "clean"), callback_data="clean_home")],
     ])
 
 
@@ -497,6 +605,24 @@ async def _edit_language_message(query, text, markup):
         if isinstance(exc, MessageNotModified):
             return
         logger.exception("Could not display global language picker")
+
+
+async def _delete_home_later(client, user_id, message_id, delay):
+    try:
+        await asyncio.sleep(delay)
+        await client.delete_messages(user_id, message_id)
+    except Exception:
+        pass
+
+
+@Client.on_callback_query(filters.regex(r"^clean_home$"), group=-1)
+async def clean_home_callback(client, query):
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
+    await query.answer("Home cleaned 🧹")
+    raise StopPropagation
 
 
 @Client.on_message(filters.command("start") & filters.incoming)
@@ -758,12 +884,17 @@ async def start(client: Client, message):
         )
         await asyncio.sleep(1)
         await m.delete()
-        await message.reply_photo(
+        home_message = await message.reply_photo(
             photo=random.choice(START_IMG),
             caption=core_tr(lang, "start", mention=message.from_user.mention, status=get_status()),
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML,
         )
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        asyncio.create_task(_delete_home_later(client, message.from_user.id, home_message.id, HOME_AUTO_DELETE))
         return
     if len(message.command) == 2 and message.command[1] in [
         "subscribe", "error", "okay", "help",
@@ -2230,3 +2361,45 @@ async def reset_group_command(client, message):
     reply_markup = InlineKeyboardMarkup(btn)
     await save_default_settings(grp_id)
     await message.reply_text("ꜱᴜᴄᴄᴇꜱꜱғᴜʟʟʏ ʀᴇꜱᴇᴛ ɢʀᴏᴜᴘ ꜱᴇᴛᴛɪɴɢꜱ...")
+
+
+@Client.on_chat_member_updated()
+async def track_private_block_unblock(client, update):
+    """Track users blocking/unblocking the bot in LOG_VR_CHANNEL."""
+    try:
+        chat = update.chat
+        old_member = update.old_chat_member
+        new_member = update.new_chat_member
+        if not chat or chat.type != enums.ChatType.PRIVATE:
+            return
+        # In a private chat, the bot's membership changes when the user blocks
+        # or unblocks it. LEFT/BANNED are treated as blocked; MEMBER as unblocked.
+        old_status = getattr(old_member, "status", None)
+        new_status = getattr(new_member, "status", None)
+        blocked_statuses = {
+            enums.ChatMemberStatus.LEFT,
+            enums.ChatMemberStatus.BANNED,
+        }
+        if new_status in blocked_statuses and old_status not in blocked_statuses:
+            event = "🚫 USER BLOCKED BOT"
+        elif new_status == enums.ChatMemberStatus.MEMBER and old_status in blocked_statuses:
+            event = "✅ USER UNBLOCKED BOT"
+        else:
+            return
+
+        user = getattr(new_member, "user", None) or getattr(old_member, "user", None)
+        if not user:
+            return
+        now = _ist_now()
+        await client.send_message(
+            LOG_VR_CHANNEL,
+            "\n".join([
+                f"<b>{event}</b>",
+                f"👤 User: {user.mention} [ <code>{user.id}</code> ]",
+                f"🔗 Username: @{user.username}" if user.username else "🔗 Username: —",
+                f"📆 Time: {now.strftime('%-d %B %Y %I:%M%p %A')}",
+            ]),
+            disable_web_page_preview=True,
+        )
+    except Exception:
+        logger.exception("Could not track private block/unblock event")
