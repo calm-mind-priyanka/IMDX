@@ -237,12 +237,12 @@ async def _verification_recovery_worker(client):
                 )
                 shortlink = record.get("shortlink")
                 ui_lang = await get_user_language(user_id)
-                buttons = []
-
+                # Reminder actions intentionally use the existing global language system.
+                # The two reminder stages remain separate, while feedback is optional and
+                # never changes verification state.
                 if shortlink:
-                    buttons.append([InlineKeyboardButton(
-                        "🔗 ᴄᴏɴᴛɪɴᴜᴇ ᴠᴇʀɪꜰʏɪɴɢ", url=str(shortlink)
-                    )])
+                    continue_label = care_tr(ui_lang, "continue")
+                    buttons.append([InlineKeyboardButton(continue_label, url=str(shortlink))])
                 if tutorial:
                     buttons.append([InlineKeyboardButton(
                         care_tr(ui_lang, "tutorial"), url=str(tutorial)
@@ -251,23 +251,24 @@ async def _verification_recovery_worker(client):
                     buttons.append([InlineKeyboardButton(
                         "👨‍💻 ᴄᴏɴᴛᴀᴄᴛ ᴏᴡɴᴇʀ", url=owner_url
                     )])
+
+                # Optional one-tap feedback. It records the user's reason only; it
+                # never marks the verification complete, cancels it, or changes timers.
+                buttons.append([InlineKeyboardButton(
+                    care_tr(ui_lang, "feedback"),
+                    callback_data=f"verify_feedback_menu:{verify_id}",
+                )])
                 buttons.append([
                     InlineKeyboardButton(care_tr(ui_lang, "plans"), callback_data="seeplans")
                 ])
 
                 if stage == "generated":
-                    title = "🔔 <b>ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʀᴇᴍɪɴᴅᴇʀ</b>"
-                    body = (
-                        "ʏᴏᴜʀ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʟɪɴᴋ ɪs ʀᴇᴀᴅʏ, ʙᴜᴛ ᴛʜᴇ ᴠᴇʀɪꜰʏ ʙᴜᴛᴛᴏɴ ʜᴀs ɴᴏᴛ ʙᴇᴇɴ ᴜsᴇᴅ ʏᴇᴛ.\n\n"
-                        "👉 ᴄʟɪᴄᴋ ᴛʜᴇ ᴠᴇʀɪꜰʏ ʙᴜᴛᴛᴏɴ ᴀʙᴏᴠᴇ ᴛᴏ ᴄᴏɴᴛɪɴᴜᴇ."
-                    )
+                    title = care_reminder_tr(ui_lang, "title")
+                    body = care_reminder_tr(ui_lang, "body")
                     event = "VERIFICATION_REMINDER_UNCLICKED"
                 else:
-                    title = "🔔 <b>ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ᴘʀᴏᴄᴇss ʀᴇᴍɪɴᴅᴇʀ</b>"
-                    body = (
-                        "ʏᴏᴜ ᴏᴘᴇɴᴇᴅ ᴛʜᴇ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʟɪɴᴋ, ʙᴜᴛ ᴛʜᴇ ʀᴇᴛᴜʀɴ ʜᴀs ɴᴏᴛ ʙᴇᴇɴ ʀᴇᴄᴇɪᴠᴇᴅ ʏᴇᴛ.\n\n"
-                        "👉 ᴜsᴇ ᴛʜᴇ ɢᴜɪᴅᴇ ᴏʀ ᴄᴏɴᴛᴀᴄᴛ ᴛʜᴇ ᴏᴡɴᴇʀ ɪꜰ ʏᴏᴜ ɢᴏᴛ sᴛᴜᴄᴋ."
-                    )
+                    title = care_tr(ui_lang, "title")
+                    body = care_tr(ui_lang, "body")
                     event = "VERIFICATION_REMINDER_MIDFLOW"
 
                 try:
@@ -307,6 +308,78 @@ async def _delete_recovery_message_later(client, user_id, message_id, delay):
         pass
 
 
+@Client.on_callback_query(filters.regex(r"^verify_feedback_menu:"), group=-1)
+async def verification_feedback_menu(client, query):
+    """Show optional one-tap reasons without changing verification state."""
+    verify_id = query.data.split(":", 1)[1].strip()
+    record = await db.get_verify_id_info(query.from_user.id, verify_id)
+    if not record or record.get("verified"):
+        ui_lang = await get_user_language(query.from_user.id, query.from_user)
+        await query.answer(care_tr(ui_lang, "expired"), show_alert=True)
+        return
+
+    ui_lang = await get_user_language(query.from_user.id, query.from_user)
+    rows = [
+        [InlineKeyboardButton(care_feedback_reason_tr(ui_lang, "confused"), callback_data=f"verify_feedback:{verify_id}:confused")],
+        [InlineKeyboardButton(care_feedback_reason_tr(ui_lang, "ads"), callback_data=f"verify_feedback:{verify_id}:ads")],
+        [InlineKeyboardButton(care_feedback_reason_tr(ui_lang, "link"), callback_data=f"verify_feedback:{verify_id}:link")],
+        [InlineKeyboardButton(care_feedback_reason_tr(ui_lang, "stuck"), callback_data=f"verify_feedback:{verify_id}:stuck")],
+        [InlineKeyboardButton(care_feedback_reason_tr(ui_lang, "completed_no_file"), callback_data=f"verify_feedback:{verify_id}:completed_no_file")],
+    ]
+    await query.answer()
+    await query.message.reply_text(
+        care_tr(ui_lang, "feedback_title") + "\n\n" + care_tr(ui_lang, "feedback_body"),
+        reply_markup=InlineKeyboardMarkup(rows),
+        parse_mode=enums.ParseMode.HTML,
+    )
+    raise StopPropagation
+
+
+@Client.on_callback_query(filters.regex(r"^verify_feedback:"), group=-1)
+async def verification_feedback_callback(client, query):
+    """Store optional feedback separately from verification state."""
+    parts = query.data.split(":", 2)
+    if len(parts) != 3:
+        await query.answer("Invalid feedback.", show_alert=True)
+        return
+    verify_id, reason = parts[1].strip(), parts[2].strip()
+    record = await db.get_verify_id_info(query.from_user.id, verify_id)
+    ui_lang = await get_user_language(query.from_user.id, query.from_user)
+    if not record:
+        await query.answer(care_tr(ui_lang, "expired"), show_alert=True)
+        return
+
+    reason_text = care_feedback_reason_tr(ui_lang, reason)
+    now = _ist_now()
+    # Feedback is deliberately isolated: no verified/verification timestamps are
+    # touched, so selecting a reason cannot grant or remove access.
+    await db.update_verify_id_info(
+        query.from_user.id, verify_id,
+        {"feedback_reason": reason, "feedback_reason_text": reason_text, "feedback_at": now},
+    )
+
+    try:
+        if LOG_VR_CHANNEL:
+            await client.send_message(
+                LOG_VR_CHANNEL,
+                "\n".join([
+                    "<b>📝 VERIFICATION FEEDBACK</b>",
+                    f"👤 User: {query.from_user.mention} [ <code>{query.from_user.id}</code> ]",
+                    f"📊 Step: {int(record.get('step') or record.get('verification_step') or 1)}/3",
+                    f"🖱️ Shortener clicked: {'YES' if record.get('shortlink_clicked_at') else 'NO'}",
+                    f"🔗 Verify ID: <code>{verify_id}</code>",
+                    f"💬 Reason: {reason_text}",
+                    f"📆 Time: {now.strftime('%-d %B %Y %I:%M%p %A')}",
+                ]),
+                disable_web_page_preview=True,
+            )
+    except Exception:
+        logger.exception("Could not log verification feedback")
+
+    await query.answer(care_tr(ui_lang, "feedback_sent").replace("<b>", "").replace("</b>", ""), show_alert=True)
+    raise StopPropagation
+
+
 @Client.on_callback_query(filters.regex(r"^verify_help:"), group=-1)
 async def verification_help_callback(client, query):
     """Legacy callback compatibility: never enter a feedback-capture mode."""
@@ -328,7 +401,7 @@ async def verification_help_callback(client, query):
     raise StopPropagation
 
 
-from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr, verify_tr, care_tr, care_reminder_tr, small_caps
+from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr, verify_tr, care_tr, care_reminder_tr, care_feedback_reason_tr, small_caps
 
 logger = logging.getLogger(__name__)
 movie_series_db = JsTopDB(DATABASE_URI)
