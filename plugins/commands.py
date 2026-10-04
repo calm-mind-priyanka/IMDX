@@ -46,7 +46,7 @@ from info import *
 # Verification recovery/customer-care settings. Defaults are intentionally conservative.
 VERIFY_RECOVERY_DELAY = int(os.environ.get("VERIFY_RECOVERY_DELAY", "30"))
 VERIFY_MIDFLOW_DELAY = int(os.environ.get("VERIFY_MIDFLOW_DELAY", "120"))
-VERIFY_RECOVERY_DELETE = int(os.environ.get("VERIFY_RECOVERY_DELETE", "600"))
+VERIFY_RECOVERY_DELETE = int(os.environ.get("VERIFY_RECOVERY_DELETE", "300"))
 HOME_AUTO_DELETE = max(60, int(os.environ.get("HOME_AUTO_DELETE", "600")))
 
 
@@ -358,8 +358,14 @@ async def verification_feedback_menu(client, query):
         [InlineKeyboardButton(care_feedback_reason_tr(ui_lang, "stuck"), callback_data=f"verify_feedback:{verify_id}:stuck")],
         [InlineKeyboardButton(care_feedback_reason_tr(ui_lang, "completed_no_file"), callback_data=f"verify_feedback:{verify_id}:completed_no_file")],
     ]
+    # Keep SOS inside the same reminder message so the user always has a
+    # clear route back to the verification reminder.
+    rows.append([InlineKeyboardButton(
+        care_reminder_button_tr(ui_lang, "back_to_reminder"),
+        callback_data=f"verify_help_back:{verify_id}",
+    )])
     await query.answer()
-    await query.message.reply_text(
+    await query.message.edit_text(
         care_tr(ui_lang, "feedback_title") + "\n\n" + care_tr(ui_lang, "feedback_body"),
         reply_markup=InlineKeyboardMarkup(rows),
         parse_mode=enums.ParseMode.HTML,
