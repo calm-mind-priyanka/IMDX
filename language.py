@@ -489,6 +489,88 @@ def care_reminder_tr(lang, key):
 def care_tr(lang, key):
     return CARE.get(lang, CARE[DEFAULT_LANGUAGE]).get(key, CARE[DEFAULT_LANGUAGE][key])
 
+# Optional one-tap verification feedback labels. These live in the same
+# global language module as the rest of the bot UI, so reminders never need
+# a second language configuration.
+CARE_FEEDBACK_REASONS = {
+    "en": {
+        "confused": "🤔 I don't understand verification",
+        "ads": "📢 I don't want ads",
+        "link": "🔗 The link isn't working",
+        "stuck": "⏳ I'm stuck in the process",
+        "completed_no_file": "📄 I completed it but didn't get my file",
+    },
+    "hi": {
+        "confused": "🤔 मुझे verification समझ नहीं आ रही", "ads": "📢 मुझे ads नहीं चाहिए",
+        "link": "🔗 Link काम नहीं कर रहा", "stuck": "⏳ मैं process में अटक गया हूँ",
+        "completed_no_file": "📄 मैंने पूरा किया लेकिन file नहीं मिली",
+    },
+    "ta": {
+        "confused": "🤔 Verification புரியவில்லை", "ads": "📢 Ads வேண்டாம்",
+        "link": "🔗 Link வேலை செய்யவில்லை", "stuck": "⏳ Process-ல் சிக்கியுள்ளேன்",
+        "completed_no_file": "📄 முடித்தேன், ஆனால் file கிடைக்கவில்லை",
+    },
+    "te": {
+        "confused": "🤔 Verification అర్థం కావడం లేదు", "ads": "📢 నాకు ads వద్దు",
+        "link": "🔗 Link పని చేయడం లేదు", "stuck": "⏳ Processలో ఇరుక్కున్నాను",
+        "completed_no_file": "📄 పూర్తి చేశాను కానీ file రాలేదు",
+    },
+    "kn": {
+        "confused": "🤔 Verification ಅರ್ಥವಾಗುತ್ತಿಲ್ಲ", "ads": "📢 ನನಗೆ ads ಬೇಡ",
+        "link": "🔗 Link ಕೆಲಸ ಮಾಡುತ್ತಿಲ್ಲ", "stuck": "⏳ Process ನಲ್ಲಿ ಸಿಲುಕಿದ್ದೇನೆ",
+        "completed_no_file": "📄 ಪೂರ್ಣಗೊಳಿಸಿದೆ ಆದರೆ file ಸಿಗಲಿಲ್ಲ",
+    },
+    "ml": {
+        "confused": "🤔 Verification മനസ്സിലാകുന്നില്ല", "ads": "📢 എനിക്ക് ads വേണ്ട",
+        "link": "🔗 Link പ്രവർത്തിക്കുന്നില്ല", "stuck": "⏳ Process-ൽ കുടുങ്ങി",
+        "completed_no_file": "📄 പൂർത്തിയാക്കി, പക്ഷേ file ലഭിച്ചില്ല",
+    },
+    "bn": {
+        "confused": "🤔 Verification বুঝতে পারছি না", "ads": "📢 আমি ads চাই না",
+        "link": "🔗 Link কাজ করছে না", "stuck": "⏳ Process-এ আটকে গেছি",
+        "completed_no_file": "📄 সম্পূর্ণ করেছি কিন্তু file পাইনি",
+    },
+    "mr": {
+        "confused": "🤔 Verification समजत नाही", "ads": "📢 मला ads नको आहेत",
+        "link": "🔗 Link काम करत नाही", "stuck": "⏳ Process मध्ये अडकलो आहे",
+        "completed_no_file": "📄 पूर्ण केले पण file मिळाली नाही",
+    },
+    "gu": {
+        "confused": "🤔 Verification સમજાતું નથી", "ads": "📢 મને ads નથી જોઈએ",
+        "link": "🔗 Link કામ કરતું નથી", "stuck": "⏳ Processમાં અટવાઈ ગયો છું",
+        "completed_no_file": "📄 પૂર્ણ કર્યું પણ file મળી નથી",
+    },
+    "pa": {
+        "confused": "🤔 Verification ਸਮਝ ਨਹੀਂ ਆ ਰਹੀ", "ads": "📢 ਮੈਨੂੰ ads ਨਹੀਂ ਚਾਹੀਦੇ",
+        "link": "🔗 Link ਕੰਮ ਨਹੀਂ ਕਰ ਰਿਹਾ", "stuck": "⏳ Process ਵਿੱਚ ਫਸ ਗਿਆ ਹਾਂ",
+        "completed_no_file": "📄 ਪੂਰਾ ਕੀਤਾ ਪਰ file ਨਹੀਂ ਮਿਲੀ",
+    },
+    "ur": {
+        "confused": "🤔 مجھے verification سمجھ نہیں آ رہی", "ads": "📢 مجھے ads نہیں چاہئیں",
+        "link": "🔗 Link کام نہیں کر رہا", "stuck": "⏳ میں process میں پھنس گیا ہوں",
+        "completed_no_file": "📄 مکمل کیا لیکن file نہیں ملی",
+    },
+    "as": {
+        "confused": "🤔 Verification বুজি পোৱা নাই", "ads": "📢 মোক ads নালাগে",
+        "link": "🔗 Link কাম কৰা নাই", "stuck": "⏳ Process-ত আবদ্ধ হৈছোঁ",
+        "completed_no_file": "📄 সম্পূৰ্ণ কৰিলোঁ কিন্তু file নাপালোঁ",
+    },
+    "ne": {
+        "confused": "🤔 Verification बुझिनँ", "ads": "📢 मलाई ads चाहिँदैन",
+        "link": "🔗 Link काम गरिरहेको छैन", "stuck": "⏳ Process मा अड्किएँ",
+        "completed_no_file": "📄 पूरा गरेँ तर file पाइएन",
+    },
+    "hinglish": {
+        "confused": "🤔 Mujhe verification samajh nahi aa rahi", "ads": "📢 Mujhe ads nahi chahiye",
+        "link": "🔗 Link kaam nahi kar raha", "stuck": "⏳ Process mein atak gaya hoon",
+        "completed_no_file": "📄 Complete kiya lekin file nahi mili",
+    },
+}
+
+def care_feedback_reason_tr(lang, key):
+    data = CARE_FEEDBACK_REASONS.get(lang) or CARE_FEEDBACK_REASONS[DEFAULT_LANGUAGE]
+    return data.get(key, CARE_FEEDBACK_REASONS[DEFAULT_LANGUAGE].get(key, key))
+
 def verify_tr(lang, key, **values):
     data = VERIFY.get(lang) or VERIFY[DEFAULT_LANGUAGE]
     text = data.get(key)
