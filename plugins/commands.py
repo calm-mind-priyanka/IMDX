@@ -249,13 +249,12 @@ async def _verification_recovery_worker(client):
                         care_tr(ui_lang, "continue"), url=str(shortlink)
                     )])
 
-                # "How to Verify" is now a real help page: it opens a video
-                # button plus a Back button, rather than immediately leaving
-                # the reminder message.
+                # Keep the original verification behavior: How to Verify
+                # opens the configured tutorial URL directly.
                 if tutorial:
                     buttons.append([InlineKeyboardButton(
                         care_reminder_button_tr(ui_lang, "how_to_verify"),
-                        callback_data=f"verify_help_page:{verify_id}",
+                        url=str(tutorial),
                     )])
 
                 buttons.append([
@@ -442,10 +441,13 @@ async def verification_help_page(client, query):
         care_reminder_button_tr(ui_lang, "back_to_reminder"),
         callback_data=f"verify_help_back:{verify_id}",
     )])
-    text = care_reminder_tr(
+    # These two strings are defined in CARE_REMINDER_BUTTONS, not
+    # CARE_REMINDER. Using the correct translator prevents a KeyError that
+    # made the How to Verify callback appear to do nothing.
+    text = care_reminder_button_tr(
         ui_lang, "help_title",
         bot_username=str(temp.U_NAME or "bot").lstrip("@"),
-    ) + "\n\n" + care_reminder_tr(ui_lang, "help_body")
+    ) + "\n\n" + care_reminder_button_tr(ui_lang, "help_body")
     await query.answer()
     await query.message.edit_text(
         text, reply_markup=InlineKeyboardMarkup(rows),
