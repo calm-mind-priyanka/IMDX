@@ -237,6 +237,7 @@ async def _verification_recovery_worker(client):
                 )
                 shortlink = record.get("shortlink")
                 ui_lang = await get_user_language(user_id)
+                buttons = []
                 # Reminder actions intentionally use the existing global language system.
                 # The two reminder stages remain separate, while feedback is optional and
                 # never changes verification state.
