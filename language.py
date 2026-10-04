@@ -320,6 +320,14 @@ HOME_LABELS = {
 "ne": {"add_group":"⇋ मलाई आफ्नो ग्रुपमा थप्नुहोस् ⇋","disable_ads":"• Ads बन्द गर्नुहोस् •","special":"• विशेष •","help":"• मद्दत •","about":"• परिचय •","earn":"• कमाउनुहोस् •"},
 "hinglish": {"add_group":"⇋ Mujhe Apne Group Mein Add Karo ⇋","disable_ads":"• Ads Disable Karo •","special":"• Special •","help":"• Help •","about":"• About •","earn":"• Earn Karo •"},
 }
+for _code in LANGUAGES:
+    HOME_LABELS.setdefault(_code, {})
+    HOME_LABELS[_code].setdefault("clean", {
+        "en": "🧹 Clean Home",
+        "hi": "🧹 Home साफ करें",
+        "hinglish": "🧹 Home Clean Karo",
+    }.get(_code, "🧹 Clean Home"))
+
 
 def home_tr(lang, key):
     return small_caps(HOME_LABELS.get(lang, HOME_LABELS[DEFAULT_LANGUAGE]).get(key, HOME_LABELS[DEFAULT_LANGUAGE][key]))
@@ -465,26 +473,72 @@ CARE = {
 # the user has not completed the verification flow yet. Keep this separate
 # from the fuller CARE guide so the reminder can stay concise.
 CARE_REMINDER = {
-"en":{"title":"🔔 <b>Quick Verification Reminder</b>","body":"Your verification link is ready, but the process is not complete yet.\n\n👉 Please click the <b>Verify</b> button and complete the verification to get your file.\n\n💎 Or use <b>Plans / Premium</b> if you want direct access without verification."},
-"hi":{"title":"🔔 <b>Verification Reminder</b>","body":"आपका verification link तैयार है, लेकिन process अभी पूरा नहीं हुआ है।\n\n👉 कृपया <b>Verify</b> button पर click करके verification पूरा करें और अपनी file प्राप्त करें।\n\n💎 या बिना verification direct access के लिए <b>Plans / Premium</b> देखें।"},
-"ta":{"title":"🔔 <b>Verification Reminder</b>","body":"உங்கள் verification link தயாராக உள்ளது, ஆனால் process இன்னும் complete ஆகவில்லை.\n\n👉 <b>Verify</b> button-ஐ click செய்து verification-ஐ complete செய்து உங்கள் file-ஐ பெறுங்கள்.\n\n💎 Verification வேண்டாம் என்றால் <b>Plans / Premium</b> பார்க்கலாம்."},
-"te":{"title":"🔔 <b>Verification Reminder</b>","body":"మీ verification link సిద్ధంగా ఉంది, కానీ process ఇంకా పూర్తి కాలేదు.\n\n👉 <b>Verify</b> button పై click చేసి verification పూర్తి చేసి మీ file పొందండి.\n\n💎 Verification లేకుండా direct access కోసం <b>Plans / Premium</b> చూడండి."},
-"kn":{"title":"🔔 <b>Verification Reminder</b>","body":"ನಿಮ್ಮ verification link ಸಿದ್ಧವಾಗಿದೆ, ಆದರೆ process ಇನ್ನೂ ಪೂರ್ಣವಾಗಿಲ್ಲ.\n\n👉 <b>Verify</b> button ಕ್ಲಿಕ್ ಮಾಡಿ verification ಪೂರ್ಣಗೊಳಿಸಿ ನಿಮ್ಮ file ಪಡೆಯಿರಿ.\n\n💎 Verification ಬೇಡವೆಂದರೆ direct access ಗಾಗಿ <b>Plans / Premium</b> ನೋಡಿ."},
-"ml":{"title":"🔔 <b>Verification Reminder</b>","body":"നിങ്ങളുടെ verification link തയ്യാറാണ്, പക്ഷേ process ഇതുവരെ പൂർത്തിയായിട്ടില്ല.\n\n👉 <b>Verify</b> button click ചെയ്ത് verification പൂർത്തിയാക്കി നിങ്ങളുടെ file നേടുക.\n\n💎 Verification വേണ്ടെങ്കിൽ direct access-ിനായി <b>Plans / Premium</b> നോക്കാം."},
-"bn":{"title":"🔔 <b>Verification Reminder</b>","body":"আপনার verification link তৈরি হয়েছে, কিন্তু process এখনও সম্পূর্ণ হয়নি।\n\n👉 <b>Verify</b> button-এ click করে verification সম্পূর্ণ করুন এবং আপনার file নিন।\n\n💎 Verification ছাড়া direct access চাইলে <b>Plans / Premium</b> দেখুন।"},
-"mr":{"title":"🔔 <b>Verification Reminder</b>","body":"तुमची verification link तयार आहे, पण process अजून पूर्ण झालेली नाही.\n\n👉 <b>Verify</b> button वर click करून verification पूर्ण करा आणि तुमची file मिळवा.\n\n💎 Verification नको असल्यास direct access साठी <b>Plans / Premium</b> पहा."},
-"gu":{"title":"🔔 <b>Verification Reminder</b>","body":"તમારી verification link તૈયાર છે, પરંતુ process હજુ પૂર્ણ થયું નથી.\n\n👉 <b>Verify</b> button પર click કરીને verification પૂર્ણ કરો અને તમારી file મેળવો.\n\n💎 Verification વગર direct access માટે <b>Plans / Premium</b> જુઓ."},
-"pa":{"title":"🔔 <b>Verification Reminder</b>","body":"ਤੁਹਾਡੀ verification link ਤਿਆਰ ਹੈ, ਪਰ process ਹਾਲੇ ਪੂਰੀ ਨਹੀਂ ਹੋਈ।\n\n👉 <b>Verify</b> button ਤੇ click ਕਰਕੇ verification ਪੂਰੀ ਕਰੋ ਅਤੇ ਆਪਣੀ file ਲਵੋ।\n\n💎 Verification ਤੋਂ ਬਿਨਾਂ direct access ਲਈ <b>Plans / Premium</b> ਵੇਖੋ।"},
-"ur":{"title":"🔔 <b>Verification Reminder</b>","body":"آپ کا verification link تیار ہے، لیکن process ابھی مکمل نہیں ہوئی۔\n\n👉 <b>Verify</b> button پر click کرکے verification مکمل کریں اور اپنی file حاصل کریں۔\n\n💎 Verification کے بغیر direct access کے لیے <b>Plans / Premium</b> دیکھیں۔"},
-"as":{"title":"🔔 <b>Verification Reminder</b>","body":"আপোনাৰ verification link সাজু আছে, কিন্তু processটো এতিয়াও সম্পূৰ্ণ হোৱা নাই।\n\n👉 <b>Verify</b> button-ত click কৰি verification সম্পূৰ্ণ কৰক আৰু আপোনাৰ file লাভ কৰক।\n\n💎 Verification নকৰাকৈ direct accessৰ বাবে <b>Plans / Premium</b> চাওক।"},
-"ne":{"title":"🔔 <b>Verification Reminder</b>","body":"तपाईंको verification link तयार छ, तर process अझै पूरा भएको छैन।\n\n👉 <b>Verify</b> button मा click गरेर verification पूरा गर्नुहोस् र आफ्नो file प्राप्त गर्नुहोस्।\n\n💎 Verification बिना direct access का लागि <b>Plans / Premium</b> हेर्नुहोस्."},
-"hinglish":{"title":"🔔 <b>Quick Verification Reminder</b>","body":"Aapka verification link ready hai, lekin process abhi complete nahi hua.\n\n👉 Please <b>Verify</b> button par click karke verification complete karo aur apni file pao.\n\n💎 Verification nahi karna ho to direct access ke liye <b>Plans / Premium</b> dekho."},
+"en":{"title":"🤝 <b>Hi {mention} — a little help from {bot_username} Support Team</b>",
+"body":"{greeting}! This is a small reminder from <b>{bot_username} Support Team</b>. We noticed that your movie/file verification may not have been completed yet.\n\nIf you are new to this process, no worries — we are here to guide you. Tap <b>How to Verify</b> to watch the simple guide. If you already know the process, just tap <b>Continue Verification</b> below.\n\nNeed direct files without verification? You can also check <b>Premium</b>. If something is not working, use <b>SOS / Help</b> and tell us what went wrong."},
+"hi":{"title":"🤝 <b>नमस्ते {mention} — {bot_username} Support Team की छोटी सी मदद</b>",
+"body":"{greeting}! यह <b>{bot_username} Support Team</b> की एक छोटी reminder है। लगता है आपकी movie/file verification अभी पूरी नहीं हुई है।\n\nअगर आप पहली बार verification कर रहे हैं तो चिंता न करें — हम आपको step-by-step guide करने के लिए यहाँ हैं। <b>How to Verify</b> पर tap करके आसान guide देखें। अगर आपको process पता है, तो नीचे <b>Verification जारी रखें</b> पर tap करें।\n\nVerification के बिना direct files चाहिए? <b>Premium</b> देखें। कोई problem हो तो <b>SOS / Help</b> से हमें बताएं।"},
+"hinglish":{"title":"🤝 <b>Hi {mention} — {bot_username} Support Team ki chhoti si help</b>",
+"body":"{greeting}! Ye <b>{bot_username} Support Team</b> ki ek chhoti reminder hai. Hume laga aapki movie/file verification abhi complete nahi hui hai.\n\nAgar aap pehli baar verification kar rahe ho to tension mat lo — hum guide karne ke liye yahin hain. <b>How to Verify</b> par tap karke simple video guide dekho. Agar process already pata hai, to neeche <b>Continue Verification</b> dabao.\n\nVerification ke bina direct files chahiye? <b>Premium</b> check karo. Koi problem ho to <b>SOS / Help</b> se batao."},
 }
+# Other supported languages inherit the same safe fallback until their own
+# localized copy is added. This keeps one global reminder structure.
+for _code in LANGUAGES:
+    CARE_REMINDER.setdefault(_code, CARE_REMINDER["en"])
 
-def care_reminder_tr(lang, key):
-    return CARE_REMINDER.get(lang, CARE_REMINDER[DEFAULT_LANGUAGE]).get(
+CARE_REMINDER_BUTTONS = {
+    "en": {
+        "how_to_verify": "🎥 How to Verify",
+        "watch_guide": "▶️ Watch Verification Guide",
+        "back_to_reminder": "↩️ Back to Reminder",
+        "premium": "💎 Premium / Direct Files",
+        "sos": "🆘 SOS / Help",
+        "contact_owner": "👨‍💻 Contact Support",
+        "help_title": "🎥 <b>How to Verify — {bot_username}</b>",
+        "help_body": "New to verification? No problem. Watch the guide below. When you are ready, tap Back to Reminder and use Continue Verification.",
+    },
+    "hi": {
+        "how_to_verify": "🎥 Verification कैसे करें",
+        "watch_guide": "▶️ Verification Guide देखें",
+        "back_to_reminder": "↩️ Reminder पर वापस",
+        "premium": "💎 Premium / Direct Files",
+        "sos": "🆘 SOS / Help",
+        "contact_owner": "👨‍💻 Support से संपर्क",
+        "help_title": "🎥 <b>Verification कैसे करें — {bot_username}</b>",
+        "help_body": "पहली बार verification कर रहे हैं? कोई बात नहीं। नीचे guide देखें। तैयार होने पर Reminder पर वापस जाएँ और Continue Verification दबाएँ।",
+    },
+    "hinglish": {
+        "how_to_verify": "🎥 How to Verify",
+        "watch_guide": "▶️ Verification Guide Dekho",
+        "back_to_reminder": "↩️ Reminder Par Wapas",
+        "premium": "💎 Premium / Direct Files",
+        "sos": "🆘 SOS / Help",
+        "contact_owner": "👨‍💻 Support Se Contact",
+        "help_title": "🎥 <b>How to Verify — {bot_username}</b>",
+        "help_body": "Pehli baar verification kar rahe ho? Koi problem nahi. Neeche guide dekho. Ready hone par Reminder par wapas jao aur Continue Verification dabao.",
+    },
+}
+for _code in LANGUAGES:
+    CARE_REMINDER_BUTTONS.setdefault(_code, CARE_REMINDER_BUTTONS["en"])
+
+
+def care_reminder_button_tr(lang, key, **values):
+    text = CARE_REMINDER_BUTTONS.get(lang, CARE_REMINDER_BUTTONS["en"]).get(
+        key, CARE_REMINDER_BUTTONS["en"].get(key, key)
+    )
+    try:
+        return small_caps_html(text.format(**values))
+    except Exception:
+        return small_caps_html(text)
+
+
+def care_reminder_tr(lang, key, **values):
+    text = CARE_REMINDER.get(lang, CARE_REMINDER[DEFAULT_LANGUAGE]).get(
         key, CARE_REMINDER[DEFAULT_LANGUAGE][key]
     )
+    try:
+        return small_caps_html(text.format(**values))
+    except Exception:
+        return small_caps_html(text)
 
 def care_tr(lang, key):
     return CARE.get(lang, CARE[DEFAULT_LANGUAGE]).get(key, CARE[DEFAULT_LANGUAGE][key])
