@@ -273,6 +273,8 @@ async def _verification_recovery_worker(client):
                         care_reminder_button_tr(ui_lang, "contact_owner"), url=owner_url
                     )])
 
+                user = await client.get_users(user_id)
+
                 title = care_reminder_tr(
                     ui_lang, "title", mention=user.mention,
                     bot_username=bot_username
@@ -288,8 +290,6 @@ async def _verification_recovery_worker(client):
                 )
 
                 try:
-                    user = await client.get_users(user_id)
-
                     # The second reminder replaces the first reminder for the
                     # same verification attempt. It keeps the same shortlink,
                     # verify-id and verification state, so no old link is lost.
