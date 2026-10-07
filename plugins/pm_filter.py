@@ -40,6 +40,7 @@ from database.ia_filterdb import (
     Media2,
     get_search_results,
     get_bad_files,
+    get_title_candidates,
 )
 import random
 import hashlib
@@ -2280,28 +2281,44 @@ async def cb_handler(client: Client, query: CallbackQuery):
 # Short-lived correction cache: avoids repeating IMDb calls for common typos.
 _SPELL_CACHE = {}
 _SPELL_CACHE_TTL = 15 * 60
-_SPELL_TIMEOUT = 1.35
+_SPELL_TIMEOUT = 1.75
 
 def _norm_title(value):
     value = re.sub(r"[^a-z0-9]+", " ", str(value).lower())
     return re.sub(r"\s+", " ", value).strip()
 
 async def _imdb_titles_fast(query):
-    # imdb package is synchronous; never block Pyrogram/Motor's event loop.
+    # IMDb is only a fallback now; it must never be the critical path.
     def _lookup():
         try:
             results = imdb.search_movie(query)
-            return [getattr(m, "get", lambda k, d=None: d)("title", None) or getattr(m, "title", None)
-                    for m in results[:40]]
+            out = []
+            for m in results[:40]:
+                title = m.get("title") if hasattr(m, "get") else getattr(m, "title", None)
+                if title:
+                    out.append(title)
+            return out
         except Exception:
             return []
     try:
-        return await asyncio.wait_for(asyncio.to_thread(_lookup), timeout=_SPELL_TIMEOUT)
-    except (asyncio.TimeoutError, Exception):
+        return await asyncio.wait_for(asyncio.to_thread(_lookup), timeout=1.35)
+    except Exception:
         return []
 
+
+def _candidate_title(text):
+    """Turn a noisy indexed filename/caption into a usable title candidate."""
+    text = re.sub(r"https?://\S+|www\.\S+", " ", str(text))
+    text = re.sub(r"[@#][A-Za-z0-9_]+", " ", text)
+    # Strip common release metadata without trying to fully parse every filename.
+    text = re.sub(r"(?i)\b(?:1080p|2160p|720p|480p|4k|web[- .]?dl|web[- .]?rip|bluray|brrip|hdrip|hevc|x264|x265|h264|h265|aac|ddp?5?\.1|multi|hindi|tamil|telugu|malayalam|english|episode|ep|season|s\d{1,2}e\d{1,3})\b", " ", text)
+    text = re.sub(r"[_\.\-]+", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
 async def ai_spell_check(chat_id, wrong_name):
-    """Fast title resolver: cache -> IMDb candidates -> multi-score ranking -> DB verification."""
+    """Fast local-first title resolver with IMDb fallback and DB verification."""
     original = (wrong_name or "").strip()
     key = _norm_title(original)
     if not key:
@@ -2316,30 +2333,47 @@ async def ai_spell_check(chat_id, wrong_name):
             return candidate if files else None
         return None
 
-    movie_list = await _imdb_titles_fast(original)
-    movie_list = list(dict.fromkeys(x.strip() for x in movie_list if x and x.strip()))
-    if not movie_list:
-        _SPELL_CACHE[key] = (now, None)
-        return
+    # Local DB candidates and IMDb candidates run concurrently. This makes the
+    # common typo case independent of IMDb/network availability.
+    local_task = asyncio.create_task(get_title_candidates(original, limit=180))
+    imdb_task = asyncio.create_task(_imdb_titles_fast(original))
+    local_titles, imdb_titles = await asyncio.gather(local_task, imdb_task, return_exceptions=True)
+    if isinstance(local_titles, Exception):
+        local_titles = []
+    if isinstance(imdb_titles, Exception):
+        imdb_titles = []
 
-    # Multiple inexpensive scorers make this more tolerant than DreamX's single ratio.
-    candidates = process.extract(
-        original, movie_list, scorer=fuzz.WRatio, limit=10, score_cutoff=55
-    )
-    candidates.sort(key=lambda item: (
-        0.55 * item[1] +
-        0.30 * fuzz.ratio(_norm_title(original), _norm_title(item[0])) +
-        0.15 * fuzz.token_set_ratio(_norm_title(original), _norm_title(item[0]))
+    pool = []
+    seen = set()
+    for raw in list(local_titles) + list(imdb_titles):
+        candidate = _candidate_title(raw) if raw in local_titles else str(raw).strip()
+        if not candidate:
+            continue
+        normalized = _norm_title(candidate)
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            pool.append(candidate)
+
+    if not pool:
+        _SPELL_CACHE[key] = (now, None)
+        return None
+
+    norm_original = _norm_title(original)
+    ranked = process.extract(norm_original, pool, scorer=lambda a, b, **kw: fuzz.WRatio(a, _norm_title(b)), limit=15, score_cutoff=45)
+    ranked.sort(key=lambda item: (
+        0.50 * item[1]
+        + 0.30 * fuzz.ratio(norm_original, _norm_title(item[0]))
+        + 0.20 * fuzz.token_set_ratio(norm_original, _norm_title(item[0]))
     ), reverse=True)
 
-    for movie, _, _ in candidates:
+    for movie, _, _ in ranked:
         norm_movie = _norm_title(movie)
-        norm_original = _norm_title(original)
         ratio = fuzz.ratio(norm_original, norm_movie)
         wratio = fuzz.WRatio(norm_original, norm_movie)
-        # Adaptive threshold: short titles need a stronger match; longer titles can
-        # tolerate more edits while still requiring a strong combined score.
-        threshold = 68 if len(norm_original) >= 8 else 78
+        # DreamX uses an 80% acceptance threshold. Keep a slightly more
+        # tolerant threshold for longer titles because Telegram filenames often
+        # contain dropped/inserted letters and release noise.
+        threshold = 72 if len(norm_original) >= 8 else 80
         if max(ratio, wratio) < threshold:
             continue
         files, _, _ = await get_search_results(movie, chat_id=chat_id)
@@ -2383,8 +2417,12 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
                 if is_misspelled:
                     await ai_sts.edit(f'✅ Aɪ Sᴜɢɢᴇsᴛᴇᴅ: <code>{is_misspelled}</code>\n🔍 Searching for it...')
                     msg.text = is_misspelled
-                    await ai_sts.delete()
-                    return await auto_filter(client, msg)
+                    result = await auto_filter(client, msg)
+                    try:
+                        await ai_sts.delete()
+                    except Exception:
+                        pass
+                    return result
                 await ai_sts.delete()
                 return await advantage_spell_chok(msg)
             return
