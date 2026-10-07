@@ -176,11 +176,15 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None, ch
         # Search both databases concurrently, exactly like DreamX.
         if ULTRA_FAST_MODE:
             limit = max_results + 1
-            fetch_limit = offset + limit
+            # First-page searches are the latency-critical path.  Avoid fetching
+            # offset+limit documents from BOTH databases when offset is zero.
+            # Later pages keep the old merged-pagination behavior unchanged.
+            fetch_limit = limit if offset == 0 else offset + limit
             primary_task = Media.find(mongo_filter).sort("$natural", -1).limit(fetch_limit).to_list(length=fetch_limit)
             secondary_task = Media2.find(mongo_filter).sort("$natural", -1).limit(fetch_limit).to_list(length=fetch_limit)
             primary, secondary = await asyncio.gather(primary_task, secondary_task)
-            files = (secondary + primary)[offset:offset + limit]
+            merged = secondary + primary
+            files = merged[offset:offset + limit]
             has_next = len(files) > max_results
             if has_next:
                 files = files[:-1]
