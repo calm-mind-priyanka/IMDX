@@ -478,14 +478,14 @@ async def next_page(bot, query):
     settings = await get_settings(await _group_id_for_query(query))
     del_msg = (
         f"\n\n<blockquote>⚠️ <b>THIS MESSAGE WILL BE AUTO DELETE AFTER {_delete_time_text(int(settings.get('delete_time', DELETE_TIME)))} TO AVOID COPYRIGHT ISSUES 🗑</b></blockquote>"
-        if settings["auto_delete"]
+        if settings.get("auto_delete", False)
         else ""
     )
     reqnxt = query.from_user.id if query.from_user else 0
     if query.message.chat.type != enums.ChatType.PRIVATE:
         temp.CHAT[query.from_user.id] = query.message.chat.id
     links = ""
-    if settings["link"]:
+    if settings.get("link", True):
         btn = []
         for file_num, file in enumerate(files, start=offset + 1):
             links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
@@ -551,7 +551,7 @@ async def next_page(bot, query):
                 ),
             ],
         )
-    if settings["link"]:
+    if settings.get("link", True):
         links = ""
         for file_num, file in enumerate(files, start=offset + 1):
             links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
@@ -679,7 +679,7 @@ async def season_search(client: Client, query: CallbackQuery):
         else ""
     )
     links = ""
-    if settings["link"]:
+    if settings.get("link", True):
         btn = []
         for file_num, file in enumerate(files, start=offset + 1):
             links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
@@ -860,7 +860,7 @@ async def year_search(client: Client, query: CallbackQuery):
         else ""
     )
     links = ""
-    if settings["link"]:
+    if settings.get("link", True):
         btn = []
         for file_num, file in enumerate(files, start=offset + 1):
             links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
@@ -1058,7 +1058,7 @@ async def quality_search(client: Client, query: CallbackQuery):
         else ""
     )
     links = ""
-    if settings["link"]:
+    if settings.get("link", True):
         btn = []
         for file_num, file in enumerate(files, start=offset + 1):
             links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
@@ -1269,7 +1269,7 @@ async def lang_search(client: Client, query: CallbackQuery):
         else ""
     )
     links = ""
-    if settings["link"]:
+    if settings.get("link", True):
         btn = []
         for file_num, file in enumerate(files, start=offset + 1):
             links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
@@ -2278,17 +2278,63 @@ async def cb_handler(client: Client, query: CallbackQuery):
         return
 
 
-# Short-lived correction cache: avoids repeating IMDb calls for common typos.
+# Fast, database-verified spelling/title resolver.
 _SPELL_CACHE = {}
 _SPELL_CACHE_TTL = 15 * 60
-_SPELL_TIMEOUT = 1.75
+_SPELL_TIMEOUT = 2.5
+
+# Release/Telegram noise that is safe to discard from the SEARCH QUERY.
+# Deliberately does not remove words such as "hindi" or "episode" because they
+# can be meaningful to a stored title/caption.
+_SEARCH_NOISE_RE = re.compile(
+    r"(?ix)"
+    r"(?:https?://\S+|www\.\S+)"
+    r"|(?:^|\s)@[a-z0-9_]+"
+    r"|(?:^|\s)\#[a-z0-9_]+"
+    r"|\b(?:2160p|1440p|1080p|720p|480p|360p|240p|4k|8k)\b"
+    r"|\b(?:web[\s._-]?dl|web[\s._-]?rip|blu[\s._-]?ray|bluray|brrip|hdrip|dvdrip|camrip|hdcam)\b"
+    r"|\b(?:hevc|h\.?264|h\.?265|x264|x265|av1|aac|ac3|eac3|ddp(?:5\.1)?|dts|truehd)\b"
+    r"|\b(?:proper|repack|remux|limited|extended|unrated|internal|readnfo|sample)\b"
+    r"|\b(?:multi[\s-]?audio|dual[\s-]?audio|multi[\s-]?sub(?:title)?s?)\b"
+    r"|\b(?:hindi|tamil|telugu|malayalam|kannada|bengali|punjabi|english|marathi|gujarati|urdu|nepali|assamese)\s*(?:audio|dub(?:bed)?)\b"
+)
+
+_QUERY_FILLER_RE = re.compile(
+    r"(?ix)\b(?:please|pls|plz|send|snd|give|gib|movie|movies|film|films|"
+    r"latest|new|bro|bruh|helo|hello|find|link|download|dubbed|file|files|"
+    r"with\s+subtitles?|subtitle|subtitles|pannunga|pannungga|anuppunga|"
+    r"anupunga|kittumo|kittum|tharu)\b"
+)
 
 def _norm_title(value):
-    value = re.sub(r"[^a-z0-9]+", " ", str(value).lower())
+    value = re.sub(r"[^a-z0-9]+", " ", str(value or "").lower())
     return re.sub(r"\s+", " ", value).strip()
 
+def normalize_search_query(value):
+    """Normalize user/file-style search text without destroying title or SxxExx data."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    text = _SEARCH_NOISE_RE.sub(" ", text)
+    # Brackets are separators, not title content. Keep their words.
+    text = re.sub(r"[\[\]{}()]+", " ", text)
+    text = text.replace("_", " ").replace(".", " ").replace("-", " ")
+    text = re.sub(r"(?i)\bseason\s*(\d{1,2})\b", lambda m: f"S{int(m.group(1)):02d}", text)
+    # "S 04 E 01" -> S04E01, but never invent a season number.
+    text = re.sub(r"(?i)\bS\s*(\d{1,2})\s*E\s*(\d{1,3})\b",
+                  lambda m: f"S{int(m.group(1)):02d}E{int(m.group(2)):02d}", text)
+    text = _QUERY_FILLER_RE.sub(" ", text)
+    text = re.sub(r"\s+", " ", text).strip(" -:")
+    return text
+
+def _candidate_title(text):
+    """Extract a searchable title from a noisy indexed filename/caption."""
+    text = normalize_search_query(text)
+    # Keep explicit episode markers; they are useful for series matching.
+    text = re.sub(r"(?i)\b(?:episode|ep)\s*(\d{1,3})\b", r"E\1", text)
+    return re.sub(r"\s+", " ", text).strip()
+
 async def _imdb_titles_fast(query):
-    # IMDb is only a fallback now; it must never be the critical path.
     def _lookup():
         try:
             results = imdb.search_movie(query)
@@ -2301,28 +2347,16 @@ async def _imdb_titles_fast(query):
         except Exception:
             return []
     try:
-        return await asyncio.wait_for(asyncio.to_thread(_lookup), timeout=1.35)
+        return await asyncio.wait_for(asyncio.to_thread(_lookup), timeout=1.5)
     except Exception:
         return []
 
-
-def _candidate_title(text):
-    """Turn a noisy indexed filename/caption into a usable title candidate."""
-    text = re.sub(r"https?://\S+|www\.\S+", " ", str(text))
-    text = re.sub(r"[@#][A-Za-z0-9_]+", " ", text)
-    # Strip common release metadata without trying to fully parse every filename.
-    text = re.sub(r"(?i)\b(?:1080p|2160p|720p|480p|4k|web[- .]?dl|web[- .]?rip|bluray|brrip|hdrip|hevc|x264|x265|h264|h265|aac|ddp?5?\.1|multi|hindi|tamil|telugu|malayalam|english|episode|ep|season|s\d{1,2}e\d{1,3})\b", " ", text)
-    text = re.sub(r"[_\.\-]+", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
-
-
 async def ai_spell_check(chat_id, wrong_name):
-    """Fast local-first title resolver with IMDb fallback and DB verification."""
-    original = (wrong_name or "").strip()
+    """Find a typo correction, then verify every accepted candidate in IMDX DBs."""
+    original = normalize_search_query(wrong_name)
     key = _norm_title(original)
     if not key:
-        return
+        return None
 
     now = asyncio.get_running_loop().time()
     cached = _SPELL_CACHE.get(key)
@@ -2333,18 +2367,24 @@ async def ai_spell_check(chat_id, wrong_name):
             return candidate if files else None
         return None
 
-    # Local DB candidates and IMDb candidates run concurrently. This makes the
-    # common typo case independent of IMDb/network availability.
+    # Local DB names are the strongest source because they can be verified
+    # immediately. IMDb supplies additional title candidates in parallel.
     local_task = asyncio.create_task(get_title_candidates(original, limit=180))
     imdb_task = asyncio.create_task(_imdb_titles_fast(original))
-    local_titles, imdb_titles = await asyncio.gather(local_task, imdb_task, return_exceptions=True)
+    try:
+        local_titles, imdb_titles = await asyncio.wait_for(
+            asyncio.gather(local_task, imdb_task, return_exceptions=True),
+            timeout=_SPELL_TIMEOUT,
+        )
+    except Exception:
+        local_titles, imdb_titles = [], []
+
     if isinstance(local_titles, Exception):
         local_titles = []
     if isinstance(imdb_titles, Exception):
         imdb_titles = []
 
-    pool = []
-    seen = set()
+    pool, seen = [], set()
     for raw in list(local_titles) + list(imdb_titles):
         candidate = _candidate_title(raw) if raw in local_titles else str(raw).strip()
         if not candidate:
@@ -2359,38 +2399,48 @@ async def ai_spell_check(chat_id, wrong_name):
         return None
 
     norm_original = _norm_title(original)
-    ranked = process.extract(norm_original, pool, scorer=lambda a, b, **kw: fuzz.WRatio(a, _norm_title(b)), limit=15, score_cutoff=45)
+    ranked = process.extract(
+        norm_original,
+        pool,
+        scorer=lambda a, b, **kw: fuzz.WRatio(a, _norm_title(b)),
+        limit=15,
+        score_cutoff=45,
+    )
     ranked.sort(key=lambda item: (
         0.50 * item[1]
         + 0.30 * fuzz.ratio(norm_original, _norm_title(item[0]))
         + 0.20 * fuzz.token_set_ratio(norm_original, _norm_title(item[0]))
     ), reverse=True)
 
-    for movie, _, _ in ranked:
-        norm_movie = _norm_title(movie)
-        ratio = fuzz.ratio(norm_original, norm_movie)
-        wratio = fuzz.WRatio(norm_original, norm_movie)
-        # DreamX uses an 80% acceptance threshold. Keep a slightly more
-        # tolerant threshold for longer titles because Telegram filenames often
-        # contain dropped/inserted letters and release noise.
+    for candidate, _, _ in ranked:
+        norm_candidate = _norm_title(candidate)
+        # Keep DreamX's conservative 80 threshold for short titles; allow
+        # longer filenames a little more tolerance for one-character errors.
         threshold = 72 if len(norm_original) >= 8 else 80
-        if max(ratio, wratio) < threshold:
+        if max(fuzz.ratio(norm_original, norm_candidate),
+               fuzz.WRatio(norm_original, norm_candidate)) < threshold:
             continue
-        files, _, _ = await get_search_results(movie, chat_id=chat_id)
+        try:
+            files, _, _ = await asyncio.wait_for(
+                get_search_results(candidate, chat_id=chat_id),
+                timeout=1.5,
+            )
+        except Exception:
+            files = []
         if files:
-            _SPELL_CACHE[key] = (now, movie)
-            return movie
+            _SPELL_CACHE[key] = (now, candidate)
+            return candidate
 
     _SPELL_CACHE[key] = (now, None)
     return None
-
 
 async def auto_filter(client, msg, spoll=False, pm_mode=False):
     _fu = getattr(msg, "from_user", None) or getattr(getattr(msg, "message", None), "from_user", None)
     ui_lang = await get_user_language(_fu.id if _fu else 0, _fu)
     if not spoll:
         message = msg
-        search = message.text
+        original_search = message.text or ""
+        search = normalize_search_query(original_search)
         # Direct PM uses global/default settings, but its origin ID is 0.
         # Group searches continue to use that group's settings.
         chat_id = message.chat.id if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP] else 0
@@ -2411,7 +2461,7 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
         files, offset, total_results = await get_search_results(search, max_results=max_results)
         await searching_msg.delete()
         if not files:
-            if settings["spell_check"]:
+            if settings.get("spell_check", False):
                 ai_sts = await msg.reply_text("ᴄʜᴇᴄᴋɪɴɢ ʏᴏᴜʀ sᴘᴇʟʟɪɴɢ...")
                 is_misspelled = await ai_spell_check(chat_id=chat_id, wrong_name=search)
                 if is_misspelled:
@@ -2449,11 +2499,11 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
     MAX_RESULTS[key] = max_results
     del_msg = (
         f"\n\n<blockquote>⚠️ <b>THIS MESSAGE WILL BE AUTO DELETE AFTER {_delete_time_text(int(settings.get('delete_time', DELETE_TIME)))} TO AVOID COPYRIGHT ISSUES 🗑</b></blockquote>"
-        if settings["auto_delete"]
+        if settings.get("auto_delete", False)
         else ""
     )
     links = ""
-    if settings["link"]:
+    if settings.get("link", True):
         btn = []
         for file_num, file in enumerate(files, start=1):
             links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{origin_group_id}_{file.file_id}>[{get_size(file.file_size)}] {formate_file_name(file.file_name)}</a></b>"""
@@ -2526,47 +2576,54 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
         btn.append([InlineKeyboardButton(tr(ui_lang, "season"), callback_data=f"seasons#{key}#{offset}#{req}")])
         btn.append([InlineKeyboardButton(tr(ui_lang, "send_all"), callback_data=f"send_all#{key}")])
         btn.append([InlineKeyboardButton(tr(ui_lang, "no_more"), callback_data="buttons")])
-    imdb = (
-        await get_poster(search, file=(files[0]).file_name)
-        if settings["imdb"]
-        else None
-    )
-    TEMPLATE = settings["template"]
+    imdb = None
+    if settings.get("imdb", False):
+        # Metadata/poster is enrichment only. A slow or failed provider must
+        # never hide otherwise valid DB results.
+        try:
+            imdb = await asyncio.wait_for(
+                get_poster(search, file=(files[0]).file_name),
+                timeout=3.5,
+            )
+        except Exception as e:
+            imdb = None
+    TEMPLATE = settings.get("template", IMDB_TEMPLATE)
     if imdb:
-        cap = TEMPLATE.format(
-            query=search,
-            search=search,
-            mention=message.from_user.mention if message.from_user else "",
-            group=message.chat.title or str(message.chat.id),
-            title=imdb["title"],
-            votes=imdb["votes"],
-            aka=imdb["aka"],
-            seasons=imdb["seasons"],
-            box_office=imdb["box_office"],
-            localized_title=imdb["localized_title"],
-            kind=imdb["kind"],
-            imdb_id=imdb["imdb_id"],
-            cast=imdb["cast"],
-            runtime=imdb["runtime"],
-            countries=imdb["countries"],
-            certificates=imdb["certificates"],
-            languages=imdb["languages"],
-            director=imdb["director"],
-            writer=imdb["writer"],
-            producer=imdb["producer"],
-            composer=imdb["composer"],
-            cinematographer=imdb["cinematographer"],
-            music_team=imdb["music_team"],
-            distributors=imdb["distributors"],
-            release_date=imdb["release_date"],
-            year=imdb["year"],
-            genres=imdb["genres"],
-            poster=imdb["poster"],
-            plot=imdb["plot"],
-            rating=imdb["rating"],
-            url=imdb["url"],
-            **locals(),
-        )
+        template_vars = locals().copy()
+        template_vars.update({
+            "query": search,
+            "search": search,
+            "mention": message.from_user.mention if message.from_user else "",
+            "group": message.chat.title or str(message.chat.id),
+            "title": imdb.get("title", ""),
+            "votes": imdb.get("votes", ""),
+            "aka": imdb.get("aka", ""),
+            "seasons": imdb.get("seasons", ""),
+            "box_office": imdb.get("box_office", ""),
+            "localized_title": imdb.get("localized_title", ""),
+            "kind": imdb.get("kind", ""),
+            "imdb_id": imdb.get("imdb_id", ""),
+            "cast": imdb.get("cast", ""),
+            "runtime": imdb.get("runtime", ""),
+            "countries": imdb.get("countries", ""),
+            "certificates": imdb.get("certificates", ""),
+            "languages": imdb.get("languages", ""),
+            "director": imdb.get("director", ""),
+            "writer": imdb.get("writer", ""),
+            "producer": imdb.get("producer", ""),
+            "composer": imdb.get("composer", ""),
+            "cinematographer": imdb.get("cinematographer", ""),
+            "music_team": imdb.get("music_team", ""),
+            "distributors": imdb.get("distributors", ""),
+            "release_date": imdb.get("release_date", ""),
+            "year": imdb.get("year", ""),
+            "genres": imdb.get("genres", ""),
+            "poster": imdb.get("poster", ""),
+            "plot": imdb.get("plot", ""),
+            "rating": imdb.get("rating", ""),
+            "url": imdb.get("url", ""),
+        })
+        cap = TEMPLATE.format(**template_vars)
     else:
         found_caps = {
             "en":"📂 ʜᴇʀᴇ ɪ ꜰᴏᴜɴᴅ ғᴏʀ ʏᴏᴜʀ sᴇᴀʀᴄʜ",
@@ -2599,7 +2656,7 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
     CAP[key] = cap
     if imdb and imdb.get("poster"):
         try:
-            if settings["auto_delete"]:
+            if settings.get("auto_delete", False):
                 k = await message.reply_photo(
                     photo=imdb.get("poster"),
                     caption=(cap[:max(0, 1024 - len(del_msg) - len(links))] + links + del_msg)[:1024],
@@ -2619,7 +2676,7 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
         except (MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty):
             pic = imdb.get("poster")
             poster = pic.replace(".jpg", "._V1_UX360.jpg")
-            if settings["auto_delete"]:
+            if settings.get("auto_delete", False):
                 k = await message.reply_photo(
                     photo=poster,
                     caption=(cap + links + del_msg + js_ads)[:1024],
@@ -2639,7 +2696,7 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
                 )
         except Exception as e:
             print(e)
-            if settings["auto_delete"]:
+            if settings.get("auto_delete", False):
                 # await delSticker(st)
                 try:
                     k = await message.reply_text(
@@ -2669,7 +2726,7 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
             reply_to_message_id=message.id,
         )
         # await delSticker(st)
-        if settings["auto_delete"]:
+        if settings.get("auto_delete", False):
             #  await delSticker(st)
             asyncio.create_task(
                 _delete_after(k, int(settings.get("delete_time", DELETE_TIME)), message)
