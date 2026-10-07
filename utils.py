@@ -27,6 +27,7 @@ logger.setLevel(logging.INFO)
 
 BANNED = {}
 imdb = Cinemagoer()
+_SETTINGS_CACHE = {}
 
 # TMDB is an optional primary poster source. IMDb/Cinemagoer remains the
 # fallback, so existing IMDX behaviour is preserved when no TMDB key is set.
@@ -344,18 +345,9 @@ async def get_poster(query, bulk=False, id=False, file=None):
 
         tmdb_details = await _tmdb_get_poster(text_query, year=year)
         if tmdb_details:
-            # Preserve IMDX template fields while using the TMDB poster.
-            imdb_fallback = None
-            try:
-                imdb_fallback = await _get_imdb_poster(query, bulk=False, id=False, file=file)
-            except Exception:
-                imdb_fallback = None
-            if imdb_fallback:
-                for key in ("imdb_id", "aka", "seasons", "box_office", "cast", "countries",
-                            "certificates", "languages", "director", "writer", "producer",
-                            "composer", "cinematographer", "music_team", "distributors"):
-                    if not tmdb_details.get(key) and imdb_fallback.get(key):
-                        tmdb_details[key] = imdb_fallback[key]
+            # TMDB is the primary configured metadata/poster source. Do not
+            # make a successful TMDB lookup wait on Cinemagoer: metadata is
+            # optional enrichment and database file results are already safe.
             return tmdb_details
 
     return await _get_imdb_poster(query, bulk=bulk, id=id, file=file)
@@ -406,14 +398,21 @@ async def groups_broadcast(chat_id, message, is_pin):
 
 
 async def get_settings(group_id):
-    settings = await db.get_settings(int(group_id))
-    return settings
+    group_id = int(group_id)
+    cached = _SETTINGS_CACHE.get(group_id)
+    if cached is not None:
+        return cached.copy()
+    settings = await db.get_settings(group_id)
+    _SETTINGS_CACHE[group_id] = settings.copy()
+    return settings.copy()
 
 
 async def save_group_settings(group_id, key, value):
+    group_id = int(group_id)
     current = await get_settings(group_id)
     current[key] = value
     await db.update_settings(group_id, current)
+    _SETTINGS_CACHE[group_id] = current.copy()
 
 
 def get_size(size):
