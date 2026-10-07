@@ -2422,7 +2422,7 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
     if not spoll:
         message = msg
         original_search = message.text or ""
-        search = normalize_search_query(original_search)
+        search = _spell_norm(original_search)
         # Direct PM uses global/default settings, but its origin ID is 0.
         # Group searches continue to use that group's settings.
         chat_id = message.chat.id if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP] else 0
