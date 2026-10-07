@@ -50,6 +50,11 @@ import html
 lock = asyncio.Lock()
 import traceback
 from rapidfuzz import process, fuzz
+from imdbkit import IMDBKit
+
+# DreamX uses IMDbKit as the spelling-checker source.
+imdb_spelling = IMDBKit()
+
 
 BUTTONS = {}
 FILES_ID = {}
@@ -2278,143 +2283,34 @@ async def cb_handler(client: Client, query: CallbackQuery):
         return
 
 
-# DreamX-compatible AI spelling resolver.
-# DreamX uses IMDBKit; IMDX uses Cinemagoer, whose search_movie() returns a
-# normal list of Movie objects.  Keep the same behavior (fuzzy IMDb suggestion
-# -> verify that title in IMDX's file database), while also using local indexed
-# titles as a fallback when IMDb has no result.
-_SPELL_CACHE = {}
-_SPELL_CACHE_TTL = 15 * 60
-_SPELL_TIMEOUT = 6.0
-
-
-def _spell_norm(value):
-    """Normalize only enough for fuzzy matching; keep the title words intact."""
-    value = str(value or "").strip()
-    value = re.sub(r"[\[\]{}()]+", " ", value)
-    value = value.replace("_", " ").replace(".", " ").replace("-", " ")
-    value = re.sub(r"\s+", " ", value)
-    return value.strip()
-
-
-async def _imdb_spell_titles(query):
-    """Return IMDb/Cinemagoer title strings without blocking the event loop."""
-    def lookup():
-        try:
-            results = imdb.search_movie(query) or []
-            titles = []
-            for movie in results[:50]:
-                try:
-                    title = movie.get("title")
-                except Exception:
-                    title = getattr(movie, "title", None)
-                if title:
-                    titles.append(str(title).strip())
-            return titles
-        except Exception:
-            return []
-
-    try:
-        return await asyncio.wait_for(asyncio.to_thread(lookup), timeout=5.0)
-    except Exception:
-        return []
-
+# DreamX AI spelling checker — kept as the original DreamX flow.
+# Only the final file lookup uses IMDX's own database.
 
 async def ai_spell_check(chat_id, wrong_name):
-    """
-    Find a likely correct title and verify it exists in IMDX.
+    async def search_movie(wrong_name):
+        search_results = imdb_spelling.search_movie(wrong_name)
+        if not search_results or not hasattr(search_results, "titles"):
+            return []
+        movie_list = [movie.title for movie in search_results.titles]
+        return movie_list
 
-    This intentionally follows DreamX's successful flow:
-      1. Ask IMDb for title candidates.
-      2. Fuzzy-match the user's misspelled text.
-      3. Require a strong (>80) match.
-      4. Verify the suggested title against the bot's own indexed files.
-    Local indexed titles are used only as a fallback, so IMDX does not depend
-    entirely on IMDb being reachable.
-    """
-    original = _spell_norm(wrong_name)
-    if not original:
-        return None
+    movie_list = await search_movie(wrong_name)
+    if not movie_list:
+        return
 
-    key = re.sub(r"[^a-z0-9]+", " ", original.lower()).strip()
-    now = asyncio.get_running_loop().time()
+    for _ in range(5):
+        closest_match = process.extractOne(wrong_name, movie_list)
+        if not closest_match or closest_match[1] <= 80:
+            return
 
-    cached = _SPELL_CACHE.get(key)
-    if cached and now - cached[0] < _SPELL_CACHE_TTL:
-        candidate = cached[1]
-        if not candidate:
-            return None
-        try:
-            files, _, _ = await get_search_results(
-                query=candidate, chat_id=chat_id, filter=True
-            )
-            return candidate if files else None
-        except Exception:
-            return None
-
-    # DreamX's primary source: IMDb. IMDX's Cinemagoer returns a list,
-    # unlike DreamX's IMDBKit object which exposes .titles.
-    imdb_titles = await _imdb_spell_titles(original)
-
-    # If IMDb cannot help, use the local indexed database as a fallback.
-    local_titles = []
-    try:
-        local_titles = await asyncio.wait_for(
-            get_title_candidates(original, limit=240),
-            timeout=3.0,
+        movie = closest_match[0]
+        files, _, _ = await get_search_results(
+            chat_id=chat_id, query=movie, filter=True
         )
-    except Exception:
-        local_titles = []
-
-    pool = []
-    seen = set()
-    for raw in list(imdb_titles) + list(local_titles):
-        title = str(raw or "").strip()
-        if not title:
-            continue
-        normalized = re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
-        if normalized and normalized not in seen:
-            seen.add(normalized)
-            pool.append(title)
-
-    if not pool:
-        _SPELL_CACHE[key] = (now, None)
-        return None
-
-    # Same fuzzy-search principle as DreamX, with WRatio handling punctuation,
-    # inserted characters and word-order differences more reliably.
-    ranked = process.extract(
-        original,
-        pool,
-        scorer=fuzz.WRatio,
-        limit=min(20, len(pool)),
-        score_cutoff=0,
-    )
-
-    for candidate, score, _ in ranked:
-        # DreamX's working threshold is >80. Keep that threshold so IMDX does
-        # not invent a correction from a weak/ambiguous match.
-        if score <= 80:
-            continue
-
-        try:
-            files, _, _ = await asyncio.wait_for(
-                get_search_results(
-                    query=candidate,
-                    chat_id=chat_id,
-                    filter=True,
-                ),
-                timeout=2.5,
-            )
-        except Exception:
-            files = []
-
         if files:
-            _SPELL_CACHE[key] = (now, candidate)
-            return candidate
+            return movie
+        movie_list.remove(movie)
 
-    _SPELL_CACHE[key] = (now, None)
-    return None
 
 async def auto_filter(client, msg, spoll=False, pm_mode=False):
     _fu = getattr(msg, "from_user", None) or getattr(getattr(msg, "message", None), "from_user", None)
@@ -2636,12 +2532,35 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
         else ""
     )
     CAP[key] = cap
+
+    # Telegram photo captions are limited to 1024 characters.  The old code
+    # sliced ``cap + links`` at an arbitrary byte/character boundary, which
+    # could cut an <a> tag in half.  That caused missing IMDb metadata and
+    # blank/broken file links on the first render.  Build the photo caption
+    # from complete HTML entries and keep overflow files as buttons.
+    link_chunks = re.findall(r"<b>\s*.*?</b>", links or "", flags=re.S)
+    photo_suffix = del_msg + js_ads
+    photo_caption, overflow_links = _photo_caption(
+        cap, link_chunks, photo_suffix, limit=1024
+    )
+    if overflow_links and settings.get("link", True):
+        # Add every file as a safe Telegram button when the caption cannot
+        # contain the complete link list. Existing controls remain intact.
+        for file in reversed(files[-len(overflow_links):]):
+            btn.insert(
+                0,
+                [InlineKeyboardButton(
+                    text=f"📁 {get_size(file.file_size)} ≽ {formate_file_name(file.file_name)}",
+                    url=f"https://telegram.dog/{temp.U_NAME}?start=file_{origin_group_id}_{file.file_id}",
+                )],
+            )
+
     if imdb and imdb.get("poster"):
         try:
             if settings.get("auto_delete", False):
                 k = await message.reply_photo(
                     photo=imdb.get("poster"),
-                    caption=(cap[:max(0, 1024 - len(del_msg) - len(links))] + links + del_msg)[:1024],
+                    caption=photo_caption,
                     parse_mode=enums.ParseMode.HTML,
                     reply_markup=InlineKeyboardMarkup(btn),
                 )
@@ -2652,8 +2571,9 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
             else:
                 await message.reply_photo(
                     photo=imdb.get("poster"),
-                    caption=(cap + links + del_msg + js_ads)[:1024],
+                    caption=photo_caption,
                     reply_markup=InlineKeyboardMarkup(btn),
+                    parse_mode=enums.ParseMode.HTML,
                 )
         except (MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty):
             pic = imdb.get("poster")
@@ -2661,7 +2581,7 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
             if settings.get("auto_delete", False):
                 k = await message.reply_photo(
                     photo=poster,
-                    caption=(cap + links + del_msg + js_ads)[:1024],
+                    caption=photo_caption,
                     parse_mode=enums.ParseMode.HTML,
                     reply_markup=InlineKeyboardMarkup(btn),
                 )
@@ -2672,7 +2592,7 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
             else:
                 await message.reply_photo(
                     photo=poster,
-                    caption=(cap + links + del_msg + js_ads)[:1024],
+                    caption=photo_caption,
                     parse_mode=enums.ParseMode.HTML,
                     reply_markup=InlineKeyboardMarkup(btn),
                 )
