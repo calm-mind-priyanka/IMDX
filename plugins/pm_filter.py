@@ -37,6 +37,7 @@ from language import get_user_language, has_saved_language, tr, core_tr, home_tr
 from plugins.premium_payments import _premium_flow_text, premium_ads_intro
 from database.ia_filterdb import (
     Media,
+    Media2,
     get_search_results,
     get_bad_files,
 )
@@ -47,7 +48,7 @@ import html
 
 lock = asyncio.Lock()
 import traceback
-from fuzzywuzzy import process
+from rapidfuzz import process
 
 BUTTONS = {}
 FILES_ID = {}
@@ -2327,8 +2328,7 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
                 ai_sts = await msg.reply_text("ᴄʜᴇᴄᴋɪɴɢ ʏᴏᴜʀ sᴘᴇʟʟɪɴɢ...")
                 is_misspelled = await ai_spell_check(search)
                 if is_misspelled:
-                    #      await ai_sts.edit(f'<b><i>ʏᴏᴜʀ ꜱᴘᴇʟʟɪɴɢ ɪꜱ ᴡʀᴏɴɢ ɴᴏᴡ ᴅᴇᴠɪʟ ꜱᴇᴀʀᴄʜɪɴɢ ᴡɪᴛʜ ᴄᴏʀʀᴇᴄᴛ ꜱᴘᴇʟʟɪɴɢ - <code>{is_misspelled}</code></i></b>')
-                    await asyncio.sleep(2)
+                    await ai_sts.edit(f'✅ Aɪ Sᴜɢɢᴇsᴛᴇᴅ: <code>{is_misspelled}</code>\n🔍 Searching for it...')
                     msg.text = is_misspelled
                     await ai_sts.delete()
                     return await auto_filter(client, msg)
