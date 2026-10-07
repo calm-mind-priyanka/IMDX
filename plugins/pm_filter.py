@@ -2283,6 +2283,17 @@ async def cb_handler(client: Client, query: CallbackQuery):
         return
 
 
+def _spell_norm(value):
+    """Normalize search text safely before the DreamX spelling-checker flow."""
+    value = str(value or "").strip()
+    value = re.sub(r"(?i)\bseason\s*0?(\d{1,2})\b", lambda m: f"S{int(m.group(1)):02d}", value)
+    value = re.sub(r"[\[\]{}()]+", " ", value)
+    value = value.replace("_", " ").replace(".", " ").replace("-", " ")
+    value = re.sub(r"[/:;,!?]+", " ", value)
+    value = re.sub(r"\s+", " ", value)
+    return value.strip()
+
+
 # DreamX AI spelling checker — kept as the original DreamX flow.
 # Only the final file lookup uses IMDX's own database.
 
