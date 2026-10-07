@@ -162,6 +162,63 @@ def _build_filter(query):
     return {"file_name": regex}
 
 
+async def get_title_candidates(query, limit=240):
+    """Return local filename/caption candidates for typo correction.
+
+    Use several short chunks instead of requiring the whole misspelled prefix.
+    This is important for corrections such as ``spiterman`` -> ``Spider-Man``:
+    the first four letters do not match, but short chunks such as ``spi`` do.
+    DB1/DB2 are still queried concurrently and the result set is capped.
+    """
+    raw = str(query or "").lower()
+    compact = re.sub(r"[^a-z0-9]+", "", raw)
+    if len(compact) < 3:
+        return []
+
+    # Three-character chunks give the fuzzy matcher an entry point even when
+    # the typo contains inserted/deleted/substituted characters near the start.
+    chunks = []
+    positions = {0, max(0, len(compact) // 3), max(0, len(compact) // 2)}
+    for pos in sorted(positions):
+        chunk = compact[pos:pos + 3]
+        if len(chunk) == 3 and chunk not in chunks:
+            chunks.append(chunk)
+    # Also include the beginning; this is the most useful and keeps common
+    # title searches inexpensive.
+    if compact[:3] not in chunks:
+        chunks.insert(0, compact[:3])
+
+    raw_pattern = "|".join(re.escape(x) for x in chunks)
+    try:
+        regex = compile_regex(raw_pattern)
+        filt = {"$or": [{"file_name": regex}, {"caption": regex}]} if USE_CAPTION_FILTER else {"file_name": regex}
+
+        async def fetch(model):
+            return await model.find(filt, {"file_name": 1, "caption": 1}).limit(limit).to_list(length=limit)
+
+        if MULTIPLE_DB and DATABASE_URI2:
+            rows1, rows2 = await asyncio.gather(fetch(Media), fetch(Media2))
+            rows = rows1 + rows2
+        else:
+            rows = await fetch(Media)
+    except Exception:
+        return []
+
+    candidates = []
+    seen = set()
+    for row in rows:
+        for field in ("file_name", "caption"):
+            value = row.get(field) if isinstance(row, dict) else getattr(row, field, None)
+            if not value:
+                continue
+            text = str(value).strip()
+            key = text.lower()
+            if key and key not in seen:
+                seen.add(key)
+                candidates.append(text)
+    return candidates[:limit * (2 if MULTIPLE_DB and DATABASE_URI2 else 1)]
+
+
 async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None, chat_id=None, file_type=None, filter=False):
     """DreamX-style fast search, while preserving IMDX's original call signature."""
     mongo_filter = _build_filter(query)
