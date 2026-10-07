@@ -2278,155 +2278,137 @@ async def cb_handler(client: Client, query: CallbackQuery):
         return
 
 
-# Fast, database-verified spelling/title resolver.
+# DreamX-compatible AI spelling resolver.
+# DreamX uses IMDBKit; IMDX uses Cinemagoer, whose search_movie() returns a
+# normal list of Movie objects.  Keep the same behavior (fuzzy IMDb suggestion
+# -> verify that title in IMDX's file database), while also using local indexed
+# titles as a fallback when IMDb has no result.
 _SPELL_CACHE = {}
 _SPELL_CACHE_TTL = 15 * 60
-_SPELL_TIMEOUT = 2.5
+_SPELL_TIMEOUT = 6.0
 
-# Release/Telegram noise that is safe to discard from the SEARCH QUERY.
-# Deliberately does not remove words such as "hindi" or "episode" because they
-# can be meaningful to a stored title/caption.
-_SEARCH_NOISE_RE = re.compile(
-    r"(?ix)"
-    r"(?:https?://\S+|www\.\S+)"
-    r"|(?:^|\s)@[a-z0-9_]+"
-    r"|(?:^|\s)\#[a-z0-9_]+"
-    r"|\b(?:2160p|1440p|1080p|720p|480p|360p|240p|4k|8k)\b"
-    r"|\b(?:web[\s._-]?dl|web[\s._-]?rip|blu[\s._-]?ray|bluray|brrip|hdrip|dvdrip|camrip|hdcam)\b"
-    r"|\b(?:hevc|h\.?264|h\.?265|x264|x265|av1|aac|ac3|eac3|ddp(?:5\.1)?|dts|truehd)\b"
-    r"|\b(?:proper|repack|remux|limited|extended|unrated|internal|readnfo|sample)\b"
-    r"|\b(?:multi[\s-]?audio|dual[\s-]?audio|multi[\s-]?sub(?:title)?s?)\b"
-    r"|\b(?:hindi|tamil|telugu|malayalam|kannada|bengali|punjabi|english|marathi|gujarati|urdu|nepali|assamese)\s*(?:audio|dub(?:bed)?)\b"
-)
 
-_QUERY_FILLER_RE = re.compile(
-    r"(?ix)\b(?:please|pls|plz|send|snd|give|gib|movie|movies|film|films|"
-    r"latest|new|bro|bruh|helo|hello|find|link|download|dubbed|file|files|"
-    r"with\s+subtitles?|subtitle|subtitles|pannunga|pannungga|anuppunga|"
-    r"anupunga|kittumo|kittum|tharu)\b"
-)
+def _spell_norm(value):
+    """Normalize only enough for fuzzy matching; keep the title words intact."""
+    value = str(value or "").strip()
+    value = re.sub(r"[\[\]{}()]+", " ", value)
+    value = value.replace("_", " ").replace(".", " ").replace("-", " ")
+    value = re.sub(r"\s+", " ", value)
+    return value.strip()
 
-def _norm_title(value):
-    value = re.sub(r"[^a-z0-9]+", " ", str(value or "").lower())
-    return re.sub(r"\s+", " ", value).strip()
 
-def normalize_search_query(value):
-    """Normalize user/file-style search text without destroying title or SxxExx data."""
-    text = str(value or "").strip()
-    if not text:
-        return ""
-    text = _SEARCH_NOISE_RE.sub(" ", text)
-    # Brackets are separators, not title content. Keep their words.
-    text = re.sub(r"[\[\]{}()]+", " ", text)
-    text = text.replace("_", " ").replace(".", " ").replace("-", " ")
-    text = re.sub(r"(?i)\bseason\s*(\d{1,2})\b", lambda m: f"S{int(m.group(1)):02d}", text)
-    # "S 04 E 01" -> S04E01, but never invent a season number.
-    text = re.sub(r"(?i)\bS\s*(\d{1,2})\s*E\s*(\d{1,3})\b",
-                  lambda m: f"S{int(m.group(1)):02d}E{int(m.group(2)):02d}", text)
-    text = _QUERY_FILLER_RE.sub(" ", text)
-    text = re.sub(r"\s+", " ", text).strip(" -:")
-    return text
-
-def _candidate_title(text):
-    """Extract a searchable title from a noisy indexed filename/caption."""
-    text = normalize_search_query(text)
-    # Keep explicit episode markers; they are useful for series matching.
-    text = re.sub(r"(?i)\b(?:episode|ep)\s*(\d{1,3})\b", r"E\1", text)
-    return re.sub(r"\s+", " ", text).strip()
-
-async def _imdb_titles_fast(query):
-    def _lookup():
+async def _imdb_spell_titles(query):
+    """Return IMDb/Cinemagoer title strings without blocking the event loop."""
+    def lookup():
         try:
-            results = imdb.search_movie(query)
-            out = []
-            for m in results[:40]:
-                title = m.get("title") if hasattr(m, "get") else getattr(m, "title", None)
+            results = imdb.search_movie(query) or []
+            titles = []
+            for movie in results[:50]:
+                try:
+                    title = movie.get("title")
+                except Exception:
+                    title = getattr(movie, "title", None)
                 if title:
-                    out.append(title)
-            return out
+                    titles.append(str(title).strip())
+            return titles
         except Exception:
             return []
+
     try:
-        return await asyncio.wait_for(asyncio.to_thread(_lookup), timeout=1.5)
+        return await asyncio.wait_for(asyncio.to_thread(lookup), timeout=5.0)
     except Exception:
         return []
 
+
 async def ai_spell_check(chat_id, wrong_name):
-    """Find a typo correction, then verify every accepted candidate in IMDX DBs."""
-    original = normalize_search_query(wrong_name)
-    key = _norm_title(original)
-    if not key:
+    """
+    Find a likely correct title and verify it exists in IMDX.
+
+    This intentionally follows DreamX's successful flow:
+      1. Ask IMDb for title candidates.
+      2. Fuzzy-match the user's misspelled text.
+      3. Require a strong (>80) match.
+      4. Verify the suggested title against the bot's own indexed files.
+    Local indexed titles are used only as a fallback, so IMDX does not depend
+    entirely on IMDb being reachable.
+    """
+    original = _spell_norm(wrong_name)
+    if not original:
         return None
 
+    key = re.sub(r"[^a-z0-9]+", " ", original.lower()).strip()
     now = asyncio.get_running_loop().time()
+
     cached = _SPELL_CACHE.get(key)
     if cached and now - cached[0] < _SPELL_CACHE_TTL:
         candidate = cached[1]
-        if candidate:
-            files, _, _ = await get_search_results(candidate, chat_id=chat_id)
+        if not candidate:
+            return None
+        try:
+            files, _, _ = await get_search_results(
+                query=candidate, chat_id=chat_id, filter=True
+            )
             return candidate if files else None
-        return None
+        except Exception:
+            return None
 
-    # Local DB names are the strongest source because they can be verified
-    # immediately. IMDb supplies additional title candidates in parallel.
-    local_task = asyncio.create_task(get_title_candidates(original, limit=180))
-    imdb_task = asyncio.create_task(_imdb_titles_fast(original))
+    # DreamX's primary source: IMDb. IMDX's Cinemagoer returns a list,
+    # unlike DreamX's IMDBKit object which exposes .titles.
+    imdb_titles = await _imdb_spell_titles(original)
+
+    # If IMDb cannot help, use the local indexed database as a fallback.
+    local_titles = []
     try:
-        local_titles, imdb_titles = await asyncio.wait_for(
-            asyncio.gather(local_task, imdb_task, return_exceptions=True),
-            timeout=_SPELL_TIMEOUT,
+        local_titles = await asyncio.wait_for(
+            get_title_candidates(original, limit=240),
+            timeout=3.0,
         )
     except Exception:
-        local_titles, imdb_titles = [], []
-
-    if isinstance(local_titles, Exception):
         local_titles = []
-    if isinstance(imdb_titles, Exception):
-        imdb_titles = []
 
-    pool, seen = [], set()
-    for raw in list(local_titles) + list(imdb_titles):
-        candidate = _candidate_title(raw) if raw in local_titles else str(raw).strip()
-        if not candidate:
+    pool = []
+    seen = set()
+    for raw in list(imdb_titles) + list(local_titles):
+        title = str(raw or "").strip()
+        if not title:
             continue
-        normalized = _norm_title(candidate)
+        normalized = re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
         if normalized and normalized not in seen:
             seen.add(normalized)
-            pool.append(candidate)
+            pool.append(title)
 
     if not pool:
         _SPELL_CACHE[key] = (now, None)
         return None
 
-    norm_original = _norm_title(original)
+    # Same fuzzy-search principle as DreamX, with WRatio handling punctuation,
+    # inserted characters and word-order differences more reliably.
     ranked = process.extract(
-        norm_original,
+        original,
         pool,
-        scorer=lambda a, b, **kw: fuzz.WRatio(a, _norm_title(b)),
-        limit=15,
-        score_cutoff=45,
+        scorer=fuzz.WRatio,
+        limit=min(20, len(pool)),
+        score_cutoff=0,
     )
-    ranked.sort(key=lambda item: (
-        0.50 * item[1]
-        + 0.30 * fuzz.ratio(norm_original, _norm_title(item[0]))
-        + 0.20 * fuzz.token_set_ratio(norm_original, _norm_title(item[0]))
-    ), reverse=True)
 
-    for candidate, _, _ in ranked:
-        norm_candidate = _norm_title(candidate)
-        # Keep DreamX's conservative 80 threshold for short titles; allow
-        # longer filenames a little more tolerance for one-character errors.
-        threshold = 72 if len(norm_original) >= 8 else 80
-        if max(fuzz.ratio(norm_original, norm_candidate),
-               fuzz.WRatio(norm_original, norm_candidate)) < threshold:
+    for candidate, score, _ in ranked:
+        # DreamX's working threshold is >80. Keep that threshold so IMDX does
+        # not invent a correction from a weak/ambiguous match.
+        if score <= 80:
             continue
+
         try:
             files, _, _ = await asyncio.wait_for(
-                get_search_results(candidate, chat_id=chat_id),
-                timeout=1.5,
+                get_search_results(
+                    query=candidate,
+                    chat_id=chat_id,
+                    filter=True,
+                ),
+                timeout=2.5,
             )
         except Exception:
             files = []
+
         if files:
             _SPELL_CACHE[key] = (now, candidate)
             return candidate
