@@ -2283,6 +2283,38 @@ async def cb_handler(client: Client, query: CallbackQuery):
         return
 
 
+
+
+def _safe_html_truncate(text, limit=1024):
+    """Truncate HTML safely without cutting an open tag or entity."""
+    text = str(text or "")
+    if len(text) <= limit:
+        return text
+    cut = text[:max(0, limit)]
+    # Avoid leaving a partial HTML tag or entity in the Telegram caption.
+    cut = re.sub(r"<[^>]*$", "", cut)
+    cut = re.sub(r"&(?:#\d+|#x[0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]+)$", "", cut)
+    return cut
+
+def _photo_caption(cap, link_chunks, suffix="", limit=1024):
+    """Build a Telegram photo caption using complete file entries only."""
+    cap = str(cap or "")
+    suffix = str(suffix or "")
+    if len(cap) >= limit:
+        return _safe_html_truncate(cap, limit), list(link_chunks)
+
+    available = limit - len(cap)
+    chosen = []
+    tail = suffix if len(suffix) <= available else ""
+    available -= len(tail)
+    for chunk in link_chunks:
+        if len(chunk) <= available:
+            chosen.append(chunk)
+            available -= len(chunk)
+        else:
+            break
+    return cap + "".join(chosen) + tail, list(link_chunks[len(chosen):])
+
 def _spell_norm(value):
     """Normalize search text safely before the DreamX spelling-checker flow."""
     value = str(value or "").strip()
