@@ -6,9 +6,10 @@ from pyrogram.errors import (
     UserIsBlocked,
     PeerIdInvalid,
 )
-from info import AUTH_CHANNEL, LONG_IMDB_DESCRIPTION, START_IMG, PREMIUM_PLANS
+from info import AUTH_CHANNEL, LONG_IMDB_DESCRIPTION, START_IMG, PREMIUM_PLANS, TMDB_API_KEY
 from imdb import Cinemagoer
 import asyncio
+import aiohttp
 from pyrogram.types import Message, InlineKeyboardButton
 from pyrogram import enums
 import pytz
@@ -26,6 +27,128 @@ logger.setLevel(logging.INFO)
 
 BANNED = {}
 imdb = Cinemagoer()
+
+# TMDB is an optional primary poster source. IMDb/Cinemagoer remains the
+# fallback, so existing IMDX behaviour is preserved when no TMDB key is set.
+_TMDB_BASE_URL = "https://api.themoviedb.org/3"
+_TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w1280"
+_TMDB_CACHE = {}
+_TMDB_CACHE_TTL = 30 * 60
+_TMDB_TIMEOUT = aiohttp.ClientTimeout(total=4.0, connect=1.5, sock_read=3.0)
+_TMDB_SESSION = None
+
+
+async def _tmdb_session():
+    global _TMDB_SESSION
+    if _TMDB_SESSION is None or _TMDB_SESSION.closed:
+        _TMDB_SESSION = aiohttp.ClientSession(timeout=_TMDB_TIMEOUT)
+    return _TMDB_SESSION
+
+
+def _tmdb_cache_get(key):
+    item = _TMDB_CACHE.get(key)
+    if not item:
+        return None
+    if asyncio.get_running_loop().time() - item[0] >= _TMDB_CACHE_TTL:
+        _TMDB_CACHE.pop(key, None)
+        return None
+    return item[1]
+
+
+def _tmdb_cache_put(key, value):
+    _TMDB_CACHE[key] = (asyncio.get_running_loop().time(), value)
+
+
+def _empty_poster_details():
+    return {
+        "title": None, "votes": None, "aka": "", "seasons": None,
+        "box_office": None, "localized_title": None, "kind": None,
+        "imdb_id": None, "cast": "", "runtime": "", "countries": "",
+        "certificates": "", "languages": "", "director": "",
+        "writer": "", "producer": "", "composer": "",
+        "cinematographer": "", "music_team": "", "distributors": "",
+        "release_date": None, "year": None, "genres": "",
+        "poster": None, "plot": "", "rating": "", "url": "",
+    }
+
+
+async def _tmdb_get_poster(query, year=None, imdb_id=None):
+    """Fast TMDB poster lookup used before the existing IMDb fallback."""
+    if not TMDB_API_KEY:
+        return None
+
+    cache_key = f"id:{imdb_id}" if imdb_id else f"q:{str(query).strip().lower()}:{year or ''}"
+    cached = _tmdb_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        session = await _tmdb_session()
+        headers = {"Accept": "application/json"}
+        if imdb_id:
+            endpoint = f"{_TMDB_BASE_URL}/find/{imdb_id}"
+            params = {"api_key": TMDB_API_KEY, "external_source": "imdb_id"}
+            async with session.get(endpoint, params=params, headers=headers, ssl=False) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+            results = (data.get("movie_results") or []) + (data.get("tv_results") or [])
+        else:
+            endpoint = f"{_TMDB_BASE_URL}/search/multi"
+            params = {"api_key": TMDB_API_KEY, "query": str(query).strip(), "include_adult": "false"}
+            if year:
+                params["year"] = int(year)
+            async with session.get(endpoint, params=params, headers=headers, ssl=False) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+            results = [r for r in data.get("results", []) if r.get("media_type") in ("movie", "tv")]
+
+        if not results:
+            return None
+
+        # Prefer a result with a poster and matching year; otherwise use the
+        # first relevant result returned by TMDB.
+        def score(r):
+            score = 0
+            if r.get("poster_path"):
+                score += 100
+            title = (r.get("title") or r.get("name") or "").lower()
+            q = str(query or "").lower().strip()
+            if q and title == q:
+                score += 80
+            if year:
+                date = r.get("release_date") or r.get("first_air_date") or ""
+                if date.startswith(str(year)):
+                    score += 50
+            score += min(float(r.get("popularity") or 0), 20)
+            return score
+
+        result = max(results, key=score)
+        poster_path = result.get("poster_path")
+        if not poster_path:
+            return None
+
+        details = _empty_poster_details()
+        title = result.get("title") or result.get("name")
+        release = result.get("release_date") or result.get("first_air_date")
+        details.update({
+            "title": title,
+            "localized_title": title,
+            "year": int(release[:4]) if release and release[:4].isdigit() else year,
+            "release_date": release,
+            "rating": str(result.get("vote_average") or ""),
+            "votes": result.get("vote_count"),
+            "plot": result.get("overview") or "",
+            "poster": f"{_TMDB_IMAGE_BASE_URL}{poster_path}",
+            "url": f"https://www.themoviedb.org/{result.get('media_type', 'movie')}/{result.get('id')}",
+            "kind": "tv series" if result.get("media_type") == "tv" else "movie",
+        })
+        _tmdb_cache_put(cache_key, details)
+        return details
+    except Exception as e:
+        logger.debug("TMDB poster lookup failed: %s", e)
+        return None
 
 
 def premium_plan_buttons(lang="en"):
@@ -111,7 +234,7 @@ async def is_subscribed(bot, user_id, channel_id):
     return False
 
 
-async def get_poster(query, bulk=False, id=False, file=None):
+async def _get_imdb_poster(query, bulk=False, id=False, file=None):
     if not id:
         query = (query.strip()).lower()
         title = query
@@ -190,6 +313,52 @@ async def get_poster(query, bulk=False, id=False, file=None):
         "rating": str(movie.get("rating")),
         "url": f"https://www.imdb.com/title/tt{movieid}",
     }
+
+
+async def get_poster(query, bulk=False, id=False, file=None):
+    """Return poster/details using TMDB first, then the existing IMDb path.
+
+    The returned dictionary keeps the exact IMDX keys expected by pm_filter.py.
+    Bulk IMDb candidate searches are intentionally left untouched.
+    """
+    if not bulk:
+        year = None
+        if not id:
+            text_query = str(query or "").strip()
+            match = re.search(r"(?:^|\s)([12]\d{3})$", text_query)
+            if match:
+                year = int(match.group(1))
+                text_query = text_query[:match.start()].strip()
+            elif file:
+                match = re.search(r"[12]\d{3}", str(file))
+                if match:
+                    year = int(match.group(0))
+        else:
+            text_query = str(query or "").strip()
+            if not text_query.startswith("tt"):
+                text_query = f"tt{text_query}"
+            tmdb_details = await _tmdb_get_poster(text_query, imdb_id=text_query)
+            if tmdb_details:
+                return tmdb_details
+            return await _get_imdb_poster(query, bulk=bulk, id=id, file=file)
+
+        tmdb_details = await _tmdb_get_poster(text_query, year=year)
+        if tmdb_details:
+            # Preserve IMDX template fields while using the TMDB poster.
+            imdb_fallback = None
+            try:
+                imdb_fallback = await _get_imdb_poster(query, bulk=False, id=False, file=file)
+            except Exception:
+                imdb_fallback = None
+            if imdb_fallback:
+                for key in ("imdb_id", "aka", "seasons", "box_office", "cast", "countries",
+                            "certificates", "languages", "director", "writer", "producer",
+                            "composer", "cinematographer", "music_team", "distributors"):
+                    if not tmdb_details.get(key) and imdb_fallback.get(key):
+                        tmdb_details[key] = imdb_fallback[key]
+            return tmdb_details
+
+    return await _get_imdb_poster(query, bulk=bulk, id=id, file=file)
 
 
 async def users_broadcast(user_id, message, is_pin):
