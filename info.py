@@ -77,6 +77,12 @@ BUILD_VERSION = environ.get("BUILD_VERSION", "stable")
 # MongoDB
 DATABASE_URI = environ.get("DATABASE_URI", "mongodb+srv://mayurgogoi821:Ae5eEMIJV9aYED81@cluster0.930txsz.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 DATABASE_NAME = environ.get("DATABASE_NAME", "sdyimdx")
+# DreamX-style optional second search database. Enable with MULTIPLE_DB=True.
+DATABASE_URI2 = environ.get("DATABASE_URI2", "")
+MULTIPLE_DB = is_enabled(environ.get("MULTIPLE_DB", "False"), False)
+ULTRA_FAST_MODE = is_enabled(environ.get("ULTRA_FAST_MODE", "True"), True)
+USE_CAPTION_FILTER = is_enabled(environ.get("USE_CAPTION_FILTER", "True"), True)
+INDEX_CAPTION = is_enabled(environ.get("SAVE_CAPTION", "True"), True)
 
 # Files index database url
 FILES_DATABASE = environ.get("FILES_DATABASE", "mongodb+srv://mayurgogoi821:Ae5eEMIJV9aYED81@cluster0.930txsz.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
