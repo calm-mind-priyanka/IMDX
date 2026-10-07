@@ -2576,27 +2576,15 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
     )
     CAP[key] = cap
 
-    # Telegram photo captions are limited to 1024 characters.  The old code
-    # sliced ``cap + links`` at an arbitrary byte/character boundary, which
-    # could cut an <a> tag in half.  That caused missing IMDb metadata and
-    # blank/broken file links on the first render.  Build the photo caption
-    # from complete HTML entries and keep overflow files as buttons.
+    # Telegram photo captions are limited to 1024 characters. Build the
+    # caption from complete HTML entries so link mode never gets a broken
+    # <a> tag. Keep the existing result mode untouched: link=True means
+    # file links in the caption, while link=False means file buttons.
     link_chunks = re.findall(r"<b>\s*.*?</b>", links or "", flags=re.S)
     photo_suffix = del_msg + js_ads
-    photo_caption, overflow_links = _photo_caption(
+    photo_caption, _overflow_links = _photo_caption(
         cap, link_chunks, photo_suffix, limit=1024
     )
-    if overflow_links and settings.get("link", True):
-        # Add every file as a safe Telegram button when the caption cannot
-        # contain the complete link list. Existing controls remain intact.
-        for file in reversed(files[-len(overflow_links):]):
-            btn.insert(
-                0,
-                [InlineKeyboardButton(
-                    text=f"📁 {get_size(file.file_size)} ≽ {formate_file_name(file.file_name)}",
-                    url=f"https://telegram.dog/{temp.U_NAME}?start=file_{origin_group_id}_{file.file_id}",
-                )],
-            )
 
     if imdb and imdb.get("poster"):
         try:
