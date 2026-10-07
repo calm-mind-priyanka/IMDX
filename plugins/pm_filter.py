@@ -48,7 +48,7 @@ import html
 
 lock = asyncio.Lock()
 import traceback
-from rapidfuzz import process
+from rapidfuzz import process, fuzz
 
 BUTTONS = {}
 FILES_ID = {}
@@ -2277,25 +2277,78 @@ async def cb_handler(client: Client, query: CallbackQuery):
         return
 
 
-async def ai_spell_check(wrong_name):
-    async def search_movie(wrong_name):
-        search_results = imdb.search_movie(wrong_name)
-        movie_list = [movie["title"] for movie in search_results]
-        return movie_list
+# Short-lived correction cache: avoids repeating IMDb calls for common typos.
+_SPELL_CACHE = {}
+_SPELL_CACHE_TTL = 15 * 60
+_SPELL_TIMEOUT = 1.35
 
-    movie_list = await search_movie(wrong_name)
-    if not movie_list:
+def _norm_title(value):
+    value = re.sub(r"[^a-z0-9]+", " ", str(value).lower())
+    return re.sub(r"\s+", " ", value).strip()
+
+async def _imdb_titles_fast(query):
+    # imdb package is synchronous; never block Pyrogram/Motor's event loop.
+    def _lookup():
+        try:
+            results = imdb.search_movie(query)
+            return [getattr(m, "get", lambda k, d=None: d)("title", None) or getattr(m, "title", None)
+                    for m in results[:40]]
+        except Exception:
+            return []
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(_lookup), timeout=_SPELL_TIMEOUT)
+    except (asyncio.TimeoutError, Exception):
+        return []
+
+async def ai_spell_check(chat_id, wrong_name):
+    """Fast title resolver: cache -> IMDb candidates -> multi-score ranking -> DB verification."""
+    original = (wrong_name or "").strip()
+    key = _norm_title(original)
+    if not key:
         return
-    for _ in range(5):
-        closest_match = process.extractOne(wrong_name, movie_list)
-        if not closest_match or closest_match[1] <= 80:
-            return
-        movie = closest_match[0]
-        files, offset, total_results = await get_search_results(movie)
+
+    now = asyncio.get_running_loop().time()
+    cached = _SPELL_CACHE.get(key)
+    if cached and now - cached[0] < _SPELL_CACHE_TTL:
+        candidate = cached[1]
+        if candidate:
+            files, _, _ = await get_search_results(candidate, chat_id=chat_id)
+            return candidate if files else None
+        return None
+
+    movie_list = await _imdb_titles_fast(original)
+    movie_list = list(dict.fromkeys(x.strip() for x in movie_list if x and x.strip()))
+    if not movie_list:
+        _SPELL_CACHE[key] = (now, None)
+        return
+
+    # Multiple inexpensive scorers make this more tolerant than DreamX's single ratio.
+    candidates = process.extract(
+        original, movie_list, scorer=fuzz.WRatio, limit=10, score_cutoff=55
+    )
+    candidates.sort(key=lambda item: (
+        0.55 * item[1] +
+        0.30 * fuzz.ratio(_norm_title(original), _norm_title(item[0])) +
+        0.15 * fuzz.token_set_ratio(_norm_title(original), _norm_title(item[0]))
+    ), reverse=True)
+
+    for movie, _, _ in candidates:
+        norm_movie = _norm_title(movie)
+        norm_original = _norm_title(original)
+        ratio = fuzz.ratio(norm_original, norm_movie)
+        wratio = fuzz.WRatio(norm_original, norm_movie)
+        # Adaptive threshold: short titles need a stronger match; longer titles can
+        # tolerate more edits while still requiring a strong combined score.
+        threshold = 68 if len(norm_original) >= 8 else 78
+        if max(ratio, wratio) < threshold:
+            continue
+        files, _, _ = await get_search_results(movie, chat_id=chat_id)
         if files:
+            _SPELL_CACHE[key] = (now, movie)
             return movie
-        movie_list.remove(movie)
-    return
+
+    _SPELL_CACHE[key] = (now, None)
+    return None
 
 
 async def auto_filter(client, msg, spoll=False, pm_mode=False):
@@ -2326,7 +2379,7 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
         if not files:
             if settings["spell_check"]:
                 ai_sts = await msg.reply_text("ᴄʜᴇᴄᴋɪɴɢ ʏᴏᴜʀ sᴘᴇʟʟɪɴɢ...")
-                is_misspelled = await ai_spell_check(search)
+                is_misspelled = await ai_spell_check(chat_id=chat_id, wrong_name=search)
                 if is_misspelled:
                     await ai_sts.edit(f'✅ Aɪ Sᴜɢɢᴇsᴛᴇᴅ: <code>{is_misspelled}</code>\n🔍 Searching for it...')
                     msg.text = is_misspelled
