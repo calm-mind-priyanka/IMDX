@@ -150,9 +150,22 @@ def _build_filter(query):
         if not query:
             raw_pattern = "."
         elif " " not in query:
-            raw_pattern = r"(\b|[\.\+\-_])" + re.escape(query) + r"(\b|[\.\+\-_])"
+            season_match = re.fullmatch(r"(?i)s0?(\d{1,2})", query)
+            if season_match:
+                season = int(season_match.group(1))
+                raw_pattern = r"(\b|[\.\+\-_])(?:s0?" + str(season) + r"|season\s*0?" + str(season) + r")(\b|[\.\+\-_])"
+            else:
+                raw_pattern = r"(\b|[\.\+\-_])" + re.escape(query) + r"(\b|[\.\+\-_])"
         else:
-            raw_pattern = r".*[\s\.\+\-_]".join(re.escape(w) for w in query.split())
+            parts = []
+            for word in query.split():
+                season_match = re.fullmatch(r"(?i)s0?(\d{1,2})", word)
+                if season_match:
+                    season = int(season_match.group(1))
+                    parts.append(r"(?:s0?" + str(season) + r"|season\s*0?" + str(season) + r")")
+                else:
+                    parts.append(re.escape(word))
+            raw_pattern = r".*[\s\.\+\-_]".join(parts)
     try:
         regex = compile_regex(raw_pattern)
     except re.error:
