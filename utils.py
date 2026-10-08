@@ -74,7 +74,13 @@ def _empty_poster_details():
 
 
 async def _tmdb_get_poster(query, year=None, imdb_id=None):
-    """Fast TMDB poster lookup used before the existing IMDb fallback."""
+    """TMDB poster lookup with full movie/TV metadata enrichment.
+
+    The search endpoint only contains basic fields.  After selecting the best
+    result, fetch its details + credits + ratings/external IDs so the existing
+    poster template variables (genres, languages, director, cast, etc.) are
+    actually populated instead of rendering blank values.
+    """
     if not TMDB_API_KEY:
         return None
 
@@ -108,8 +114,6 @@ async def _tmdb_get_poster(query, year=None, imdb_id=None):
         if not results:
             return None
 
-        # Prefer a result with a poster and matching year; otherwise use the
-        # first relevant result returned by TMDB.
         def score(r):
             score = 0
             if r.get("poster_path"):
@@ -126,25 +130,134 @@ async def _tmdb_get_poster(query, year=None, imdb_id=None):
             return score
 
         result = max(results, key=score)
+        media_type = result.get("media_type") or ("tv" if result.get("name") else "movie")
+        tmdb_id = result.get("id")
         poster_path = result.get("poster_path")
-        if not poster_path:
+        if not poster_path or not tmdb_id:
             return None
 
+        # One details request supplies the fields missing from /search/multi.
+        # append_to_response keeps this to one extra TMDB HTTP request.
+        detail_endpoint = f"{_TMDB_BASE_URL}/{media_type}/{tmdb_id}"
+        detail_params = {
+            "api_key": TMDB_API_KEY,
+            "append_to_response": "credits,release_dates,content_ratings,external_ids,alternative_titles",
+        }
+        async with session.get(detail_endpoint, params=detail_params, headers=headers, ssl=False) as resp:
+            details_data = await resp.json() if resp.status == 200 else {}
+
+        base = result.copy()
+        base.update(details_data or {})
         details = _empty_poster_details()
-        title = result.get("title") or result.get("name")
-        release = result.get("release_date") or result.get("first_air_date")
+        title = base.get("title") or base.get("name")
+        release = base.get("release_date") or base.get("first_air_date")
+        external_ids = base.get("external_ids") or {}
+        credits = base.get("credits") or {}
+        crew = credits.get("crew") or []
+        cast_rows = credits.get("cast") or []
+
+        def names(items, limit=8):
+            out = []
+            seen = set()
+            for item in items:
+                name = item.get("name") if isinstance(item, dict) else None
+                if name and name not in seen:
+                    seen.add(name)
+                    out.append(name)
+                if len(out) >= limit:
+                    break
+            return ", ".join(out)
+
+        def crew_names(jobs=(), departments=(), limit=8):
+            selected = []
+            for person in crew:
+                if not isinstance(person, dict):
+                    continue
+                job = str(person.get("job") or "")
+                department = str(person.get("department") or "")
+                if (jobs and job in jobs) or (departments and department in departments):
+                    selected.append(person)
+            return names(selected, limit)
+
+        genres = ", ".join(
+            g.get("name", "") for g in (base.get("genres") or []) if isinstance(g, dict) and g.get("name")
+        )
+        countries = ", ".join(
+            c.get("name", "") for c in (base.get("production_countries") or [])
+            if isinstance(c, dict) and c.get("name")
+        )
+        languages = ", ".join(
+            l.get("english_name") or l.get("name") or l.get("iso_639_1", "")
+            for l in (base.get("spoken_languages") or []) if isinstance(l, dict)
+        )
+
+        # Certificate: prefer release certification for movies and content
+        # ratings for TV.  Do not invent a certificate when TMDB has none.
+        certificates = []
+        for country in (base.get("release_dates") or {}).get("results", []):
+            for rd in country.get("release_dates", []) or []:
+                cert = str(rd.get("certification") or "").strip()
+                if cert:
+                    certificates.append(f"{country.get('iso_3166_1', '')}: {cert}".strip(": "))
+        if not certificates:
+            for country in (base.get("content_ratings") or {}).get("results", []):
+                cert = str(country.get("rating") or "").strip()
+                if cert:
+                    certificates.append(f"{country.get('iso_3166_1', '')}: {cert}".strip(": "))
+        # Keep the caption compact while retaining multiple country ratings.
+        certificates_text = ", ".join(dict.fromkeys(certificates))[:500]
+
+        runtime = base.get("runtime")
+        if not runtime:
+            episode_runtimes = base.get("episode_run_time") or []
+            runtime = episode_runtimes[0] if episode_runtimes else ""
+        runtime_text = f"{runtime} min" if runtime else ""
+
+        revenue = base.get("revenue")
+        if revenue:
+            try:
+                box_office = f"${int(revenue):,}"
+            except (TypeError, ValueError):
+                box_office = str(revenue)
+        else:
+            box_office = ""
+
         details.update({
             "title": title,
             "localized_title": title,
             "year": int(release[:4]) if release and release[:4].isdigit() else year,
             "release_date": release,
-            "rating": str(result.get("vote_average") or ""),
-            "votes": result.get("vote_count"),
-            "plot": result.get("overview") or "",
+            "rating": str(base.get("vote_average") or ""),
+            "votes": base.get("vote_count"),
+            "plot": (base.get("overview") or "")[:800],
             "poster": f"{_TMDB_IMAGE_BASE_URL}{poster_path}",
-            "url": f"https://www.themoviedb.org/{result.get('media_type', 'movie')}/{result.get('id')}",
-            "kind": "tv series" if result.get("media_type") == "tv" else "movie",
+            "url": (
+                f"https://www.imdb.com/title/{external_ids.get('imdb_id')}"
+                if external_ids.get("imdb_id")
+                else f"https://www.themoviedb.org/{media_type}/{tmdb_id}"
+            ),
+            "kind": "tv series" if media_type == "tv" else "movie",
+            "imdb_id": external_ids.get("imdb_id"),
+            "genres": genres,
+            "runtime": runtime_text,
+            "countries": countries,
+            "languages": languages,
+            "certificates": certificates_text,
+            "director": crew_names({"Director"}),
+            "writer": crew_names({"Writer", "Screenplay", "Story", "Teleplay"}),
+            "producer": crew_names({"Producer", "Executive Producer"}),
+            "composer": crew_names({"Original Music Composer", "Composer", "Music"}),
+            "cinematographer": crew_names({"Director of Photography", "Cinematography"}),
+            "music_team": crew_names(departments={"Sound"}),
+            "cast": names(cast_rows, 10),
+            "seasons": base.get("number_of_seasons") or None,
+            "box_office": box_office,
         })
+
+        alternative_titles = base.get("titles") or []
+        if alternative_titles:
+            details["aka"] = names(alternative_titles, 6)
+
         _tmdb_cache_put(cache_key, details)
         return details
     except Exception as e:
