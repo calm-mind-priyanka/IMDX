@@ -70,20 +70,18 @@ async def Jisshu_start():
     b_users, b_chats = await db.get_banned()
     temp.BANNED_USERS = b_users
     temp.BANNED_CHATS = b_chats
-    # MongoDB indexes are best-effort. A full DB1 must never stop the Telegram bot.
+    # MongoDB index creation must never prevent the Telegram bot from starting.
+    # A full DB may reject create_index with OperationFailure.
     await ensure_media_indexes()
-    try:
-        await db.ensure_premium_indexes()
-    except Exception as exc:
-        logging.warning("Premium index setup skipped; database may be full: %s", exc)
-    try:
-        await db.ensure_verification_indexes()
-    except Exception as exc:
-        logging.warning("Verification index setup skipped; database may be full: %s", exc)
-    try:
-        await mdb.load_premium_plans()
-    except Exception as exc:
-        logging.warning("Premium plan load skipped; database may be unavailable/full: %s", exc)
+    for _label, _fn in (
+        ("premium indexes", db.ensure_premium_indexes),
+        ("verification indexes", db.ensure_verification_indexes),
+        ("premium plans", mdb.load_premium_plans),
+    ):
+        try:
+            await _fn()
+        except Exception as _exc:
+            logging.warning("Skipping %s during startup: %s", _label, _exc)
     me = await JisshuBot.get_me()
     temp.ME = me.id
     temp.U_NAME = me.username
