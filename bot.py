@@ -21,7 +21,7 @@ logging.getLogger("aiohttp.web").setLevel(logging.ERROR)
 
 from pyrogram import __version__
 from pyrogram.raw.all import layer
-from database.ia_filterdb import Media, ensure_media_indexes
+from database.ia_filterdb import Media
 from database.users_chats_db import db
 from database.config_db import mdb
 from info import *
@@ -70,18 +70,10 @@ async def Jisshu_start():
     b_users, b_chats = await db.get_banned()
     temp.BANNED_USERS = b_users
     temp.BANNED_CHATS = b_chats
-    # MongoDB index creation must never prevent the Telegram bot from starting.
-    # A full DB may reject create_index with OperationFailure.
-    await ensure_media_indexes()
-    for _label, _fn in (
-        ("premium indexes", db.ensure_premium_indexes),
-        ("verification indexes", db.ensure_verification_indexes),
-        ("premium plans", mdb.load_premium_plans),
-    ):
-        try:
-            await _fn()
-        except Exception as _exc:
-            logging.warning("Skipping %s during startup: %s", _label, _exc)
+    await Media.ensure_indexes()
+    await db.ensure_premium_indexes()
+    await db.ensure_verification_indexes()
+    await mdb.load_premium_plans()
     me = await JisshuBot.get_me()
     temp.ME = me.id
     temp.U_NAME = me.username

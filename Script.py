@@ -103,19 +103,12 @@ User - {}"""
 🎁 ʀᴇǫᴜᴇꜱᴛ ᴍꜱɢ - <code>{}</code></b>"""
 
     IMDB_TEMPLATE_TXT = """
-<b>👋 ʜᴇʏ {mention}, ʜᴇʀᴇ ɪꜱ ᴛʜᴇ ʀᴇꜱᴜʟᴛꜱ ꜰᴏʀ <code>{search}</code>
+<b>ʜᴇʏ {message.from_user.mention}, ʜᴇʀᴇ ɪꜱ ᴛʜᴇ ʀᴇꜱᴜʟᴛꜱ ꜰᴏʀ ʏᴏᴜʀ ǫᴜᴇʀʏ {search}.
 
-🍿 <b>{title}</b>
-🎭 <b>Genre:</b> {genres}
-📆 <b>Release:</b> {release_date}
-⭐ <b>Rating:</b> {rating} / 10 ({votes})
-⏱ <b>Runtime:</b> {runtime}
-🌍 <b>Country:</b> {countries}
-🗣 <b>Audio:</b> {languages}
-🔞 <b>Certificate:</b> {certificates}
-🎬 <b>Director:</b> {director}
-👥 <b>Cast:</b> {cast}
-📝 <b>Plot:</b> {plot}</b>
+🍿 Title: {title}
+🎃 Genres: {genres}
+📆 Year: {release_date}
+⭐ Rating: {rating} / 10</b>
 """
 
     FILE_CAPTION = """<b>{file_name}</b>"""
