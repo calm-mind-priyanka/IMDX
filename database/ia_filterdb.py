@@ -368,31 +368,23 @@ async def _quality_replace_or_reject(models, new_key, new_lang, new_score, new_r
 
 
 async def ensure_media_indexes():
-    """Best-effort index creation.
-
-    A full MongoDB cluster can reject writes (including create_index), but that
-    must never prevent the bot from starting.  DB2 is attempted independently.
-    """
+    """Create media indexes independently; a full DB must not crash the bot."""
     status = {"primary": False, "secondary": False}
     try:
         await Media.ensure_indexes()
         status["primary"] = True
-        print("Media indexes ready on primary database")
     except Exception as exc:
         print(f"WARNING: primary media indexes unavailable; bot will continue: {exc}")
-
     if MULTIPLE_DB and DATABASE_URI2:
         try:
             await Media2.ensure_indexes()
             status["secondary"] = True
-            print("Media indexes ready on secondary database")
         except Exception as exc:
             print(f"WARNING: secondary media indexes unavailable; bot will continue: {exc}")
     return status
 
 
 def _file_identity(row):
-    """Stable identity for cross-database duplicate suppression."""
     unique_id = getattr(row, "file_unique_id", None)
     if unique_id:
         return ("unique", str(unique_id))
@@ -403,9 +395,7 @@ def _file_identity(row):
 
 
 def _dedupe_files(rows):
-    """Remove the same Telegram file when it exists in DB1 and DB2."""
-    result = []
-    seen = set()
+    result, seen = [], set()
     for row in rows:
         identity = _file_identity(row)
         if identity and identity in seen:
@@ -416,9 +406,13 @@ def _dedupe_files(rows):
     return result
 
 
-async def _safe_model_find(model, filt, limit=None):
+async def _safe_model_find(model, filt, limit=None, skip=0, projection=None, sort_natural=True):
     try:
-        cursor = model.find(filt)
+        cursor = model.find(filt, projection) if projection is not None else model.find(filt)
+        if sort_natural:
+            cursor = cursor.sort("$natural", -1)
+        if skip:
+            cursor = cursor.skip(skip)
         if limit is not None:
             cursor = cursor.limit(limit)
         return await cursor.to_list(length=limit)
@@ -465,14 +459,13 @@ async def save_file(media, bot=None, source_chat_id=None, source_message_id=None
 
     target_model = Media
     if MULTIPLE_DB and DATABASE_URI2:
-        # Prefer DB2 before DB1 becomes completely full. If DB1 is already full,
-        # DB2 is used automatically. If DB1's stats command itself fails, also
-        # fail over to DB2 rather than crashing or attempting a blocked write.
         try:
             threshold_mb = float(__import__('os').environ.get("PRIMARY_DB_MAX_MB", "407"))
             if await _db_size_mb(mydb) >= threshold_mb:
                 target_model = Media2
         except Exception as exc:
+            # If DB1 health/size cannot be read, prefer DB2 rather than risking
+            # a blocked write to an unhealthy/full primary database.
             print(f"Primary DB health/size check failed; using secondary database: {exc}")
             target_model = Media2
 
@@ -593,13 +586,10 @@ async def get_title_candidates(query, limit=240):
             return await model.find(filt, {"file_name": 1, "caption": 1}).limit(limit).to_list(length=limit)
 
         if MULTIPLE_DB and DATABASE_URI2:
-            rows1, rows2 = await asyncio.gather(
-                _safe_model_find(Media, filt, limit),
-                _safe_model_find(Media2, filt, limit),
-            )
-            rows = _dedupe_files(rows1 + rows2)
+            rows1, rows2 = await asyncio.gather(fetch(Media), fetch(Media2))
+            rows = rows1 + rows2
         else:
-            rows = await _safe_model_find(Media, filt, limit)
+            rows = await fetch(Media)
     except Exception:
         return []
 
@@ -619,7 +609,7 @@ async def get_title_candidates(query, limit=240):
 
 
 async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None, chat_id=None, file_type=None, filter=False):
-    """DreamX-style fast search, while preserving IMDX's original call signature."""
+    """Fast search with safe single-DB behavior and optional dual-DB merge."""
     mongo_filter = _build_filter(query)
     if mongo_filter is None:
         return [], "", 0
@@ -627,72 +617,111 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None, ch
         mongo_filter["file_type"] = file_type
 
     max_results = max(1, int(max_results or MAX_BTN))
+    offset = max(0, int(offset or 0))
 
     if MULTIPLE_DB and DATABASE_URI2:
-        # Search both databases independently. A failed/full DB1 is treated as
-        # an unavailable source, not as a fatal search error. Results are then
-        # merged and deduplicated by Telegram file_unique_id/file_id.
+        # Treat DB2 as the continuation of the movie index after DB1/DB2's
+        # configured preference, but remove cross-DB duplicates before paging.
+        # We scan in small chunks when necessary instead of loading the whole
+        # movie database into RAM.
+        try:
+            total2, total1 = await asyncio.gather(
+                _safe_count(Media2, mongo_filter),
+                _safe_count(Media, mongo_filter),
+            )
+            # DB2 is preferred for newly indexed files. Build a unique prefix
+            # from DB2 first, then fill from DB1 while excluding duplicates.
+            needed = offset + max_results + 1
+            db2_rows = await _safe_model_find(Media2, mongo_filter, limit=needed)
+            db2_unique = _dedupe_files(db2_rows)
+            seen = {_file_identity(r) for r in db2_unique if _file_identity(r)}
+
+            if len(db2_unique) >= needed:
+                merged = db2_unique[:needed]
+            else:
+                merged = list(db2_unique)
+                # Only scan as much of DB1 as needed to fill the requested page.
+                # If DB1 contains duplicates of DB2 records, keep scanning until
+                # enough unique rows have been collected or DB1 is exhausted.
+                chunk_size = max(100, max_results * 4)
+                raw_skip = 0
+                while len(merged) < needed and raw_skip < total1:
+                    chunk = await _safe_model_find(
+                        Media, mongo_filter, limit=chunk_size, skip=raw_skip
+                    )
+                    if not chunk:
+                        break
+                    for row in chunk:
+                        identity = _file_identity(row)
+                        if identity and identity in seen:
+                            continue
+                        if identity:
+                            seen.add(identity)
+                        merged.append(row)
+                        if len(merged) >= needed:
+                            break
+                    raw_skip += len(chunk)
+
+            page = merged[offset:offset + max_results + 1]
+            has_next = len(page) > max_results
+            files = page[:max_results]
+            next_offset = offset + len(files) if has_next else ""
+            # Exact unique count is intentionally not computed across the full
+            # databases; the raw sum is an upper bound used only for page labels.
+            total_results = total1 + total2
+            if not has_next:
+                total_results = min(total_results, offset + len(files))
+            return files, next_offset, total_results
+        except Exception as exc:
+            print(f"Dual MongoDB search failed; falling back to primary: {exc}")
+            # DB1 can still serve results even if DB2 is unavailable.
+            try:
+                if ULTRA_FAST_MODE:
+                    limit = max_results + 1
+                    total_results, files = await asyncio.gather(
+                        Media.count_documents(mongo_filter),
+                        Media.find(mongo_filter).sort("$natural", -1).skip(offset).limit(limit).to_list(length=limit),
+                    )
+                    has_next = len(files) > max_results
+                    if has_next:
+                        files = files[:-1]
+                    return files, offset + len(files) if has_next else "", total_results
+                total_results, files = await asyncio.gather(
+                    Media.count_documents(mongo_filter),
+                    Media.find(mongo_filter).sort("$natural", -1).skip(offset).limit(max_results).to_list(length=max_results),
+                )
+                next_offset = offset + len(files)
+                return files, next_offset if next_offset < total_results else "", total_results
+            except Exception as primary_exc:
+                print(f"Primary fallback search failed: {primary_exc}")
+                return [], "", 0
+
+    # Single DB path intentionally mirrors the original query: indexed/text
+    # search + natural order + skip/limit. This keeps normal search fast and
+    # makes Next/Back deterministic.
+    try:
         if ULTRA_FAST_MODE:
             limit = max_results + 1
-            fetch_limit = offset + limit
-            counts, found = await asyncio.gather(
-                asyncio.gather(_safe_count(Media, mongo_filter), _safe_count(Media2, mongo_filter)),
-                asyncio.gather(
-                    _safe_model_find(Media, mongo_filter, fetch_limit),
-                    _safe_model_find(Media2, mongo_filter, fetch_limit),
-                ),
+            total_results, files = await asyncio.gather(
+                Media.count_documents(mongo_filter),
+                Media.find(mongo_filter).sort("$natural", -1).skip(offset).limit(limit).to_list(length=limit),
             )
-            total_results = sum(counts)
-            merged = _dedupe_files(found[1] + found[0])
-            # The exact count can include a cross-DB duplicate. Reconcile the
-            # total from the merged result when both databases are readable.
-            if offset == 0 and len(merged) < total_results:
-                total_results = len(merged)
-            files = merged[offset:offset + max_results + 1]
             has_next = len(files) > max_results
             if has_next:
                 files = files[:-1]
             next_offset = offset + len(files) if has_next else ""
             return files, next_offset, total_results
-
-        counts, found = await asyncio.gather(
-            asyncio.gather(_safe_count(Media, mongo_filter), _safe_count(Media2, mongo_filter)),
-            asyncio.gather(
-                _safe_model_find(Media, mongo_filter, offset + max_results),
-                _safe_model_find(Media2, mongo_filter, offset + max_results),
-            ),
+        total_results, files = await asyncio.gather(
+            Media.count_documents(mongo_filter),
+            Media.find(mongo_filter).sort("$natural", -1).skip(offset).limit(max_results).to_list(length=max_results),
         )
-        total_results = sum(counts)
-        files = _dedupe_files(found[1] + found[0])
-        if len(files) < total_results:
-            total_results = len(files)
-        files = files[offset:offset + max_results]
         next_offset = offset + len(files)
         if next_offset >= total_results:
             next_offset = ""
         return files, next_offset, total_results
-
-    # Single DB: keep the limited fetch for speed, but use an exact count for
-    # pagination so the initial page cannot display a stale/estimated total.
-    if ULTRA_FAST_MODE:
-        limit = max_results + 1
-        count_task = Media.count_documents(mongo_filter)
-        files_task = Media.find(mongo_filter).sort("$natural", -1).skip(offset).limit(limit).to_list(length=limit)
-        total_results, files = await asyncio.gather(count_task, files_task)
-        has_next = len(files) > max_results
-        if has_next:
-            files = files[:-1]
-        next_offset = offset + len(files) if has_next else ""
-        return files, next_offset, total_results
-
-    total_results, files = await asyncio.gather(
-        Media.count_documents(mongo_filter),
-        Media.find(mongo_filter).sort("$natural", -1).skip(offset).limit(max_results).to_list(length=max_results),
-    )
-    next_offset = offset + len(files)
-    if next_offset >= total_results:
-        next_offset = ""
-    return files, next_offset, total_results
+    except Exception as exc:
+        print(f"Primary search unavailable; returning no results: {exc}")
+        return [], "", 0
 
 
 async def get_bad_files(query, file_type=None, offset=0, filter=False):
@@ -703,30 +732,28 @@ async def get_bad_files(query, file_type=None, offset=0, filter=False):
         mongo_filter["file_type"] = file_type
     if MULTIPLE_DB and DATABASE_URI2:
         results = await asyncio.gather(
-            _safe_model_find(Media, mongo_filter, 300),
-            _safe_model_find(Media2, mongo_filter, 300),
+            _safe_model_find(Media, mongo_filter, limit=300),
+            _safe_model_find(Media2, mongo_filter, limit=300),
         )
         files = _dedupe_files(results[1] + results[0])
     else:
-        files = await _safe_model_find(Media, mongo_filter, 300)
+        files = await _safe_model_find(Media, mongo_filter, limit=300)
     return files[:300], min(len(files), 300)
 
 
 async def get_file_details(query):
-    filt = {"_id": query}
+    """Resolve a Telegram file ID from either movie database."""
+    filt = {"file_id": query}
     if MULTIPLE_DB and DATABASE_URI2:
         results = await asyncio.gather(
-            _safe_model_find(Media, filt, 1),
-            _safe_model_find(Media2, filt, 1),
+            _safe_model_find(Media, filt, limit=1, sort_natural=False),
+            _safe_model_find(Media2, filt, limit=1, sort_natural=False),
         )
-        for filedetails in results:
-            if filedetails:
-                return filedetails
-    else:
-        filedetails = await _safe_model_find(Media, filt, 1)
-        if filedetails:
-            return filedetails
-    return []
+        for rows in results:
+            if rows:
+                return rows
+        return []
+    return await _safe_model_find(Media, filt, limit=1, sort_natural=False)
 
 
 def encode_file_id(s: bytes) -> str:
