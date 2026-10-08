@@ -19,7 +19,6 @@ from database.ia_filterdb import (
     get_file_details,
     get_bad_files,
     unpack_new_file_id,
-    cleanup_existing_bad_quality,
 )
 from database.users_chats_db import db
 from database.config_db import mdb
@@ -518,7 +517,7 @@ async def verification_help_callback(client, query):
     raise StopPropagation
 
 
-from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr, verify_tr, care_tr, care_reminder_tr, care_feedback_reason_tr, care_reminder_button_tr, small_caps
+from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr, verify_tr, care_tr, care_reminder_tr, care_feedback_reason_tr, care_reminder_button_tr, small_caps, _USER_LANGUAGE_CACHE
 
 logger = logging.getLogger(__name__)
 movie_series_db = JsTopDB(DATABASE_URI)
@@ -585,6 +584,7 @@ async def global_language_callback(client: Client, query):
     if value not in LANGUAGES:
         return await query.answer("Language unavailable.", show_alert=True)
     await db.update_user({"id": int(query.from_user.id), "language": value, "language_code": value})
+    _USER_LANGUAGE_CACHE[int(query.from_user.id)] = value
     await query.answer(tr(value, "language_saved"), show_alert=True)
     # Rebuild the normal home menu immediately; this makes the global language
     # control usable from /start instead of leaving the user on the picker.
@@ -1431,59 +1431,6 @@ async def start(client: Client, message):
             pass
     asyncio.create_task(_delete_file_after())
     return
-
-
-
-@Client.on_message(filters.command("cleanup_bad_quality") & filters.user(ADMINS))
-async def cleanup_bad_quality_command(bot, message):
-    """Run low-CPU legacy quality cleanup in small background batches."""
-    confirm = len(message.command) > 1 and message.command[1].lower() == "confirm"
-    batch = 500
-    if len(message.command) > 2:
-        try:
-            batch = max(50, min(2000, int(message.command[2])))
-        except ValueError:
-            pass
-    status = await message.reply_text(
-        "<b>🔎 QUALITY CLEANUP STARTED</b>\n\n"
-        f"Mode: <code>{'DELETE' if confirm else 'DRY RUN'}</code>\n"
-        f"Batch size: <code>{batch}</code>\n\n"
-        "This runs in small batches and yields to normal bot traffic."
-    )
-
-    async def _run():
-        try:
-            result = await cleanup_existing_bad_quality(dry_run=not confirm, batch_size=batch)
-            if result.get("busy"):
-                await status.edit_text("<b>⚠️ A quality cleanup is already running.</b>")
-                return
-            if not confirm:
-                await status.edit_text(
-                    "<b>QUALITY CLEANUP — DRY RUN COMPLETE</b>\n\n"
-                    f"Scanned bad-quality records: <code>{result['scanned']}</code>\n"
-                    f"Better copies found: <code>{result['would_delete']}</code>\n"
-                    f"Errors: <code>{result['errors']}</code>\n\n"
-                    "Nothing was deleted. If this looks correct, run "
-                    "<code>/cleanup_bad_quality confirm</code>."
-                )
-            else:
-                await status.edit_text(
-                    "<b>✅ QUALITY CLEANUP COMPLETE</b>\n\n"
-                    f"Scanned bad-quality records: <code>{result['scanned']}</code>\n"
-                    f"Better copies found: <code>{result['would_delete']}</code>\n"
-                    f"Deleted from MongoDB: <code>{result['deleted']}</code>\n"
-                    f"Errors: <code>{result['errors']}</code>\n\n"
-                    "Telegram source messages were not touched."
-                )
-        except Exception as exc:
-            try:
-                await status.edit_text(f"<b>❌ Cleanup failed:</b> <code>{exc}</code>")
-            except Exception:
-                pass
-
-    asyncio.create_task(_run())
-
-
 @Client.on_message(filters.command("delete"))
 async def delete(bot, message):
     if message.from_user.id not in ADMINS:

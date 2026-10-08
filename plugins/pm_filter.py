@@ -44,8 +44,6 @@ from database.ia_filterdb import (
 )
 import random
 import hashlib
-import os
-import html
 
 lock = asyncio.Lock()
 import traceback
@@ -60,14 +58,9 @@ BUTTONS = {}
 FILES_ID = {}
 CAP = {}
 MAX_RESULTS = {}
-
-# Extra user-help image shown when a movie/series search returns no result.
-# Kept inside the project so the bot does not depend on a third-party image URL.
-SPELLING_GUIDE_IMAGE = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "assets",
-    "check_spelling_google.png",
-)
+RESULT_SETTINGS = {}
+RESULT_LANG = {}
+RESULT_ADS = {}
 
 
 async def _show_photo_page(query, caption, reply_markup, photo=None):
@@ -203,9 +196,16 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
 
 
+async def _record_top_message(user_id, message_text):
+    try:
+        await mdb.update_top_messages(user_id, message_text)
+    except Exception:
+        pass
+
+
 @Client.on_message(filters.private & filters.text & filters.incoming)
 async def pm_search(client, message):
-    await mdb.update_top_messages(message.from_user.id, message.text)
+    asyncio.create_task(_record_top_message(message.from_user.id, message.text))
     bot_id = client.me.id
     user_id = message.from_user.id
     # First-time private users must choose the global UI language before search.
@@ -243,7 +243,7 @@ async def pm_search(client, message):
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def group_search(client, message):
     # await message.react(emoji=random.choice(REACTIONS))
-    await mdb.update_top_messages(message.from_user.id, message.text)
+    asyncio.create_task(_record_top_message(message.from_user.id, message.text))
     user_id = message.from_user.id if message.from_user else None
     chat_id = message.chat.id
     settings = await get_settings(chat_id)
@@ -444,8 +444,8 @@ async def admin_commands(client, query):
 
 @Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
-    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     ident, req, key, offset = query.data.split("_")
+    ui_lang = RESULT_LANG.get(key) or await get_user_language(query.from_user.id, query.from_user)
     if int(req) not in [query.from_user.id, 0]:
         return await query.answer(
             script.ALRT_TXT.format(query.from_user.first_name), show_alert=True
@@ -470,17 +470,8 @@ async def next_page(bot, query):
     if not files:
         return await query.answer(tr(ui_lang, "no_more"), show_alert=True)
     temp.FILES_ID[key] = files
-    ads, ads_name, _ = await mdb.get_advirtisment()
-    ads_text = ""
-    if ads is not None and ads_name is not None:
-        ads_url = f"https://telegram.dog/{temp.U_NAME}?start=ads"
-        ads_text = f"<a href={ads_url}>{ads_name}</a>"
-    js_ads = (
-        f"\n━━━━━━━━━━━━━━━━━━\n <b>{ads_text}</b> \n━━━━━━━━━━━━━━━━━━"
-        if ads_text
-        else ""
-    )
-    settings = await get_settings(await _group_id_for_query(query))
+    js_ads = RESULT_ADS.get(key, "")
+    settings = RESULT_SETTINGS.get(key) or await get_settings(await _group_id_for_query(query))
     del_msg = (
         f"\n\n<blockquote>⚠️ <b>THIS MESSAGE WILL BE AUTO DELETE AFTER {_delete_time_text(int(settings.get('delete_time', DELETE_TIME)))} TO AVOID COPYRIGHT ISSUES 🗑</b></blockquote>"
         if settings.get("auto_delete", False)
@@ -574,8 +565,8 @@ async def next_page(bot, query):
 
 @Client.on_callback_query(filters.regex(r"^seasons#"))
 async def seasons_cb_handler(client: Client, query: CallbackQuery):
-    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     _, key, offset, req = query.data.split("#")
+    ui_lang = RESULT_LANG.get(key) or await get_user_language(query.from_user.id, query.from_user)
     if int(req) != query.from_user.id:
         return await query.answer(script.ALRT_TXT, show_alert=True)
     btn = []
@@ -614,8 +605,8 @@ async def seasons_cb_handler(client: Client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex(r"^season_search#"))
 async def season_search(client: Client, query: CallbackQuery):
-    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     _, season, key, offset, orginal_offset, req = query.data.split("#")
+    ui_lang = RESULT_LANG.get(key) or await get_user_language(query.from_user.id, query.from_user)
     seas = int(season.split(" ", 1)[1])
     if seas < 10:
         seas = f"S0{seas}"
@@ -664,19 +655,10 @@ async def season_search(client: Client, query: CallbackQuery):
 
     temp.FILES_ID[key] = files
     reqnxt = query.from_user.id if query.from_user else 0
-    settings = await get_settings(await _group_id_for_query(query))
+    settings = RESULT_SETTINGS.get(key) or await get_settings(await _group_id_for_query(query))
     if query.message.chat.type != enums.ChatType.PRIVATE:
         temp.CHAT[query.from_user.id] = query.message.chat.id
-    ads, ads_name, _ = await mdb.get_advirtisment()
-    ads_text = ""
-    if ads is not None and ads_name is not None:
-        ads_url = f"https://telegram.dog/{temp.U_NAME}?start=ads"
-        ads_text = f"<a href={ads_url}>{ads_name}</a>"
-    js_ads = (
-        f"\n━━━━━━━━━━━━━━━━━━\n <b>{ads_text}</b> \n━━━━━━━━━━━━━━━━━━"
-        if ads_text
-        else ""
-    )
+    js_ads = RESULT_ADS.get(key, "")
     links = ""
     if settings.get("link", True):
         btn = []
@@ -779,8 +761,8 @@ async def season_search(client: Client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex(r"^years#"))
 async def years_cb_handler(client: Client, query: CallbackQuery):
-    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     _, key, offset, req = query.data.split("#")
+    ui_lang = RESULT_LANG.get(key) or await get_user_language(query.from_user.id, query.from_user)
     if int(req) != query.from_user.id:
         return await query.answer(script.ALRT_TXT, show_alert=True)
     btn = []
@@ -815,8 +797,8 @@ async def years_cb_handler(client: Client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex(r"^years_search#"))
 async def year_search(client: Client, query: CallbackQuery):
-    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     _, year, key, offset, orginal_offset, req = query.data.split("#")
+    ui_lang = RESULT_LANG.get(key) or await get_user_language(query.from_user.id, query.from_user)
     if int(req) != query.from_user.id:
         return await query.answer(script.ALRT_TXT, show_alert=True)
     offset = int(offset)
@@ -843,19 +825,10 @@ async def year_search(client: Client, query: CallbackQuery):
 
     temp.FILES_ID[key] = files
     reqnxt = query.from_user.id if query.from_user else 0
-    settings = await get_settings(await _group_id_for_query(query))
+    settings = RESULT_SETTINGS.get(key) or await get_settings(await _group_id_for_query(query))
     if query.message.chat.type != enums.ChatType.PRIVATE:
         temp.CHAT[query.from_user.id] = query.message.chat.id
-    ads, ads_name, _ = await mdb.get_advirtisment()
-    ads_text = ""
-    if ads is not None and ads_name is not None:
-        ads_url = f"https://telegram.dog/{temp.U_NAME}?start=ads"
-        ads_text = f"<a href={ads_url}>{ads_name}</a>"
-    js_ads = (
-        f"\n━━━━━━━━━━━━━━━━━━\n <b>{ads_text}</b> \n━━━━━━━━━━━━━━━━━━"
-        if ads_text
-        else ""
-    )
+    js_ads = RESULT_ADS.get(key, "")
     links = ""
     if settings.get("link", True):
         btn = []
@@ -962,8 +935,8 @@ async def year_search(client: Client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex(r"^qualities#"))
 async def quality_cb_handler(client: Client, query: CallbackQuery):
-    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     _, key, offset, req = query.data.split("#")
+    ui_lang = RESULT_LANG.get(key) or await get_user_language(query.from_user.id, query.from_user)
     if int(req) != query.from_user.id:
         return await query.answer(script.ALRT_TXT, show_alert=True)
     btn = []
@@ -1005,7 +978,7 @@ async def quality_search(client: Client, query: CallbackQuery):
     if int(req) != query.from_user.id:
         return await query.answer(script.ALRT_TXT, show_alert=True)
     offset = int(offset)
-    ui_lang = await get_user_language(query.from_user.id, query.from_user)
+    ui_lang = RESULT_LANG.get(key) or await get_user_language(query.from_user.id, query.from_user)
     search = BUTTONS.get(key)
     cap = CAP.get(key)
     if not search:
@@ -1030,7 +1003,7 @@ async def quality_search(client: Client, query: CallbackQuery):
 
     temp.FILES_ID[key] = files
     reqnxt = query.from_user.id if query.from_user else 0
-    settings = await get_settings(await _group_id_for_query(query))
+    settings = RESULT_SETTINGS.get(key) or await get_settings(await _group_id_for_query(query))
     del_msg = (
         f"\n\n<blockquote>⚠️ <b>THIS MESSAGE WILL BE AUTO DELETE AFTER {_delete_time_text(int(settings.get('delete_time', DELETE_TIME)))} TO AVOID COPYRIGHT ISSUES 🗑</b></blockquote>"
         if settings.get("auto_delete") else ""
@@ -1039,16 +1012,7 @@ async def quality_search(client: Client, query: CallbackQuery):
         temp.CHAT[query.from_user.id] = query.message.chat.id
     if query.message.chat.type != enums.ChatType.PRIVATE:
         temp.CHAT[query.from_user.id] = query.message.chat.id
-    ads, ads_name, _ = await mdb.get_advirtisment()
-    ads_text = ""
-    if ads is not None and ads_name is not None:
-        ads_url = f"https://telegram.dog/{temp.U_NAME}?start=ads"
-        ads_text = f"<a href={ads_url}>{ads_name}</a>"
-    js_ads = (
-        f"\n━━━━━━━━━━━━━━━━━━\n <b>{ads_text}</b> \n━━━━━━━━━━━━━━━━━━"
-        if ads_text
-        else ""
-    )
+    js_ads = RESULT_ADS.get(key, "")
     links = ""
     if settings.get("link", True):
         btn = []
@@ -1154,8 +1118,8 @@ async def quality_search(client: Client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex(r"^languages#"))
 async def languages_cb_handler(client: Client, query: CallbackQuery):
-    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     _, key, offset, req = query.data.split("#")
+    ui_lang = RESULT_LANG.get(key) or await get_user_language(query.from_user.id, query.from_user)
     if int(req) != query.from_user.id:
         return await query.answer(script.ALRT_TXT, show_alert=True)
     btn = []
@@ -1190,11 +1154,11 @@ async def languages_cb_handler(client: Client, query: CallbackQuery):
 @Client.on_callback_query(filters.regex(r"^lang_search#"))
 async def lang_search(client: Client, query: CallbackQuery):
     _, lang, key, offset, orginal_offset, req = query.data.split("#")
+    ui_lang = RESULT_LANG.get(key) or await get_user_language(query.from_user.id, query.from_user)
     lang2 = lang[:3]
     if int(req) != query.from_user.id:
         return await query.answer(script.ALRT_TXT, show_alert=True)
     offset = int(offset)
-    ui_lang = await get_user_language(query.from_user.id, query.from_user)
     search = BUTTONS.get(key)
     cap = CAP.get(key)
     if not search:
@@ -1233,7 +1197,7 @@ async def lang_search(client: Client, query: CallbackQuery):
 
     temp.FILES_ID[key] = files
     reqnxt = query.from_user.id if query.from_user else 0
-    settings = await get_settings(await _group_id_for_query(query))
+    settings = RESULT_SETTINGS.get(key) or await get_settings(await _group_id_for_query(query))
     del_msg = (
         f"\n\n<blockquote>⚠️ <b>THIS MESSAGE WILL BE AUTO DELETE AFTER {_delete_time_text(int(settings.get('delete_time', DELETE_TIME)))} TO AVOID COPYRIGHT ISSUES 🗑</b></blockquote>"
         if settings.get("auto_delete") else ""
@@ -1243,17 +1207,7 @@ async def lang_search(client: Client, query: CallbackQuery):
     group_id = query.message.chat.id
     if query.message.chat.type != enums.ChatType.PRIVATE:
         temp.CHAT[query.from_user.id] = query.message.chat.id
-    ads, ads_name, _ = await mdb.get_advirtisment()
-    ads_text = ""
-    if ads is not None and ads_name is not None:
-        ads_url = f"https://telegram.dog/{temp.U_NAME}?start=ads"
-        ads_text = f"<a href={ads_url}>{ads_name}</a>"
-
-    js_ads = (
-        f"\n━━━━━━━━━━━━━━━━━━\n <b>{ads_text}</b> \n━━━━━━━━━━━━━━━━━━"
-        if ads_text
-        else ""
-    )
+    js_ads = RESULT_ADS.get(key, "")
     links = ""
     if settings.get("link", True):
         btn = []
@@ -2320,8 +2274,12 @@ async def _edit_result_page(query, cap, links, suffix, reply_markup, link_mode):
         message.photo or message.video or message.animation or message.document
     ))
     if not media_message:
+        # LINK mode already has the poster description in its separate photo
+        # message. Do not repeat that description in the link message after a
+        # filter/pagination click.
+        body = (links + suffix) if link_mode else (cap + links + suffix)
         return await message.edit_text(
-            text=cap + links + suffix,
+            text=body,
             disable_web_page_preview=True,
             parse_mode=enums.ParseMode.HTML,
             reply_markup=reply_markup,
@@ -2359,29 +2317,36 @@ def _spell_norm(value):
 # Only the final file lookup uses IMDX's own database.
 
 async def ai_spell_check(chat_id, wrong_name):
-    async def search_movie(wrong_name):
-        search_results = imdb_spelling.search_movie(wrong_name)
-        if not search_results or not hasattr(search_results, "titles"):
-            return []
-        movie_list = [movie.title for movie in search_results.titles]
-        return movie_list
-
-    movie_list = await search_movie(wrong_name)
-    if not movie_list:
-        return
-
-    for _ in range(5):
-        closest_match = process.extractOne(wrong_name, movie_list)
+    """Find a likely movie title without blocking Pyrogram's event loop."""
+    try:
+        search_results = await asyncio.to_thread(imdb_spelling.search_movie, wrong_name)
+    except Exception:
+        return None
+    if not search_results or not hasattr(search_results, "titles"):
+        return None
+    movie_list = [getattr(movie, "title", "") for movie in search_results.titles]
+    movie_list = [title for title in movie_list if title]
+    for _ in range(min(5, len(movie_list))):
+        closest_match = process.extractOne(wrong_name, movie_list, scorer=fuzz.ratio)
         if not closest_match or closest_match[1] <= 80:
-            return
-
+            return None
         movie = closest_match[0]
-        files, _, _ = await get_search_results(
-            chat_id=chat_id, query=movie, filter=True
-        )
+        files, _, _ = await get_search_results(chat_id=chat_id, query=movie, filter=True)
         if files:
             return movie
         movie_list.remove(movie)
+    return None
+
+
+async def _send_no_result(message, settings):
+    try:
+        no_result = await message.reply_text(script.NO_RESULT_TXT, parse_mode=enums.ParseMode.HTML)
+        if settings.get("auto_delete", False):
+            asyncio.create_task(_delete_after(no_result, int(settings.get("delete_time", DELETE_TIME)), message))
+        return no_result
+    except Exception as exc:
+        logger.error("Could not send no-result message: %s", exc)
+        return None
 
 
 async def auto_filter(client, msg, spoll=False, pm_mode=False):
@@ -2399,32 +2364,22 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
             max_results = max(1, min(20, int(settings.get("max_results", MAX_BTN))))
         except (TypeError, ValueError):
             max_results = int(MAX_BTN)
-        searching_labels = {
-            "en":"sᴇᴀʀᴄʜɪɴɢ","hi":"खोजा जा रहा है","ta":"தேடப்படுகிறது","te":"వెతుకుతోంది",
-            "kn":"ಹುಡುಕಲಾಗುತ್ತಿದೆ","ml":"തിരയുന്നു","bn":"খোঁজা হচ্ছে","mr":"शोधत आहे",
-            "gu":"શોધી રહ્યા છીએ","pa":"ਖੋਜਿਆ ਜਾ ਰਿਹਾ ਹੈ","ur":"تلاش جاری ہے","as":"বিচৰা হৈছে",
-            "ne":"खोजिँदैछ","hinglish":"SEARCH HO RAHA HAI"
-        }
-        searching_msg = await msg.reply_text(
-            f"🎯 {searching_labels.get(ui_lang, searching_labels['en'])} {search}"
-        )
         files, offset, total_results = await get_search_results(search, max_results=max_results)
-        await searching_msg.delete()
         if not files:
             if settings.get("spell_check", False):
-                ai_sts = await msg.reply_text("ᴄʜᴇᴄᴋɪɴɢ ʏᴏᴜʀ sᴘᴇʟʟɪɴɢ...")
-                is_misspelled = await ai_spell_check(chat_id=chat_id, wrong_name=search)
+                # IMDbKit is blocking; keep it off the event loop and cap the
+                # correction stage so a typo cannot stall normal searches.
+                try:
+                    is_misspelled = await asyncio.wait_for(
+                        ai_spell_check(chat_id=chat_id, wrong_name=search),
+                        timeout=2.2,
+                    )
+                except (asyncio.TimeoutError, Exception):
+                    is_misspelled = None
                 if is_misspelled:
-                    await ai_sts.edit(f'✅ Aɪ Sᴜɢɢᴇsᴛᴇᴅ: <code>{is_misspelled}</code>\n🔍 Searching for it...')
                     msg.text = is_misspelled
-                    result = await auto_filter(client, msg)
-                    try:
-                        await ai_sts.delete()
-                    except Exception:
-                        pass
-                    return result
-                await ai_sts.delete()
-                return await advantage_spell_chok(msg)
+                    return await auto_filter(client, msg)
+                return await _send_no_result(msg, settings)
             try:
                 no_result = await msg.reply_text(
                     script.NO_RESULT_TXT,
@@ -2458,6 +2413,8 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
     except (TypeError, ValueError):
         max_results = int(MAX_BTN)
     MAX_RESULTS[key] = max_results
+    RESULT_SETTINGS[key] = settings.copy()
+    RESULT_LANG[key] = ui_lang
     del_msg = (
         f"\n\n<blockquote>⚠️ <b>THIS MESSAGE WILL BE AUTO DELETE AFTER {_delete_time_text(int(settings.get('delete_time', DELETE_TIME)))} TO AVOID COPYRIGHT ISSUES 🗑</b></blockquote>"
         if settings.get("auto_delete", False)
@@ -2619,6 +2576,7 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
         if ads_text
         else ""
     )
+    RESULT_ADS[key] = js_ads
     CAP[key] = cap
 
     # Telegram photo captions are limited to 1024 characters. In LINK mode
@@ -2739,107 +2697,3 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
                 _delete_after(k, int(settings.get("delete_time", DELETE_TIME)), message)
             )
     return
-
-
-async def advantage_spell_chok(message):
-    mv_id = message.id
-    search = message.text
-    chat_id = message.chat.id
-    settings = await get_settings(chat_id)
-    query = re.sub(
-        r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|giv(e)?|gib)(\sme)?)|movie(s)?|new|latest|br((o|u)h?)*|^h(e|a)?(l)*(o)*|mal(ayalam)?|t(h)?amil|file|that|find|und(o)*|kit(t(i|y)?)?o(w)?|thar(u)?(o)*w?|kittum(o)*|aya(k)*(um(o)*)?|full\smovie|any(one)|with\ssubtitle(s)?)",
-        "",
-        message.text,
-        flags=re.IGNORECASE,
-    )
-    query = query.strip() + " movie"
-    try:
-        movies = await get_poster(search, bulk=True)
-    except:
-        k = await message.reply(script.I_CUDNT.format(message.from_user.mention))
-        await asyncio.sleep(60)
-        await k.delete()
-        try:
-            await message.delete()
-        except:
-            pass
-        return
-    if not movies:
-        google = quote_plus(search)
-        button = [
-            [
-                InlineKeyboardButton(
-                    "🔍 ᴄʜᴇᴄᴋ sᴘᴇʟʟɪɴɢ ᴏɴ ɢᴏᴏɢʟᴇ 🔍",
-                    url=f"https://www.google.com/search?q={google}",
-                )
-            ]
-        ]
-        # Give the user a clear correction workflow: copy the exact title from
-        # Google and send it back using the bot's expected naming format.
-        guide_caption = f"""🤧 <b>I couldn't find any movie or series with this name:</b>
-
-<code>{html.escape(search)}</code>
-
-📋 <b>COPY THE CORRECT NAME, PASTE &amp; SEND</b>
-
-<b>FORMAT RULES:</b>
-🎬 <b>Webseries:</b> <code>Reacher S04E07</code> ✅
-❌ Not: <code>Reacher season 12 episode 7</code>
-
-🎥 <b>Movie:</b> <code>Dhurandhar The Revenge</code> ✅
-❌ Not: <code>Dhurandhar: The Revenge</code>
-
-🔎 Tap <b>CHECK SPELLING ON GOOGLE</b>, copy the <b>exact correct name</b> from Google, then paste and send it here using the format above."""
-        if os.path.isfile(SPELLING_GUIDE_IMAGE):
-            try:
-                k = await message.reply_photo(
-                    photo=SPELLING_GUIDE_IMAGE,
-                    caption=guide_caption,
-                    parse_mode=enums.ParseMode.HTML,
-                    reply_markup=InlineKeyboardMarkup(button),
-                )
-            except FloodWait as exc:
-                await asyncio.sleep(min(int(exc.value), 15))
-                k = await message.reply_photo(
-                    photo=SPELLING_GUIDE_IMAGE,
-                    caption=guide_caption,
-                    parse_mode=enums.ParseMode.HTML,
-                    reply_markup=InlineKeyboardMarkup(button),
-                )
-        else:
-            # Safe fallback if an incomplete deployment is missing the bundled image.
-            k = await message.reply_text(
-                text=guide_caption,
-                parse_mode=enums.ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup(button),
-            )
-        await asyncio.sleep(120)
-        await k.delete()
-        try:
-            await message.delete()
-        except:
-            pass
-        return
-    user = message.from_user.id if message.from_user else 0
-    buttons = [
-        [
-            InlineKeyboardButton(
-                text=movie.get("title"), callback_data=f"spol#{movie.movieID}#{user}"
-            )
-        ]
-        for movie in movies
-    ]
-    buttons.append(
-        [InlineKeyboardButton(text="🚫 ᴄʟᴏsᴇ 🚫", callback_data="close_data")]
-    )
-    d = await message.reply_text(
-        text=script.CUDNT_FND.format(message.from_user.mention),
-        reply_markup=InlineKeyboardMarkup(buttons),
-        reply_to_message_id=message.id,
-    )
-    await asyncio.sleep(120)
-    await d.delete()
-    try:
-        await message.delete()
-    except:
-        pass
