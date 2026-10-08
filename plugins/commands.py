@@ -19,6 +19,7 @@ from database.ia_filterdb import (
     get_file_details,
     get_bad_files,
     unpack_new_file_id,
+    cleanup_existing_bad_quality,
 )
 from database.users_chats_db import db
 from database.config_db import mdb
@@ -1430,6 +1431,42 @@ async def start(client: Client, message):
             pass
     asyncio.create_task(_delete_file_after())
     return
+
+
+
+@Client.on_message(filters.command("cleanup_bad_quality") & filters.user(ADMINS))
+async def cleanup_bad_quality_command(bot, message):
+    """One-time MongoDB cleanup for legacy bad-quality files.
+
+    Default invocation is a dry run. Add ``confirm`` to permanently remove only
+    bad-quality records that already have a clearly better copy in the database.
+    Telegram source messages are never touched by this legacy cleanup.
+    """
+    confirm = len(message.command) > 1 and message.command[1].lower() == "confirm"
+    status = await message.reply_text("<b>🔎 Scanning existing database...</b>")
+    try:
+        result = await cleanup_existing_bad_quality(dry_run=not confirm)
+    except Exception as exc:
+        return await status.edit_text(f"<b>❌ Cleanup failed:</b> <code>{exc}</code>")
+
+    if not confirm:
+        await status.edit_text(
+            "<b>QUALITY CLEANUP — DRY RUN</b>\n\n"
+            f"Scanned: <code>{result['scanned']}</code>\n"
+            f"Bad-quality records found: <code>{result['bad_found']}</code>\n"
+            f"Can safely remove because a better copy exists: <code>{result['would_delete']}</code>\n\n"
+            "Nothing was deleted.\n\n"
+            "If the count looks correct, run <code>/cleanup_bad_quality confirm</code>."
+        )
+    else:
+        await status.edit_text(
+            "<b>✅ QUALITY CLEANUP COMPLETE</b>\n\n"
+            f"Scanned: <code>{result['scanned']}</code>\n"
+            f"Bad-quality records found: <code>{result['bad_found']}</code>\n"
+            f"Deleted from MongoDB: <code>{result['deleted']}</code>\n"
+            f"Errors: <code>{result['errors']}</code>\n\n"
+            "Telegram source messages were not touched."
+        )
 
 
 @Client.on_message(filters.command("delete"))

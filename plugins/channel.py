@@ -69,7 +69,9 @@ async def media(bot, message):
     if media.mime_type in ["video/mp4", "video/x-matroska", "document/mp4"]:
         media.file_type = message.media.value
         media.caption = message.caption
-        success_sts = await save_file(media)
+        success_sts = await save_file(
+            media, bot=bot, source_chat_id=message.chat.id, source_message_id=message.id
+        )
         if success_sts == "suc" and await db.get_send_movie_update_status(bot_id):
             file_id, file_ref = unpack_new_file_id(media.file_id)
             await queue_movie_file(bot, media)
