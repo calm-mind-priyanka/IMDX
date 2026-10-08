@@ -517,7 +517,7 @@ async def verification_help_callback(client, query):
     raise StopPropagation
 
 
-from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr, verify_tr, care_tr, care_reminder_tr, care_feedback_reason_tr, care_reminder_button_tr, small_caps, _USER_LANGUAGE_CACHE
+from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr, verify_tr, care_tr, care_reminder_tr, care_feedback_reason_tr, care_reminder_button_tr, small_caps
 
 logger = logging.getLogger(__name__)
 movie_series_db = JsTopDB(DATABASE_URI)
@@ -584,7 +584,6 @@ async def global_language_callback(client: Client, query):
     if value not in LANGUAGES:
         return await query.answer("Language unavailable.", show_alert=True)
     await db.update_user({"id": int(query.from_user.id), "language": value, "language_code": value})
-    _USER_LANGUAGE_CACHE[int(query.from_user.id)] = value
     await query.answer(tr(value, "language_saved"), show_alert=True)
     # Rebuild the normal home menu immediately; this makes the global language
     # control usable from /start instead of leaving the user on the picker.
@@ -1431,6 +1430,8 @@ async def start(client: Client, message):
             pass
     asyncio.create_task(_delete_file_after())
     return
+
+
 @Client.on_message(filters.command("delete"))
 async def delete(bot, message):
     if message.from_user.id not in ADMINS:

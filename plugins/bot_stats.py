@@ -1,29 +1,13 @@
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors.exceptions.bad_request_400 import MessageTooLong
-from info import ADMINS, LOG_CHANNEL, USERNAME, MULTIPLE_DB, DATABASE_URI2
-from database.users_chats_db import db, mydb as user_db
-from database.ia_filterdb import Media, Media2, mydb as movie_db1, mydb2 as movie_db2
+from info import ADMINS, LOG_CHANNEL, USERNAME
+from database.users_chats_db import db
+from database.ia_filterdb import Media, get_files_db_size
 from utils import get_size, temp
 from Script import script
 import psutil
 import time
-import asyncio
-
-_PROCESS_START = time.monotonic()
-
-
-async def _db_stats(database):
-    try:
-        stats = await database.command("dbstats")
-        return stats.get("dataSize", 0), stats.get("indexSize", 0)
-    except Exception:
-        return 0, 0
-
-
-def _storage_text(pair):
-    return get_size(sum(pair))
-
 
 
 @Client.on_message(filters.new_chat_members & filters.group)
@@ -116,44 +100,20 @@ async def groups_list(bot, message):
 
 @Client.on_message(filters.command("stats") & filters.user(ADMINS) & filters.incoming)
 async def get_ststs(bot, message):
-    users, groups, d3, d1, d2, files1, files2 = await asyncio.gather(
-        db.total_users_count(),
-        db.total_chat_count(),
-        _db_stats(user_db),
-        _db_stats(movie_db1),
-        _db_stats(movie_db2) if (MULTIPLE_DB and DATABASE_URI2) else asyncio.sleep(0, result=(0, 0)),
-        Media.count_documents(),
-        Media2.count_documents() if (MULTIPLE_DB and DATABASE_URI2) else asyncio.sleep(0, result=0),
-    )
-    total_files = files1 + files2
-    uptime_seconds = int(time.monotonic() - _PROCESS_START)
-    uptime = time.strftime("%dd %Hh %Mm %Ss", time.gmtime(uptime_seconds))
+    users = await db.total_users_count()
+    groups = await db.total_chat_count()
+    size = get_size(await db.get_db_size())
+    free = get_size(536870912)
+    files = await Media.count_documents()
+    db2_size = get_size(await get_files_db_size())
+    db2_free = get_size(536870912)
+    uptime = time.strftime("%Hh %Mm %Ss", time.gmtime(time.time() - time.time()))
     ram = psutil.virtual_memory().percent
-    cpu = psutil.cpu_percent(interval=None)
-    d1_used = _storage_text(d1)
-    d2_used = _storage_text(d2)
-    d3_used = _storage_text(d3)
-    total_movie_storage = get_size(sum(d1) + sum(d2))
-    total_storage = get_size(sum(d1) + sum(d2) + sum(d3))
+    cpu = psutil.cpu_percent()
     await message.reply_text(
-        f"<b><u>♻️ ʙᴏᴛ ᴅᴀᴛᴀʙᴀsᴇ</u>\n\n"
-        f"» ᴜsᴇʀs - <code>{users}</code>\n"
-        f"» ɢʀᴏᴜᴘs - <code>{groups}</code>\n\n"
-        f"<u>🎬 D1 — ᴍᴏᴠɪᴇ ᴅᴀᴛᴀʙᴀsᴇ (ᴘʀɪᴍᴀʀʏ)</u>\n"
-        f"» ғɪʟᴇs - <code>{files1}</code>\n"
-        f"» sᴛᴏʀᴀɢᴇ (ᴅᴀᴛᴀ + ɪɴᴅᴇx) - <code>{d1_used}</code>\n\n"
-        f"<u>🎬 D2 — ᴍᴏᴠɪᴇ ᴅᴀᴛᴀʙᴀsᴇ (sᴇᴄᴏɴᴅᴀʀʏ)</u>\n"
-        f"» ғɪʟᴇs - <code>{files2}</code>\n"
-        f"» sᴛᴏʀᴀɢᴇ (ᴅᴀᴛᴀ + ɪɴᴅᴇx) - <code>{d2_used}</code>\n\n"
-        f"<u>🤖 D3 — ᴜsᴇʀ / ʙᴏᴛ ᴅᴀᴛᴀʙᴀsᴇ</u>\n"
-        f"» ᴜsᴇʀ + ɢʀᴏᴜᴘ + ʙᴏᴛ ᴅᴀᴛᴀ sᴛᴏʀᴀɢᴇ - <code>{d3_used}</code>\n\n"
-        f"» ᴛᴏᴛᴀʟ ᴍᴏᴠɪᴇ ғɪʟᴇs - <code>{total_files}</code>\n"
-        f"» ᴛᴏᴛᴀʟ ᴍᴏᴠɪᴇ sᴛᴏʀᴀɢᴇ - <code>{total_movie_storage}</code>\n"
-        f"» ᴛᴏᴛᴀʟ ᴅʙ sᴛᴏʀᴀɢᴇ - <code>{total_storage}</code>\n\n"
-        f"<u>🛠️ ʙᴏᴛ ᴅᴇᴛᴀɪʟs</u>\n"
-        f"» ᴜᴘᴛɪᴍᴇ - <code>{uptime}</code>\n"
-        f"» ʀᴀᴍ - <code>{ram}%</code>\n"
-        f"» ᴄᴘᴜ - <code>{cpu}%</code></b>"
+        script.STATUS_TXT.format(
+            users, groups, size, free, files, db2_size, db2_free, uptime, ram, cpu
+        )
     )
 
 
