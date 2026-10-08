@@ -89,15 +89,9 @@ else:
 
 
 
-_LEGACY_BAD_QUALITY_LABELS = {
-    "CAM", "CAMRIP", "HDCAM", "HDTS", "HDTC", "PREHD", "PREDVD", "PRE-DVD", "DVDSCR"
-}
-_GOOD_QUALITY_MIN_SCORE = 65
-_QUALITY_BATCH_SIZE = max(100, int(__import__('os').environ.get("QUALITY_CLEANUP_BATCH", "500")))
 _QUALITY_REPLACE_ENABLED = __import__('os').environ.get("QUALITY_AUTO_REPLACE", "1").lower() not in {"0", "false", "no", "off"}
 _quality_queue = None
 _quality_worker_task = None
-_quality_cleanup_running = False
 
 
 def _quality_models():
@@ -124,10 +118,19 @@ async def _quality_worker():
             new_rank = (int(new_score or 0), int(new_resolution or 0))
             for model in _quality_models():
                 try:
-                    candidates = await model.find({
+                    candidate_filter = {
                         "content_key": content_key,
                         "_id": {"$ne": file_id},
-                    }).sort([("quality_score", -1), ("resolution_score", -1)]).limit(8).to_list(length=8)
+                    }
+                    if language_key:
+                        candidate_filter["$or"] = [
+                            {"language_key": language_key},
+                            {"language_key": None},
+                            {"language_key": ""},
+                        ]
+                    candidates = await model.find(candidate_filter).sort(
+                        [("quality_score", -1), ("resolution_score", -1)]
+                    ).limit(12).to_list(length=12)
                 except Exception:
                     candidates = []
                 for row in candidates:
@@ -178,91 +181,6 @@ def _schedule_quality_check(model, file_id, content_key, language_key, score, re
             pass
     except RuntimeError:
         pass
-
-
-async def cleanup_existing_bad_quality(dry_run=True, batch_size=None, max_batches=None):
-    """Low-CPU, resumable-style cleanup for legacy bad-quality records.
-
-    Instead of loading 100k/900k documents into RAM, this scans only records
-    explicitly marked with legacy bad-quality labels in small batches. For each
-    bad record, MongoDB's content_key index is used to check whether a better
-    copy exists. This makes the operation practical on large collections.
-    """
-    global _quality_cleanup_running
-    if _quality_cleanup_running:
-        return {"busy": True, "scanned": 0, "bad_found": 0, "would_delete": 0, "deleted": 0, "errors": 0}
-    _quality_cleanup_running = True
-    batch_size = max(50, int(batch_size or _QUALITY_BATCH_SIZE))
-    results = {"busy": False, "scanned": 0, "bad_found": 0, "would_delete": 0, "deleted": 0, "errors": 0}
-    try:
-        for model in _quality_models():
-            try:
-                cursor = model.find({"quality_label": {"$in": list(_LEGACY_BAD_QUALITY_LABELS)}}).sort("$natural", 1)
-                batches = 0
-                while True:
-                    rows = await cursor.to_list(length=batch_size)
-                    if not rows:
-                        break
-                    batches += 1
-                    for row in rows:
-                        results["scanned"] += 1
-                        results["bad_found"] += 1
-                        key = getattr(row, "content_key", None) or _content_key(
-                            getattr(row, "file_name", ""), getattr(row, "caption", None)
-                        )
-                        if not key:
-                            continue
-                        lang = getattr(row, "language_key", None) or ""
-                        score = int(getattr(row, "quality_score", None) or _quality_details(
-                            f"{getattr(row, 'file_name', '')} {getattr(row, 'caption', '') or ''}"
-                        )[1])
-                        resolution = int(getattr(row, "resolution_score", None) or 0)
-                        good_filter = {
-                            "content_key": key,
-                            "quality_score": {"$gte": max(_GOOD_QUALITY_MIN_SCORE, score + 1)},
-                            "quality_label": {"$nin": list(_LEGACY_BAD_QUALITY_LABELS)},
-                        }
-                        if lang:
-                            good_filter["language_key"] = lang
-                        try:
-                            better_rows = await model.find(good_filter).sort(
-                                [("quality_score", -1), ("resolution_score", -1)]
-                            ).limit(1).to_list(length=1)
-                            better = better_rows[0] if better_rows else None
-                        except Exception as exc:
-                            results["errors"] += 1
-                            print(f"Quality cleanup lookup failed: {exc}")
-                            continue
-                        if not better:
-                            continue
-                        best_rank = (
-                            int(getattr(better, "quality_score", None) or 0),
-                            int(getattr(better, "resolution_score", None) or 0),
-                        )
-                        if best_rank <= (score, resolution):
-                            continue
-                        results["would_delete"] += 1
-                        if not dry_run:
-                            try:
-                                deleted = await model.collection.delete_one({"_id": getattr(row, "file_id", None)})
-                                if getattr(deleted, "deleted_count", 0) == 1:
-                                    results["deleted"] += 1
-                            except Exception as exc:
-                                results["errors"] += 1
-                                print(f"Quality cleanup delete failed: {exc}")
-                    # Give Pyrogram and search requests time on small Koyeb instances.
-                    await asyncio.sleep(0.2)
-                    if max_batches and batches >= int(max_batches):
-                        break
-            except Exception as exc:
-                results["errors"] += 1
-                print(f"Quality cleanup scan failed: {exc}")
-    finally:
-        _quality_cleanup_running = False
-    return results
-
-async def get_files_db_size():
-    return (await mydb.command("dbstats"))["dataSize"]
 
 
 async def _db_size_mb(database):
