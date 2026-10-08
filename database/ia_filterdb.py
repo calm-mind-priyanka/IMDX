@@ -3,7 +3,7 @@ import asyncio
 import base64
 import re
 from functools import lru_cache
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from pyrogram.file_id import FileId
 from pymongo.errors import DuplicateKeyError
@@ -48,16 +48,9 @@ class Media(Document):
     mime_type = fields.StrField(allow_none=True)
     caption = fields.StrField(allow_none=True)
     file_type = fields.StrField(allow_none=True)
-    source_chat_id = fields.IntField(allow_none=True)
-    source_message_id = fields.IntField(allow_none=True)
-    content_key = fields.StrField(allow_none=True)
-    quality_label = fields.StrField(allow_none=True)
-    quality_score = fields.IntField(allow_none=True)
-    resolution_score = fields.IntField(allow_none=True)
-    language_key = fields.StrField(allow_none=True)
 
     class Meta:
-        indexes = ("$file_name", "content_key")
+        indexes = ("$file_name",)
         collection_name = COLLECTION_NAME
 
 
@@ -72,115 +65,16 @@ if MULTIPLE_DB and DATABASE_URI2:
         mime_type = fields.StrField(allow_none=True)
         caption = fields.StrField(allow_none=True)
         file_type = fields.StrField(allow_none=True)
-        source_chat_id = fields.IntField(allow_none=True)
-        source_message_id = fields.IntField(allow_none=True)
-        content_key = fields.StrField(allow_none=True)
-        quality_label = fields.StrField(allow_none=True)
-        quality_score = fields.IntField(allow_none=True)
-        resolution_score = fields.IntField(allow_none=True)
-        language_key = fields.StrField(allow_none=True)
 
         class Meta:
-            indexes = ("$file_name", "content_key")
+            indexes = ("$file_name",)
             collection_name = COLLECTION_NAME
 else:
     Media2 = Media
 
 
-
-
-_QUALITY_REPLACE_ENABLED = __import__('os').environ.get("QUALITY_AUTO_REPLACE", "1").lower() not in {"0", "false", "no", "off"}
-_quality_queue = None
-_quality_worker_task = None
-
-
-def _quality_models():
-    models = [Media]
-    if MULTIPLE_DB and DATABASE_URI2:
-        models.append(Media2)
-    return models
-
-
-async def _quality_worker():
-    """Very small single-worker queue for automatic quality replacement.
-
-    Quality checks never run inside the upload hot path. Only one check is
-    processed at a time, and the worker yields between jobs so Koyeb CPU stays
-    available for Telegram/search traffic.
-    """
-    global _quality_queue
-    while True:
-        item = await _quality_queue.get()
-        try:
-            target_model, file_id, content_key, language_key, new_score, new_resolution = item
-            if not content_key:
-                continue
-            new_rank = (int(new_score or 0), int(new_resolution or 0))
-            for model in _quality_models():
-                try:
-                    candidate_filter = {
-                        "content_key": content_key,
-                        "_id": {"$ne": file_id},
-                    }
-                    if language_key:
-                        candidate_filter["$or"] = [
-                            {"language_key": language_key},
-                            {"language_key": None},
-                            {"language_key": ""},
-                        ]
-                    candidates = await model.find(candidate_filter).sort(
-                        [("quality_score", -1), ("resolution_score", -1)]
-                    ).limit(12).to_list(length=12)
-                except Exception:
-                    candidates = []
-                for row in candidates:
-                    old_lang = getattr(row, "language_key", None) or ""
-                    if old_lang and language_key and old_lang != language_key:
-                        continue
-                    old_score = getattr(row, "quality_score", None)
-                    if old_score is None:
-                        continue
-                    old_rank = (int(old_score or 0), int(getattr(row, "resolution_score", None) or 0))
-                    if new_rank > old_rank:
-                        try:
-                            await model.collection.delete_one({"_id": getattr(row, "file_id", None)})
-                        except Exception as exc:
-                            print(f"Quality replacement delete failed: {exc}")
-                    elif model is target_model and new_rank <= old_rank:
-                        # The incoming file is inferior in the database where it
-                        # was inserted. Remove only that incoming record.
-                        try:
-                            await target_model.collection.delete_one({"_id": file_id})
-                        except Exception as exc:
-                            print(f"Quality inferior-file delete failed: {exc}")
-                        break
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            print(f"Quality worker error: {exc}")
-        finally:
-            _quality_queue.task_done()
-            # Explicit yield keeps the worker from competing with Pyrogram.
-            await asyncio.sleep(0.15)
-
-
-def _schedule_quality_check(model, file_id, content_key, language_key, score, resolution):
-    global _quality_queue, _quality_worker_task
-    if not _QUALITY_REPLACE_ENABLED or not content_key:
-        return
-    try:
-        loop = asyncio.get_running_loop()
-        if _quality_queue is None:
-            _quality_queue = asyncio.Queue(maxsize=1000)
-        if _quality_worker_task is None or _quality_worker_task.done():
-            _quality_worker_task = loop.create_task(_quality_worker())
-        try:
-            _quality_queue.put_nowait((model, file_id, content_key, language_key, score, resolution))
-        except asyncio.QueueFull:
-            # Never let quality maintenance slow or break file indexing.
-            pass
-    except RuntimeError:
-        pass
+async def get_files_db_size():
+    return (await mydb.command("dbstats"))["dataSize"]
 
 
 async def _db_size_mb(database):
@@ -188,155 +82,12 @@ async def _db_size_mb(database):
     return (stats.get("dataSize", 0) + stats.get("indexSize", 0)) / (1024 * 1024)
 
 
-_QUALITY_RULES = [
-    ("remux", 110),
-    ("bluray", 100),
-    ("blu-ray", 100),
-    ("brrip", 95),
-    ("bdrip", 95),
-    ("org", 90),
-    ("dvdrip", 55),
-    ("dvdscr", 50),
-    ("predvd", 45),
-    ("pre-dvd", 45),
-    ("prehd", 40),
-    ("hdtc", 35),
-    ("hdts", 30),
-    ("hdcam", 20),
-    ("camrip", 15),
-    ("cam", 10),
-    ("webrip", 80),
-    ("web-dl", 85),
-    ("webdl", 85),
-    ("hdrip", 65),
-]
-_RESOLUTION_RULES = [("2160p", 4), ("1440p", 3), ("1080p", 3), ("720p", 2), ("480p", 1)]
-_LANGUAGE_TOKENS = {
-    "hindi", "english", "tamil", "telugu", "malayalam", "kannada", "bengali",
-    "bangla", "marathi", "punjabi", "gujarati", "gujrati", "assamese", "odia",
-    "urdu", "korean", "japanese", "chinese", "arabic", "spanish", "french",
-    "german", "russian", "portuguese", "bhojpuri",
-}
-_RELEASE_TOKENS = {
-    "x264", "x265", "h264", "h265", "hevc", "av1", "aac", "ac3", "ddp", "dd5", "dd+",
-    "dts", "truehd", "atmos", "hdr", "dv", "10bit", "8bit", "5.1", "7.1", "proper",
-    "repack", "sample", "complete", "completed", "batch", "multi", "dual", "audio",
-}
-
-def _quality_details(text):
-    raw = str(text or "").lower().replace("–", "-").replace("—", "-")
-    normalized = re.sub(r"[^a-z0-9]+", " ", raw).strip()
-    label, score = "UNKNOWN", 0
-
-    for token, rank in _QUALITY_RULES:
-        # Permit separators inside compound release labels (WEB-DL, CAM-RIP, etc.)
-        # while requiring real word boundaries so "camera" is never classified as CAM.
-        pieces = [re.escape(x) for x in re.split(r"[^a-z0-9]+", token) if x]
-        pattern = r"(?<![a-z0-9])" + r"[ ._-]*".join(pieces) + r"(?![a-z0-9])"
-        if re.search(pattern, normalized):
-            if rank > score:
-                label, score = token.upper(), rank
-
-    resolution = 0
-    for token, rank in _RESOLUTION_RULES:
-        if re.search(rf"(?<!\d){re.escape(token)}(?!\d)", normalized):
-            resolution = max(resolution, rank)
-    languages = sorted(
-        x for x in _LANGUAGE_TOKENS
-        if re.search(rf"(?<![a-z]){re.escape(x)}(?![a-z])", normalized)
-    )
-    return label, score, resolution, "+".join(languages)
-
-
-def _content_key(file_name, caption=None):
-    """Conservative normalized title key used only for quality replacement."""
-    text = str(file_name or caption or "")
-    text = re.sub(r"https?://\S+|www\.\S+", " ", text, flags=re.I)
-    text = text.lower().replace("_", " ")
-    # Remove technical/release markers but deliberately keep title/year/season/episode.
-    for token in (
-        "2160p", "1440p", "1080p", "720p", "480p", "web-dl", "webdl", "webrip", "bluray",
-        "brrip", "bdrip", "remux", "hdrip", "hdtc", "hdts", "hdcam", "camrip", "cam", "prehd",
-        "predvd", "dvdscr", "dvdrip", "org", "x264", "x265", "h264", "h265", "hevc", "av1",
-        "aac", "ac3", "ddp", "dd5", "dts", "truehd", "atmos", "proper", "repack", "10bit", "8bit",
-    ):
-        text = re.sub(rf"(?<![a-z0-9]){re.escape(token)}(?![a-z0-9])", " ", text)
-    text = re.sub(r"\b\d+(?:\.\d+)?\s*(?:gb|mb|tb)\b", " ", text)
-    text = re.sub(r"[^a-z0-9]+", " ", text)
-    return re.sub(r"\s+", " ", text).strip()
-
-
-async def ensure_media_indexes():
-    """Create media indexes independently; a full DB must not crash the bot."""
-    status = {"primary": False, "secondary": False}
-    try:
-        await Media.ensure_indexes()
-        status["primary"] = True
-    except Exception as exc:
-        print(f"WARNING: primary media indexes unavailable; bot will continue: {exc}")
-    if MULTIPLE_DB and DATABASE_URI2:
-        try:
-            await Media2.ensure_indexes()
-            status["secondary"] = True
-        except Exception as exc:
-            print(f"WARNING: secondary media indexes unavailable; bot will continue: {exc}")
-    return status
-
-
-def _file_identity(row):
-    unique_id = getattr(row, "file_unique_id", None)
-    if unique_id:
-        return ("unique", str(unique_id))
-    file_id = getattr(row, "file_id", None)
-    if file_id:
-        return ("id", str(file_id))
-    return None
-
-
-def _dedupe_files(rows):
-    result, seen = [], set()
-    for row in rows:
-        identity = _file_identity(row)
-        if identity and identity in seen:
-            continue
-        if identity:
-            seen.add(identity)
-        result.append(row)
-    return result
-
-
-async def _safe_model_find(model, filt, limit=None, skip=0, projection=None, sort_natural=True):
-    try:
-        cursor = model.find(filt, projection) if projection is not None else model.find(filt)
-        if sort_natural:
-            cursor = cursor.sort("$natural", -1)
-        if skip:
-            cursor = cursor.skip(skip)
-        if limit is not None:
-            cursor = cursor.limit(limit)
-        return await cursor.to_list(length=limit)
-    except Exception as exc:
-        print(f"MongoDB read failed for {getattr(model, '__name__', 'media')}: {exc}")
-        return []
-
-
-async def _safe_count(model, filt):
-    try:
-        return await model.count_documents(filt)
-    except Exception as exc:
-        print(f"MongoDB count failed for {getattr(model, '__name__', 'media')}: {exc}")
-        return 0
-
-
-async def save_file(media, bot=None, source_chat_id=None, source_message_id=None):
-    """Save a file and optionally perform conservative automatic quality replacement."""
+async def save_file(media):
+    """Save files using IMDX's existing schema with DreamX-style optional DB routing."""
     file_id, file_ref = unpack_new_file_id(media.file_id)
     file_unique_id = getattr(media, "file_unique_id", None)
     file_name = re.sub(r"[_\-\.\+#$%^&*()!~`,;:\"?/<>{}\[\]=|\\]", " ", str(media.file_name))
     file_name = re.sub(r"\s+", " ", file_name).strip()
-    source_text = f"{getattr(media, 'file_name', '')} {getattr(media, 'caption', '') or ''}"
-    quality_label, quality_score, resolution_score, language_key = _quality_details(source_text)
-    content_key = _content_key(getattr(media, "file_name", ""), getattr(media, "caption", None))
 
     duplicate_filter = {"_id": file_id}
     if file_unique_id:
@@ -344,32 +95,25 @@ async def save_file(media, bot=None, source_chat_id=None, source_message_id=None
 
     try:
         if await Media.find_one(duplicate_filter):
-            print(f'{getattr(media, "file_name", "NO_FILE")} is already saved in primary database')
+            print(f'{getattr(media, "file_name", "NO_FILE")} is already saved in database')
             return "dup"
-    except Exception as exc:
-        print(f"Primary duplicate check unavailable; continuing: {exc}")
-    if MULTIPLE_DB and DATABASE_URI2:
-        try:
-            if await Media2.find_one(duplicate_filter):
-                print(f'{getattr(media, "file_name", "NO_FILE")} is already saved in secondary database')
-                return "dup"
-        except Exception as exc:
-            print(f"Secondary duplicate check unavailable; continuing: {exc}")
+        if MULTIPLE_DB and DATABASE_URI2 and await Media2.find_one(duplicate_filter):
+            print(f'{getattr(media, "file_name", "NO_FILE")} is already saved in secondary database')
+            return "dup"
+    except Exception:
+        # A failed duplicate check must not prevent indexing; Mongo will still enforce _id uniqueness.
+        pass
 
     target_model = Media
     if MULTIPLE_DB and DATABASE_URI2:
         try:
+            # Same practical routing idea as DreamX: once primary grows beyond the
+            # configured threshold, new files go to the secondary database.
             threshold_mb = float(__import__('os').environ.get("PRIMARY_DB_MAX_MB", "407"))
             if await _db_size_mb(mydb) >= threshold_mb:
                 target_model = Media2
-        except Exception as exc:
-            # If DB1 health/size cannot be read, prefer DB2 rather than risking
-            # a blocked write to an unhealthy/full primary database.
-            print(f"Primary DB health/size check failed; using secondary database: {exc}")
-            target_model = Media2
-
-    # Quality replacement is deliberately NOT done during upload. It is queued
-    # after a successful insert so file indexing remains fast and predictable.
+        except Exception:
+            target_model = Media
 
     try:
         file = target_model(
@@ -381,13 +125,6 @@ async def save_file(media, bot=None, source_chat_id=None, source_message_id=None
             mime_type=media.mime_type,
             caption=media.caption.html if media.caption and INDEX_CAPTION else None,
             file_type=(media.mime_type.split("/")[0] if media.mime_type else None),
-            source_chat_id=int(source_chat_id) if source_chat_id is not None else None,
-            source_message_id=int(source_message_id) if source_message_id is not None else None,
-            content_key=content_key,
-            quality_label=quality_label,
-            quality_score=quality_score,
-            resolution_score=resolution_score,
-            language_key=language_key,
         )
     except ValidationError:
         print("Error occurred while saving file in database")
@@ -400,9 +137,6 @@ async def save_file(media, bot=None, source_chat_id=None, source_message_id=None
         return "dup"
     else:
         print(f'{getattr(media, "file_name", "NO_FILE")} is saved to database')
-        _schedule_quality_check(
-            target_model, file_id, content_key, language_key, quality_score, resolution_score
-        )
         return "suc"
 
 
@@ -499,7 +233,7 @@ async def get_title_candidates(query, limit=240):
 
 
 async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None, chat_id=None, file_type=None, filter=False):
-    """Fast search with safe single-DB behavior and optional dual-DB merge."""
+    """DreamX-style fast search, while preserving IMDX's original call signature."""
     mongo_filter = _build_filter(query)
     if mongo_filter is None:
         return [], "", 0
@@ -507,111 +241,60 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None, ch
         mongo_filter["file_type"] = file_type
 
     max_results = max(1, int(max_results or MAX_BTN))
-    offset = max(0, int(offset or 0))
 
     if MULTIPLE_DB and DATABASE_URI2:
-        # Treat DB2 as the continuation of the movie index after DB1/DB2's
-        # configured preference, but remove cross-DB duplicates before paging.
-        # We scan in small chunks when necessary instead of loading the whole
-        # movie database into RAM.
-        try:
-            total2, total1 = await asyncio.gather(
-                _safe_count(Media2, mongo_filter),
-                _safe_count(Media, mongo_filter),
-            )
-            # DB2 is preferred for newly indexed files. Build a unique prefix
-            # from DB2 first, then fill from DB1 while excluding duplicates.
-            needed = offset + max_results + 1
-            db2_rows = await _safe_model_find(Media2, mongo_filter, limit=needed)
-            db2_unique = _dedupe_files(db2_rows)
-            seen = {_file_identity(r) for r in db2_unique if _file_identity(r)}
-
-            if len(db2_unique) >= needed:
-                merged = db2_unique[:needed]
-            else:
-                merged = list(db2_unique)
-                # Only scan as much of DB1 as needed to fill the requested page.
-                # If DB1 contains duplicates of DB2 records, keep scanning until
-                # enough unique rows have been collected or DB1 is exhausted.
-                chunk_size = max(100, max_results * 4)
-                raw_skip = 0
-                while len(merged) < needed and raw_skip < total1:
-                    chunk = await _safe_model_find(
-                        Media, mongo_filter, limit=chunk_size, skip=raw_skip
-                    )
-                    if not chunk:
-                        break
-                    for row in chunk:
-                        identity = _file_identity(row)
-                        if identity and identity in seen:
-                            continue
-                        if identity:
-                            seen.add(identity)
-                        merged.append(row)
-                        if len(merged) >= needed:
-                            break
-                    raw_skip += len(chunk)
-
-            page = merged[offset:offset + max_results + 1]
-            has_next = len(page) > max_results
-            files = page[:max_results]
-            next_offset = offset + len(files) if has_next else ""
-            # Exact unique count is intentionally not computed across the full
-            # databases; the raw sum is an upper bound used only for page labels.
-            total_results = total1 + total2
-            if not has_next:
-                total_results = min(total_results, offset + len(files))
-            return files, next_offset, total_results
-        except Exception as exc:
-            print(f"Dual MongoDB search failed; falling back to primary: {exc}")
-            # DB1 can still serve results even if DB2 is unavailable.
-            try:
-                if ULTRA_FAST_MODE:
-                    limit = max_results + 1
-                    total_results, files = await asyncio.gather(
-                        Media.count_documents(mongo_filter),
-                        Media.find(mongo_filter).sort("$natural", -1).skip(offset).limit(limit).to_list(length=limit),
-                    )
-                    has_next = len(files) > max_results
-                    if has_next:
-                        files = files[:-1]
-                    return files, offset + len(files) if has_next else "", total_results
-                total_results, files = await asyncio.gather(
-                    Media.count_documents(mongo_filter),
-                    Media.find(mongo_filter).sort("$natural", -1).skip(offset).limit(max_results).to_list(length=max_results),
-                )
-                next_offset = offset + len(files)
-                return files, next_offset if next_offset < total_results else "", total_results
-            except Exception as primary_exc:
-                print(f"Primary fallback search failed: {primary_exc}")
-                return [], "", 0
-
-    # Single DB path intentionally mirrors the original query: indexed/text
-    # search + natural order + skip/limit. This keeps normal search fast and
-    # makes Next/Back deterministic.
-    try:
+        # Search both databases concurrently, exactly like DreamX.
         if ULTRA_FAST_MODE:
             limit = max_results + 1
-            total_results, files = await asyncio.gather(
-                Media.count_documents(mongo_filter),
-                Media.find(mongo_filter).sort("$natural", -1).skip(offset).limit(limit).to_list(length=limit),
-            )
+            # First-page searches are the latency-critical path.  Avoid fetching
+            # offset+limit documents from BOTH databases when offset is zero.
+            # Later pages keep the old merged-pagination behavior unchanged.
+            fetch_limit = limit if offset == 0 else offset + limit
+            primary_task = Media.find(mongo_filter).sort("$natural", -1).limit(fetch_limit).to_list(length=fetch_limit)
+            secondary_task = Media2.find(mongo_filter).sort("$natural", -1).limit(fetch_limit).to_list(length=fetch_limit)
+            primary, secondary = await asyncio.gather(primary_task, secondary_task)
+            merged = secondary + primary
+            files = merged[offset:offset + limit]
             has_next = len(files) > max_results
             if has_next:
                 files = files[:-1]
             next_offset = offset + len(files) if has_next else ""
+            total_results = offset + len(files) + (1 if has_next else 0)
             return files, next_offset, total_results
-        total_results, files = await asyncio.gather(
-            Media.count_documents(mongo_filter),
-            Media.find(mongo_filter).sort("$natural", -1).skip(offset).limit(max_results).to_list(length=max_results),
+
+        counts, found = await asyncio.gather(
+            asyncio.gather(Media.count_documents(mongo_filter), Media2.count_documents(mongo_filter)),
+            asyncio.gather(
+                Media.find(mongo_filter).sort("$natural", -1).limit(offset + max_results).to_list(length=offset + max_results),
+                Media2.find(mongo_filter).sort("$natural", -1).limit(offset + max_results).to_list(length=offset + max_results),
+            ),
         )
+        total_results = sum(counts)
+        files = (found[1] + found[0])[offset:offset + max_results]
         next_offset = offset + len(files)
         if next_offset >= total_results:
             next_offset = ""
         return files, next_offset, total_results
-    except Exception as exc:
-        print(f"Primary search unavailable; returning no results: {exc}")
-        return [], "", 0
+
+    # Single DB: DreamX ultra-fast path avoids count_documents when enabled.
+    if ULTRA_FAST_MODE:
+        limit = max_results + 1
+        files = await Media.find(mongo_filter).sort("$natural", -1).skip(offset).limit(limit).to_list(length=limit)
+        has_next = len(files) > max_results
+        if has_next:
+            files = files[:-1]
+        next_offset = offset + len(files) if has_next else ""
+        total_results = offset + len(files) + (1 if has_next else 0)
+        return files, next_offset, total_results
+
+    total_results, files = await asyncio.gather(
+        Media.count_documents(mongo_filter),
+        Media.find(mongo_filter).sort("$natural", -1).skip(offset).limit(max_results).to_list(length=max_results),
+    )
+    next_offset = offset + len(files)
+    if next_offset >= total_results:
+        next_offset = ""
+    return files, next_offset, total_results
 
 
 async def get_bad_files(query, file_type=None, offset=0, filter=False):
@@ -620,30 +303,24 @@ async def get_bad_files(query, file_type=None, offset=0, filter=False):
         return [], 0
     if file_type:
         mongo_filter["file_type"] = file_type
+    tasks = [Media.find(mongo_filter).sort("$natural", -1).to_list(300)]
     if MULTIPLE_DB and DATABASE_URI2:
-        results = await asyncio.gather(
-            _safe_model_find(Media, mongo_filter, limit=300),
-            _safe_model_find(Media2, mongo_filter, limit=300),
-        )
-        files = _dedupe_files(results[1] + results[0])
-    else:
-        files = await _safe_model_find(Media, mongo_filter, limit=300)
+        tasks.append(Media2.find(mongo_filter).sort("$natural", -1).to_list(300))
+    results = await asyncio.gather(*tasks)
+    files = results[1] + results[0] if len(results) > 1 else results[0]
     return files[:300], min(len(files), 300)
 
 
 async def get_file_details(query):
-    """Resolve a Telegram file ID from either movie database."""
     filt = {"file_id": query}
+    tasks = [Media.find(filt).to_list(length=1)]
     if MULTIPLE_DB and DATABASE_URI2:
-        results = await asyncio.gather(
-            _safe_model_find(Media, filt, limit=1, sort_natural=False),
-            _safe_model_find(Media2, filt, limit=1, sort_natural=False),
-        )
-        for rows in results:
-            if rows:
-                return rows
-        return []
-    return await _safe_model_find(Media, filt, limit=1, sort_natural=False)
+        tasks.append(Media2.find(filt).to_list(length=1))
+    results = await asyncio.gather(*tasks)
+    for filedetails in results:
+        if filedetails:
+            return filedetails
+    return []
 
 
 def encode_file_id(s: bytes) -> str:
