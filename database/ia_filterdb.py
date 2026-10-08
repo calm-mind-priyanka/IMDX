@@ -3,7 +3,7 @@ import asyncio
 import base64
 import re
 from functools import lru_cache
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from pyrogram.file_id import FileId
 from pymongo.errors import DuplicateKeyError
@@ -93,78 +93,172 @@ _LEGACY_BAD_QUALITY_LABELS = {
     "CAM", "CAMRIP", "HDCAM", "HDTS", "HDTC", "PREHD", "PREDVD", "PRE-DVD", "DVDSCR"
 }
 _GOOD_QUALITY_MIN_SCORE = 65
+_QUALITY_BATCH_SIZE = max(100, int(__import__('os').environ.get("QUALITY_CLEANUP_BATCH", "500")))
+_QUALITY_REPLACE_ENABLED = __import__('os').environ.get("QUALITY_AUTO_REPLACE", "1").lower() not in {"0", "false", "no", "off"}
+_quality_queue = None
+_quality_worker_task = None
+_quality_cleanup_running = False
 
-async def cleanup_existing_bad_quality(dry_run=True, max_scan=100000):
-    """Clean legacy bad-quality records only when a clearly better copy exists.
 
-    This is intentionally MongoDB-only: it never deletes Telegram messages because
-    legacy records may have come from many channels and may not have source IDs.
-    """
+def _quality_models():
     models = [Media]
     if MULTIPLE_DB and DATABASE_URI2:
         models.append(Media2)
-    results = {"scanned": 0, "bad_found": 0, "would_delete": 0, "deleted": 0, "protected": 0, "errors": 0}
+    return models
 
-    for model in models:
+
+async def _quality_worker():
+    """Very small single-worker queue for automatic quality replacement.
+
+    Quality checks never run inside the upload hot path. Only one check is
+    processed at a time, and the worker yields between jobs so Koyeb CPU stays
+    available for Telegram/search traffic.
+    """
+    global _quality_queue
+    while True:
+        item = await _quality_queue.get()
         try:
-            rows = await model.find({}).to_list(length=max_scan)
+            target_model, file_id, content_key, language_key, new_score, new_resolution = item
+            if not content_key:
+                continue
+            new_rank = (int(new_score or 0), int(new_resolution or 0))
+            for model in _quality_models():
+                try:
+                    candidates = await model.find({
+                        "content_key": content_key,
+                        "_id": {"$ne": file_id},
+                    }).sort([("quality_score", -1), ("resolution_score", -1)]).limit(8).to_list(length=8)
+                except Exception:
+                    candidates = []
+                for row in candidates:
+                    old_lang = getattr(row, "language_key", None) or ""
+                    if old_lang and language_key and old_lang != language_key:
+                        continue
+                    old_score = getattr(row, "quality_score", None)
+                    if old_score is None:
+                        continue
+                    old_rank = (int(old_score or 0), int(getattr(row, "resolution_score", None) or 0))
+                    if new_rank > old_rank:
+                        try:
+                            await model.collection.delete_one({"_id": getattr(row, "file_id", None)})
+                        except Exception as exc:
+                            print(f"Quality replacement delete failed: {exc}")
+                    elif model is target_model and new_rank <= old_rank:
+                        # The incoming file is inferior in the database where it
+                        # was inserted. Remove only that incoming record.
+                        try:
+                            await target_model.collection.delete_one({"_id": file_id})
+                        except Exception as exc:
+                            print(f"Quality inferior-file delete failed: {exc}")
+                        break
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
-            print(f"Quality legacy cleanup: scan failed: {exc}")
-            results["errors"] += 1
-            continue
+            print(f"Quality worker error: {exc}")
+        finally:
+            _quality_queue.task_done()
+            # Explicit yield keeps the worker from competing with Pyrogram.
+            await asyncio.sleep(0.15)
 
-        # Build a snapshot of the database's effective quality information.
-        snapshot = []
-        for row in rows:
-            results["scanned"] += 1
-            label = str(getattr(row, "quality_label", "") or "").upper()
-            score = getattr(row, "quality_score", None)
-            resolution = getattr(row, "resolution_score", None)
-            if score is None:
-                label, score, resolution, lang = _quality_details(
-                    f"{getattr(row, 'file_name', '')} {getattr(row, 'caption', '') or ''}"
-                )
-            else:
-                lang = getattr(row, "language_key", None) or _quality_details(
-                    f"{getattr(row, 'file_name', '')} {getattr(row, 'caption', '') or ''}"
-                )[3]
-            key = getattr(row, "content_key", None) or _content_key(
-                getattr(row, "file_name", ""), getattr(row, "caption", None)
-            )
-            if not key:
-                continue
-            snapshot.append((row, key, lang or "", str(label).upper(), int(score or 0), int(resolution or 0)))
 
-        # A good copy is a protected replacement candidate. Bad copies are only
-        # deleted if the same title has one of these clearly good sources.
-        good_by_key = {}
-        for row, key, lang, label, score, resolution in snapshot:
-            if score >= _GOOD_QUALITY_MIN_SCORE and label not in _LEGACY_BAD_QUALITY_LABELS:
-                good_by_key.setdefault((key, lang), []).append((score, resolution))
+def _schedule_quality_check(model, file_id, content_key, language_key, score, resolution):
+    global _quality_queue, _quality_worker_task
+    if not _QUALITY_REPLACE_ENABLED or not content_key:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+        if _quality_queue is None:
+            _quality_queue = asyncio.Queue(maxsize=1000)
+        if _quality_worker_task is None or _quality_worker_task.done():
+            _quality_worker_task = loop.create_task(_quality_worker())
+        try:
+            _quality_queue.put_nowait((model, file_id, content_key, language_key, score, resolution))
+        except asyncio.QueueFull:
+            # Never let quality maintenance slow or break file indexing.
+            pass
+    except RuntimeError:
+        pass
 
-        for row, key, lang, label, score, resolution in snapshot:
-            if label not in _LEGACY_BAD_QUALITY_LABELS:
-                continue
-            results["bad_found"] += 1
-            matches = good_by_key.get((key, lang), [])
-            # If language metadata is absent, allow an exact-title good copy.
-            if not matches and not lang:
-                matches = [v for (k, _l), vals in good_by_key.items() if k == key for v in vals]
-            if not matches:
-                continue
-            best = max(matches)
-            if best <= (score, resolution):
-                continue
-            results["would_delete"] += 1
-            if dry_run:
-                continue
+
+async def cleanup_existing_bad_quality(dry_run=True, batch_size=None, max_batches=None):
+    """Low-CPU, resumable-style cleanup for legacy bad-quality records.
+
+    Instead of loading 100k/900k documents into RAM, this scans only records
+    explicitly marked with legacy bad-quality labels in small batches. For each
+    bad record, MongoDB's content_key index is used to check whether a better
+    copy exists. This makes the operation practical on large collections.
+    """
+    global _quality_cleanup_running
+    if _quality_cleanup_running:
+        return {"busy": True, "scanned": 0, "bad_found": 0, "would_delete": 0, "deleted": 0, "errors": 0}
+    _quality_cleanup_running = True
+    batch_size = max(50, int(batch_size or _QUALITY_BATCH_SIZE))
+    results = {"busy": False, "scanned": 0, "bad_found": 0, "would_delete": 0, "deleted": 0, "errors": 0}
+    try:
+        for model in _quality_models():
             try:
-                await model.collection.delete_one({"_id": getattr(row, "file_id", None)})
-                results["deleted"] += 1
+                cursor = model.find({"quality_label": {"$in": list(_LEGACY_BAD_QUALITY_LABELS)}}).sort("$natural", 1)
+                batches = 0
+                while True:
+                    rows = await cursor.to_list(length=batch_size)
+                    if not rows:
+                        break
+                    batches += 1
+                    for row in rows:
+                        results["scanned"] += 1
+                        results["bad_found"] += 1
+                        key = getattr(row, "content_key", None) or _content_key(
+                            getattr(row, "file_name", ""), getattr(row, "caption", None)
+                        )
+                        if not key:
+                            continue
+                        lang = getattr(row, "language_key", None) or ""
+                        score = int(getattr(row, "quality_score", None) or _quality_details(
+                            f"{getattr(row, 'file_name', '')} {getattr(row, 'caption', '') or ''}"
+                        )[1])
+                        resolution = int(getattr(row, "resolution_score", None) or 0)
+                        good_filter = {
+                            "content_key": key,
+                            "quality_score": {"$gte": max(_GOOD_QUALITY_MIN_SCORE, score + 1)},
+                            "quality_label": {"$nin": list(_LEGACY_BAD_QUALITY_LABELS)},
+                        }
+                        if lang:
+                            good_filter["language_key"] = lang
+                        try:
+                            better_rows = await model.find(good_filter).sort(
+                                [("quality_score", -1), ("resolution_score", -1)]
+                            ).limit(1).to_list(length=1)
+                            better = better_rows[0] if better_rows else None
+                        except Exception as exc:
+                            results["errors"] += 1
+                            print(f"Quality cleanup lookup failed: {exc}")
+                            continue
+                        if not better:
+                            continue
+                        best_rank = (
+                            int(getattr(better, "quality_score", None) or 0),
+                            int(getattr(better, "resolution_score", None) or 0),
+                        )
+                        if best_rank <= (score, resolution):
+                            continue
+                        results["would_delete"] += 1
+                        if not dry_run:
+                            try:
+                                deleted = await model.collection.delete_one({"_id": getattr(row, "file_id", None)})
+                                if getattr(deleted, "deleted_count", 0) == 1:
+                                    results["deleted"] += 1
+                            except Exception as exc:
+                                results["errors"] += 1
+                                print(f"Quality cleanup delete failed: {exc}")
+                    # Give Pyrogram and search requests time on small Koyeb instances.
+                    await asyncio.sleep(0.2)
+                    if max_batches and batches >= int(max_batches):
+                        break
             except Exception as exc:
                 results["errors"] += 1
-                print(f"Quality legacy cleanup: could not delete {getattr(row, 'file_id', '?')}: {exc}")
-
+                print(f"Quality cleanup scan failed: {exc}")
+    finally:
+        _quality_cleanup_running = False
     return results
 
 async def get_files_db_size():
@@ -252,119 +346,6 @@ def _content_key(file_name, caption=None):
     text = re.sub(r"\b\d+(?:\.\d+)?\s*(?:gb|mb|tb)\b", " ", text)
     text = re.sub(r"[^a-z0-9]+", " ", text)
     return re.sub(r"\s+", " ", text).strip()
-
-
-async def _delete_source_message(bot, chat_id, message_id):
-    if not bot or chat_id is None or message_id is None:
-        return False
-    try:
-        await bot.delete_messages(int(chat_id), int(message_id))
-        return True
-    except Exception as exc:
-        print(f"Quality cleanup: could not delete Telegram message {chat_id}/{message_id}: {exc}")
-        return False
-
-
-async def _quality_owner_report(bot, text):
-    """Send automatic quality actions privately to the configured owner."""
-    if not bot or not OWNER_ID:
-        return
-    try:
-        now = datetime.now().strftime("%d-%m-%Y %I:%M:%S %p")
-        await bot.send_message(
-            int(OWNER_ID),
-            f"<b>🕒 {now}</b>\n\n{text}",
-            disable_web_page_preview=True,
-        )
-    except Exception as exc:
-        print(f"Quality cleanup: could not notify owner: {exc}")
-
-
-async def _remove_quality_record(model, row, bot=None):
-    """Remove the indexed record independently of Telegram permissions.
-
-    MongoDB deletion is the authoritative cleanup action. Telegram source-message
-    deletion is best-effort only and must never prevent the MongoDB record from
-    being removed.
-    """
-    source_chat_id = getattr(row, "source_chat_id", None)
-    source_message_id = getattr(row, "source_message_id", None)
-    source_deleted = False
-    if source_chat_id is not None and source_message_id is not None:
-        source_deleted = await _delete_source_message(bot, source_chat_id, source_message_id)
-    try:
-        result = await model.collection.delete_one({"_id": row.file_id})
-        if getattr(result, "deleted_count", 0) != 1:
-            print(f"Quality cleanup: MongoDB record was not found for {getattr(row, 'file_id', '?')}")
-            return False, source_deleted
-        return True, source_deleted
-    except Exception as exc:
-        print(f"Quality cleanup: could not delete MongoDB record {getattr(row, 'file_id', '?')}: {exc}")
-        return False, source_deleted
-
-
-async def _quality_replace_or_reject(models, new_key, new_lang, new_score, new_resolution, bot, source_chat_id, source_message_id, new_name):
-    """Keep the best copy and report every automatic quality decision to the owner.
-
-    Returns True when the new file may be indexed, False when it was rejected.
-    """
-    if not new_key:
-        return True
-    for model in models:
-        try:
-            existing = await model.find({"content_key": new_key}).to_list(length=100)
-        except Exception:
-            continue
-        for row in existing:
-            old_lang = getattr(row, "language_key", None) or ""
-            if old_lang and new_lang and old_lang != new_lang:
-                continue
-            old_score = getattr(row, "quality_score", None)
-            old_res = getattr(row, "resolution_score", None) or 0
-            if old_score is None:
-                continue
-            new_rank = (int(new_score), int(new_resolution))
-            old_rank = (int(old_score), int(old_res))
-            old_name = getattr(row, "file_name", "Unknown")
-            old_label = getattr(row, "quality_label", None) or "UNKNOWN"
-            if new_rank > old_rank:
-                removed, source_deleted = await _remove_quality_record(model, row, bot)
-                if removed:
-                    await _quality_owner_report(
-                        bot,
-                        "<b>♻️ QUALITY REPLACEMENT</b>\n\n"
-                        f"<b>New:</b> <code>{new_name}</code>\n"
-                        f"<b>Quality:</b> {new_score} / {new_resolution}\n\n"
-                        f"<b>Removed old:</b> <code>{old_name}</code>\n"
-                        f"<b>Old quality:</b> {old_score} / {old_res} ({old_label})\n"
-                        f"<b>Telegram source deleted:</b> {'Yes' if source_deleted else 'No / not available'}"
-                    )
-                else:
-                    await _quality_owner_report(
-                        bot,
-                        "<b>⚠️ QUALITY REPLACEMENT PARTIAL</b>\n\n"
-                        f"New file: <code>{new_name}</code>\n"
-                        f"Old file kept because its source could not be safely removed: <code>{old_name}</code>"
-                    )
-            else:
-                # Reject the incoming lower/equal-quality copy regardless of
-                # Telegram permissions. Telegram deletion is best-effort; the
-                # important rule is that the worse copy is NOT inserted into MongoDB.
-                telegram_deleted = False
-                if source_chat_id is not None and source_message_id is not None:
-                    telegram_deleted = await _delete_source_message(bot, source_chat_id, source_message_id)
-                await _quality_owner_report(
-                    bot,
-                    "<b>🗑️ LOWER QUALITY REJECTED</b>\n\n"
-                    f"<b>Rejected:</b> <code>{new_name}</code>\n"
-                    f"<b>Quality:</b> {new_score} / {new_resolution}\n\n"
-                    f"<b>Kept:</b> <code>{old_name}</code>\n"
-                    f"<b>Kept quality:</b> {old_score} / {old_res} ({old_label})\n\n"
-                    f"<b>Telegram source deleted:</b> {'Yes' if telegram_deleted else 'No / not available'}\n"
-                    f"<b>MongoDB:</b> Not inserted"
-                )
-                return False
-    return True
 
 
 async def ensure_media_indexes():
@@ -469,20 +450,8 @@ async def save_file(media, bot=None, source_chat_id=None, source_message_id=None
             print(f"Primary DB health/size check failed; using secondary database: {exc}")
             target_model = Media2
 
-    # Automatic replacement is opt-in by the presence of source message metadata.
-    # That means old/manual indexing remains safe if a source ID is unavailable.
-    if source_chat_id is not None and source_message_id is not None:
-        try:
-            models = [Media]
-            if MULTIPLE_DB and DATABASE_URI2:
-                models.append(Media2)
-            if not await _quality_replace_or_reject(
-                models, content_key, language_key, quality_score, resolution_score,
-                bot, source_chat_id, source_message_id, getattr(media, "file_name", "Unknown")
-            ):
-                return "dup"
-        except Exception as exc:
-            print(f"Quality cleanup check failed; keeping new file: {exc}")
+    # Quality replacement is deliberately NOT done during upload. It is queued
+    # after a successful insert so file indexing remains fast and predictable.
 
     try:
         file = target_model(
@@ -513,6 +482,9 @@ async def save_file(media, bot=None, source_chat_id=None, source_message_id=None
         return "dup"
     else:
         print(f'{getattr(media, "file_name", "NO_FILE")} is saved to database')
+        _schedule_quality_check(
+            target_model, file_id, content_key, language_key, quality_score, resolution_score
+        )
         return "suc"
 
 
