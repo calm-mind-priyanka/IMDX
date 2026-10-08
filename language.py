@@ -12,6 +12,7 @@ from database.users_chats_db import db
 # Exactly the languages already offered by the Premium language system.
 # Labels remain in English so users can identify them before selecting one.
 DEFAULT_LANGUAGE = "en"
+_USER_LANGUAGE_CACHE = {}
 
 LANGUAGES = {
     "en": "🇬🇧 English",
@@ -51,10 +52,15 @@ def language_markup(callback_prefix="global_lang:"):
 
 
 async def get_user_language(user_id, telegram_user=None):
+    user_id = int(user_id)
+    cached = _USER_LANGUAGE_CACHE.get(user_id)
+    if cached in LANGUAGES:
+        return cached
     try:
-        data = await db.get_user(int(user_id))
+        data = await db.get_user(user_id)
         saved = (data or {}).get("language") or (data or {}).get("language_code")
         if saved in LANGUAGES:
+            _USER_LANGUAGE_CACHE[user_id] = saved
             return saved
     except Exception:
         pass
@@ -63,10 +69,16 @@ async def get_user_language(user_id, telegram_user=None):
 
 
 async def has_saved_language(user_id):
+    user_id = int(user_id)
+    if _USER_LANGUAGE_CACHE.get(user_id) in LANGUAGES:
+        return True
     try:
-        data = await db.get_user(int(user_id))
+        data = await db.get_user(user_id)
         saved = (data or {}).get("language") or (data or {}).get("language_code")
-        return saved in LANGUAGES
+        if saved in LANGUAGES:
+            _USER_LANGUAGE_CACHE[user_id] = saved
+            return True
+        return False
     except Exception:
         return False
 
