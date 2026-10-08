@@ -468,7 +468,7 @@ async def next_page(bot, query):
     except:
         n_offset = 0
     if not files:
-        return
+        return await query.answer(tr(ui_lang, "no_more"), show_alert=True)
     temp.FILES_ID[key] = files
     ads, ads_name, _ = await mdb.get_advirtisment()
     ads_text = ""
@@ -560,18 +560,16 @@ async def next_page(bot, query):
         links = ""
         for file_num, file in enumerate(files, start=offset + 1):
             links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
-        await query.message.edit_text(
-            cap + links + del_msg + js_ads,
-            disable_web_page_preview=True,
-            parse_mode=enums.ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup(btn),
+        await query.answer()
+        await _edit_result_page(
+            query, cap, links, del_msg + js_ads, InlineKeyboardMarkup(btn), settings.get("link", True)
         )
         return
     try:
+        await query.answer()
         await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
     except MessageNotModified:
         pass
-    await query.answer()
 
 
 @Client.on_callback_query(filters.regex(r"^seasons#"))
@@ -604,21 +602,18 @@ async def seasons_cb_handler(client: Client, query: CallbackQuery):
     )
     await query.answer()
     try:
-        await query.message.edit_text(
-        f"<b>{tr(ui_lang, 'season_choose')}</b>",
-            reply_markup=InlineKeyboardMarkup(btn),
+        await _edit_menu_page(
+            query, f"<b>{tr(ui_lang, 'season_choose')}</b>", InlineKeyboardMarkup(btn)
         )
     except MessageNotModified:
         pass
     except Exception as e:
         traceback.print_exc()
-        await query.answer(f"Season menu could not be opened: {str(e)[:150]}", show_alert=True)
     return
 
 
 @Client.on_callback_query(filters.regex(r"^season_search#"))
 async def season_search(client: Client, query: CallbackQuery):
-    await query.answer()
     ui_lang = await get_user_language(query.from_user.id, query.from_user)
     _, season, key, offset, orginal_offset, req = query.data.split("#")
     seas = int(season.split(" ", 1)[1])
@@ -638,11 +633,10 @@ async def season_search(client: Client, query: CallbackQuery):
         )
         return
     search = search.replace("_", " ")
-    files, n_offset, total = await get_search_results(
-        f"{search} {seas}", max_results=await _max_results_for_query(query, key), offset=offset
-    )
-    files2, n_offset2, total2 = await get_search_results(
-        f"{search} {season}", max_results=await _max_results_for_query(query, key), offset=offset
+    max_results = await _max_results_for_query(query, key)
+    (files, n_offset, total), (files2, n_offset2, total2) = await asyncio.gather(
+        get_search_results(f"{search} {seas}", max_results=max_results, offset=offset),
+        get_search_results(f"{search} {season}", max_results=max_results, offset=offset),
     )
     total += total2
     try:
@@ -777,11 +771,8 @@ async def season_search(client: Client, query: CallbackQuery):
             ),
         ]
     )
-    await query.message.edit_text(
-        cap + links + del_msg + js_ads,
-        disable_web_page_preview=True,
-        parse_mode=enums.ParseMode.HTML,
-        reply_markup=InlineKeyboardMarkup(btn),
+    await _edit_result_page(
+        query, cap, links, del_msg + js_ads, InlineKeyboardMarkup(btn), settings.get("link", True)
     )
     return
 
@@ -814,9 +805,10 @@ async def years_cb_handler(client: Client, query: CallbackQuery):
             )
         ]
     )
-    await query.message.edit_text(
-        "<b>ɪɴ ᴡʜɪᴄʜ ʏᴇᴀʀ ᴅᴏ ʏᴏᴜ ᴡᴀɴᴛ, ᴄʜᴏᴏsᴇ ғʀᴏᴍ ʜᴇʀᴇ ↓↓</b>",
-        reply_markup=InlineKeyboardMarkup(btn),
+    await query.answer()
+    await _edit_menu_page(
+        query, "<b>ɪɴ ᴡʜɪᴄʜ ʏᴇᴀʀ ᴅᴏ ʏᴏᴜ ᴡᴀɴᴛ, ᴄʜᴏᴏsᴇ ғʀᴏᴍ ʜᴇʀᴇ ↓↓</b>",
+        InlineKeyboardMarkup(btn),
     )
     return
 
@@ -961,11 +953,9 @@ async def year_search(client: Client, query: CallbackQuery):
             ),
         ]
     )
-    await query.message.edit_text(
-        cap + links + del_msg + js_ads,
-        disable_web_page_preview=True,
-        parse_mode=enums.ParseMode.HTML,
-        reply_markup=InlineKeyboardMarkup(btn),
+    await query.answer()
+    await _edit_result_page(
+        query, cap, links, del_msg + js_ads, InlineKeyboardMarkup(btn), settings.get("link", True)
     )
     return
 
@@ -999,21 +989,18 @@ async def quality_cb_handler(client: Client, query: CallbackQuery):
     )
     await query.answer()
     try:
-        await query.message.edit_text(
-        f"<b>{tr(ui_lang, 'quality_choose')}</b>",
-            reply_markup=InlineKeyboardMarkup(btn),
+        await _edit_menu_page(
+            query, f"<b>{tr(ui_lang, 'quality_choose')}</b>", InlineKeyboardMarkup(btn)
         )
     except MessageNotModified:
         pass
     except Exception as e:
         traceback.print_exc()
-        await query.answer(f"Quality menu could not be opened: {str(e)[:150]}", show_alert=True)
     return
 
 
 @Client.on_callback_query(filters.regex(r"^quality_search#"))
 async def quality_search(client: Client, query: CallbackQuery):
-    await query.answer()
     _, qul, key, offset, orginal_offset, req = query.data.split("#")
     if int(req) != query.from_user.id:
         return await query.answer(script.ALRT_TXT, show_alert=True)
@@ -1157,11 +1144,8 @@ async def quality_search(client: Client, query: CallbackQuery):
     )
     await query.answer()
     try:
-        await query.message.edit_text(
-        cap + links + del_msg + js_ads,
-        disable_web_page_preview=True,
-        parse_mode=enums.ParseMode.HTML,
-        reply_markup=InlineKeyboardMarkup(btn),
+        await _edit_result_page(
+        query, cap, links, del_msg + js_ads, InlineKeyboardMarkup(btn), settings.get("link", True)
         )
     except MessageNotModified:
         pass
@@ -1195,9 +1179,8 @@ async def languages_cb_handler(client: Client, query: CallbackQuery):
     )
     await query.answer()
     try:
-        await query.message.edit_text(
-        f"<b>{tr(ui_lang, 'language_choose')}</b>",
-        reply_markup=InlineKeyboardMarkup(btn),
+        await _edit_menu_page(
+            query, f"<b>{tr(ui_lang, 'language_choose')}</b>", InlineKeyboardMarkup(btn)
         )
     except MessageNotModified:
         pass
@@ -1206,7 +1189,6 @@ async def languages_cb_handler(client: Client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex(r"^lang_search#"))
 async def lang_search(client: Client, query: CallbackQuery):
-    await query.answer()
     _, lang, key, offset, orginal_offset, req = query.data.split("#")
     lang2 = lang[:3]
     if int(req) != query.from_user.id:
@@ -1221,11 +1203,10 @@ async def lang_search(client: Client, query: CallbackQuery):
         )
         return
     search = search.replace("_", " ")
-    files, n_offset, total = await get_search_results(
-        f"{search} {lang}", max_results=await _max_results_for_query(query, key), offset=offset
-    )
-    files2, n_offset2, total2 = await get_search_results(
-        f"{search} {lang2}", max_results=await _max_results_for_query(query, key), offset=offset
+    max_results = await _max_results_for_query(query, key)
+    (files, n_offset, total), (files2, n_offset2, total2) = await asyncio.gather(
+        get_search_results(f"{search} {lang}", max_results=max_results, offset=offset),
+        get_search_results(f"{search} {lang2}", max_results=max_results, offset=offset),
     )
     total += total2
     try:
@@ -1368,11 +1349,8 @@ async def lang_search(client: Client, query: CallbackQuery):
     )
     await query.answer()
     try:
-        await query.message.edit_text(
-        cap + links + del_msg + js_ads,
-        disable_web_page_preview=True,
-        parse_mode=enums.ParseMode.HTML,
-        reply_markup=InlineKeyboardMarkup(btn),
+        await _edit_result_page(
+        query, cap, links, del_msg + js_ads, InlineKeyboardMarkup(btn), settings.get("link", True)
         )
     except MessageNotModified:
         pass
@@ -2315,6 +2293,57 @@ def _photo_caption(cap, link_chunks, suffix="", limit=1024):
             break
     return cap + "".join(chosen) + tail, list(link_chunks[len(chosen):])
 
+async def _edit_menu_page(query, text, reply_markup):
+    """Edit a filter/menu page without destroying an existing poster message."""
+    message = query.message
+    media_message = bool(message and (
+        message.photo or message.video or message.animation or message.document
+    ))
+    try:
+        if media_message:
+            return await message.edit_caption(
+                caption=_safe_html_truncate(text, 1024),
+                reply_markup=reply_markup,
+                parse_mode=enums.ParseMode.HTML,
+            )
+        return await message.edit_text(
+            text=text, reply_markup=reply_markup, parse_mode=enums.ParseMode.HTML
+        )
+    except MessageNotModified:
+        return message
+
+
+async def _edit_result_page(query, cap, links, suffix, reply_markup, link_mode):
+    """Render result pages correctly for both text and poster messages."""
+    message = query.message
+    media_message = bool(message and (
+        message.photo or message.video or message.animation or message.document
+    ))
+    if not media_message:
+        return await message.edit_text(
+            text=cap + links + suffix,
+            disable_web_page_preview=True,
+            parse_mode=enums.ParseMode.HTML,
+            reply_markup=reply_markup,
+        )
+
+    if link_mode:
+        # Photo captions have a 1024-character limit. Preserve the poster and
+        # complete <b>...</b> link entries rather than attempting edit_text().
+        link_chunks = re.findall(r"<b>\s*.*?</b>", links or "", flags=re.S)
+        caption, _ = _photo_caption(cap, link_chunks, suffix, limit=1024)
+    else:
+        caption = _safe_html_truncate(cap + suffix, 1024)
+    try:
+        return await message.edit_caption(
+            caption=caption,
+            reply_markup=reply_markup,
+            parse_mode=enums.ParseMode.HTML,
+        )
+    except MessageNotModified:
+        return message
+
+
 def _spell_norm(value):
     """Normalize search text safely before the DreamX spelling-checker flow."""
     value = str(value or "").strip()
@@ -2396,6 +2425,17 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
                     return result
                 await ai_sts.delete()
                 return await advantage_spell_chok(msg)
+            try:
+                no_result = await msg.reply_text(
+                    script.NO_RESULT_TXT,
+                    parse_mode=enums.ParseMode.HTML,
+                )
+                if settings.get("auto_delete", False):
+                    asyncio.create_task(
+                        _delete_after(no_result, int(settings.get("delete_time", DELETE_TIME)), msg)
+                    )
+            except Exception as exc:
+                print(f"Could not send no-result message: {exc}")
             return
     else:
         settings = await get_settings(msg.message.chat.id)
