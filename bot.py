@@ -21,7 +21,7 @@ logging.getLogger("aiohttp.web").setLevel(logging.ERROR)
 
 from pyrogram import __version__
 from pyrogram.raw.all import layer
-from database.ia_filterdb import Media
+from database.ia_filterdb import Media, ensure_media_indexes
 from database.users_chats_db import db
 from database.config_db import mdb
 from info import *
@@ -70,10 +70,20 @@ async def Jisshu_start():
     b_users, b_chats = await db.get_banned()
     temp.BANNED_USERS = b_users
     temp.BANNED_CHATS = b_chats
-    await Media.ensure_indexes()
-    await db.ensure_premium_indexes()
-    await db.ensure_verification_indexes()
-    await mdb.load_premium_plans()
+    # MongoDB indexes are best-effort. A full DB1 must never stop the Telegram bot.
+    await ensure_media_indexes()
+    try:
+        await db.ensure_premium_indexes()
+    except Exception as exc:
+        logging.warning("Premium index setup skipped; database may be full: %s", exc)
+    try:
+        await db.ensure_verification_indexes()
+    except Exception as exc:
+        logging.warning("Verification index setup skipped; database may be full: %s", exc)
+    try:
+        await mdb.load_premium_plans()
+    except Exception as exc:
+        logging.warning("Premium plan load skipped; database may be unavailable/full: %s", exc)
     me = await JisshuBot.get_me()
     temp.ME = me.id
     temp.U_NAME = me.username
