@@ -2621,26 +2621,44 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
     )
     CAP[key] = cap
 
-    # Telegram photo captions are limited to 1024 characters. Build the
-    # caption from complete HTML entries so link mode never gets a broken
-    # <a> tag. Keep the existing result mode untouched: link=True means
-    # file links in the caption, while link=False means file buttons.
+    # Telegram photo captions are limited to 1024 characters. In LINK mode
+    # never put the file list into the poster caption: long filenames would
+    # silently hide results even though the database returned all max_results.
     link_chunks = re.findall(r"<b>\s*.*?</b>", links or "", flags=re.S)
     photo_suffix = del_msg + js_ads
     photo_caption, _overflow_links = _photo_caption(
-        cap, link_chunks, photo_suffix, limit=1024
+        cap, link_chunks if not (imdb and imdb.get("poster") and settings.get("link", True)) else [],
+        photo_suffix, limit=1024
     )
 
     if imdb and imdb.get("poster"):
         try:
-            if settings.get("auto_delete", False):
+            if settings.get("link", True):
+                # Poster = description only. A separate text message contains
+                # the complete link page + pagination/filter controls. This
+                # avoids Telegram's 1024-char photo-caption limit entirely.
+                poster_msg = await message.reply_photo(
+                    photo=imdb.get("poster"),
+                    caption=_safe_html_truncate(cap + photo_suffix, 1024),
+                    parse_mode=enums.ParseMode.HTML,
+                )
+                link_msg = await message.reply_text(
+                    links + js_ads,
+                    parse_mode=enums.ParseMode.HTML,
+                    disable_web_page_preview=True,
+                    reply_markup=InlineKeyboardMarkup(btn),
+                )
+                if settings.get("auto_delete", False):
+                    delay = int(settings.get("delete_time", DELETE_TIME))
+                    asyncio.create_task(_delete_after(poster_msg, delay, message))
+                    asyncio.create_task(_delete_after(link_msg, delay, message))
+            elif settings.get("auto_delete", False):
                 k = await message.reply_photo(
                     photo=imdb.get("poster"),
                     caption=photo_caption,
                     parse_mode=enums.ParseMode.HTML,
                     reply_markup=InlineKeyboardMarkup(btn),
                 )
-                #  await delSticker(st)
                 asyncio.create_task(
                     _delete_after(k, int(settings.get("delete_time", DELETE_TIME)), message)
                 )
@@ -2654,23 +2672,34 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
         except (MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty):
             pic = imdb.get("poster")
             poster = pic.replace(".jpg", "._V1_UX360.jpg")
-            if settings.get("auto_delete", False):
-                k = await message.reply_photo(
+            if settings.get("link", True):
+                poster_msg = await message.reply_photo(
                     photo=poster,
-                    caption=photo_caption,
+                    caption=_safe_html_truncate(cap + photo_suffix, 1024),
+                    parse_mode=enums.ParseMode.HTML,
+                )
+                link_msg = await message.reply_text(
+                    links + js_ads,
+                    parse_mode=enums.ParseMode.HTML,
+                    disable_web_page_preview=True,
+                    reply_markup=InlineKeyboardMarkup(btn),
+                )
+                if settings.get("auto_delete", False):
+                    delay = int(settings.get("delete_time", DELETE_TIME))
+                    asyncio.create_task(_delete_after(poster_msg, delay, message))
+                    asyncio.create_task(_delete_after(link_msg, delay, message))
+            elif settings.get("auto_delete", False):
+                k = await message.reply_photo(
+                    photo=poster, caption=photo_caption,
                     parse_mode=enums.ParseMode.HTML,
                     reply_markup=InlineKeyboardMarkup(btn),
                 )
-                # await delSticker(st)
-                asyncio.create_task(
-                    _delete_after(k, int(settings.get("delete_time", DELETE_TIME)), message)
-                )
+                asyncio.create_task(_delete_after(k, int(settings.get("delete_time", DELETE_TIME)), message))
             else:
                 await message.reply_photo(
-                    photo=poster,
-                    caption=photo_caption,
-                    parse_mode=enums.ParseMode.HTML,
+                    photo=poster, caption=photo_caption,
                     reply_markup=InlineKeyboardMarkup(btn),
+                    parse_mode=enums.ParseMode.HTML,
                 )
         except Exception as e:
             print(e)

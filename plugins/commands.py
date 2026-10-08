@@ -1436,37 +1436,52 @@ async def start(client: Client, message):
 
 @Client.on_message(filters.command("cleanup_bad_quality") & filters.user(ADMINS))
 async def cleanup_bad_quality_command(bot, message):
-    """One-time MongoDB cleanup for legacy bad-quality files.
-
-    Default invocation is a dry run. Add ``confirm`` to permanently remove only
-    bad-quality records that already have a clearly better copy in the database.
-    Telegram source messages are never touched by this legacy cleanup.
-    """
+    """Run low-CPU legacy quality cleanup in small background batches."""
     confirm = len(message.command) > 1 and message.command[1].lower() == "confirm"
-    status = await message.reply_text("<b>🔎 Scanning existing database...</b>")
-    try:
-        result = await cleanup_existing_bad_quality(dry_run=not confirm)
-    except Exception as exc:
-        return await status.edit_text(f"<b>❌ Cleanup failed:</b> <code>{exc}</code>")
+    batch = 500
+    if len(message.command) > 2:
+        try:
+            batch = max(50, min(2000, int(message.command[2])))
+        except ValueError:
+            pass
+    status = await message.reply_text(
+        "<b>🔎 QUALITY CLEANUP STARTED</b>\n\n"
+        f"Mode: <code>{'DELETE' if confirm else 'DRY RUN'}</code>\n"
+        f"Batch size: <code>{batch}</code>\n\n"
+        "This runs in small batches and yields to normal bot traffic."
+    )
 
-    if not confirm:
-        await status.edit_text(
-            "<b>QUALITY CLEANUP — DRY RUN</b>\n\n"
-            f"Scanned: <code>{result['scanned']}</code>\n"
-            f"Bad-quality records found: <code>{result['bad_found']}</code>\n"
-            f"Can safely remove because a better copy exists: <code>{result['would_delete']}</code>\n\n"
-            "Nothing was deleted.\n\n"
-            "If the count looks correct, run <code>/cleanup_bad_quality confirm</code>."
-        )
-    else:
-        await status.edit_text(
-            "<b>✅ QUALITY CLEANUP COMPLETE</b>\n\n"
-            f"Scanned: <code>{result['scanned']}</code>\n"
-            f"Bad-quality records found: <code>{result['bad_found']}</code>\n"
-            f"Deleted from MongoDB: <code>{result['deleted']}</code>\n"
-            f"Errors: <code>{result['errors']}</code>\n\n"
-            "Telegram source messages were not touched."
-        )
+    async def _run():
+        try:
+            result = await cleanup_existing_bad_quality(dry_run=not confirm, batch_size=batch)
+            if result.get("busy"):
+                await status.edit_text("<b>⚠️ A quality cleanup is already running.</b>")
+                return
+            if not confirm:
+                await status.edit_text(
+                    "<b>QUALITY CLEANUP — DRY RUN COMPLETE</b>\n\n"
+                    f"Scanned bad-quality records: <code>{result['scanned']}</code>\n"
+                    f"Better copies found: <code>{result['would_delete']}</code>\n"
+                    f"Errors: <code>{result['errors']}</code>\n\n"
+                    "Nothing was deleted. If this looks correct, run "
+                    "<code>/cleanup_bad_quality confirm</code>."
+                )
+            else:
+                await status.edit_text(
+                    "<b>✅ QUALITY CLEANUP COMPLETE</b>\n\n"
+                    f"Scanned bad-quality records: <code>{result['scanned']}</code>\n"
+                    f"Better copies found: <code>{result['would_delete']}</code>\n"
+                    f"Deleted from MongoDB: <code>{result['deleted']}</code>\n"
+                    f"Errors: <code>{result['errors']}</code>\n\n"
+                    "Telegram source messages were not touched."
+                )
+        except Exception as exc:
+            try:
+                await status.edit_text(f"<b>❌ Cleanup failed:</b> <code>{exc}</code>")
+            except Exception:
+                pass
+
+    asyncio.create_task(_run())
 
 
 @Client.on_message(filters.command("delete"))
