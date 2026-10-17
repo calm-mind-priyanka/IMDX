@@ -58,7 +58,17 @@ async def Jisshu_start():
     print("\\n")
     print("Credit - Telegram @JISSHU_BOTS")
     bot_info = await JisshuBot.get_me()
-    JisshuBot.username = bot_info.username
+    # Resolve the public bot username immediately. The client can receive updates
+    # before the slower database/index initialization below finishes; movie links
+    # must never be built while temp.U_NAME is still None.
+    if not bot_info.username:
+        raise RuntimeError("Telegram did not return a username for the main bot; refusing to generate invalid deep links")
+    temp.ME = bot_info.id
+    temp.U_NAME = bot_info.username.lstrip("@")
+    temp.B_NAME = bot_info.first_name
+    temp.B_LINK = bot_info.mention
+    JisshuBot.username = temp.U_NAME
+    logging.info("Main bot identity resolved: @%s (id=%s)", temp.U_NAME, temp.ME)
     await initialize_clients()
     for name in files:
         with open(name) as a:
@@ -105,12 +115,9 @@ async def Jisshu_start():
         await mdb.load_premium_plans()
     except Exception:
         logging.exception("Could not load persisted Premium plans; bot will continue startup")
-    me = await JisshuBot.get_me()
-    temp.ME = me.id
-    temp.U_NAME = me.username
-    temp.B_NAME = me.first_name
-    temp.B_LINK = me.mention
-    JisshuBot.username = "@" + me.username
+    # Reuse the identity resolved before plugin loading and database setup.
+    # This avoids a window where handlers generate links containing "None".
+    me = bot_info
 
     # Start the dedicated payment/screenshot bot only when configured.
     # It is a separate Telegram account/token and does not replace the main bot.
