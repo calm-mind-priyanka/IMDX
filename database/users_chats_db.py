@@ -568,7 +568,11 @@ class Database:
         return False if not chat else chat.get("chat_status")
 
     async def update_settings(self, id, settings):
-        await self.grp.update_one({"id": int(id)}, {"$set": {"settings": settings}})
+        # Upsert prevents settings silently disappearing when a group document
+        # has not yet been created by the normal chat-registration handler.
+        await self.grp.update_one(
+            {"id": int(id)}, {"$set": {"settings": settings}}, upsert=True
+        )
 
     async def total_chat_count(self):
         count = await self.grp.count_documents({})
