@@ -439,17 +439,55 @@ def list_to_str(k):
         return ", ".join(str(item) for item in k)
 
 
+async def shorten_with_linkcut(link: str, api_token: str, domain: str = "linkcut.org"):
+    """Call LinkCut's documented API with query parameters encoded safely.
+
+    Raises a descriptive error for provider-side failures; a 403 usually requires
+    checking/regenerating the token or confirming API access in the LinkCut account.
+    """
+    token = str(api_token or "").strip()
+    if not token:
+        raise ValueError("LinkCut API token is missing")
+    endpoint = "https://linkcut.org/api"
+    timeout = aiohttp.ClientTimeout(total=15)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.get(
+            endpoint,
+            params={"api": token, "url": str(link), "format": "json"},
+        ) as response:
+            body = await response.text()
+            if response.status != 200:
+                raise RuntimeError(f"LinkCut API returned HTTP {response.status}: {body[:250]}")
+            try:
+                data = await response.json(content_type=None)
+            except Exception as exc:
+                raise RuntimeError(f"LinkCut returned invalid JSON: {body[:250]}") from exc
+    if not isinstance(data, dict) or data.get("status") != "success" or not data.get("shortenedUrl"):
+        message = data.get("message", "Unknown LinkCut API error") if isinstance(data, dict) else "Unexpected API response"
+        raise RuntimeError(f"LinkCut API error: {message}")
+    return str(data["shortenedUrl"])
+
+
 async def get_shortlink(
     link, grp_id, is_second_shortener=False, is_third_shortener=False
 ):
     settings = await get_settings(grp_id)
     if is_third_shortener:
         api, site = settings["api_three"], settings["shortner_three"]
+    elif is_second_shortener:
+        api, site = settings["api_two"], settings["shortner_two"]
     else:
-        if is_second_shortener:
-            api, site = settings["api_two"], settings["shortner_two"]
-        else:
-            api, site = settings["api"], settings["shortner"]
+        api, site = settings["api"], settings["shortner"]
+
+    # LinkCut documents a simple GET API; use query params so nested destination
+    # URLs are encoded correctly instead of relying on shortzy's provider adapter.
+    if "linkcut.org" in str(site or "").lower():
+        try:
+            return await shorten_with_linkcut(link, api, site)
+        except Exception:
+            logger.exception("LinkCut direct API request failed")
+            return None
+
     shortzy = Shortzy(api, site)
     try:
         return await shortzy.convert(link)
@@ -457,6 +495,7 @@ async def get_shortlink(
         try:
             return await shortzy.get_quick_link(link)
         except Exception:
+            logger.exception("URL shortener conversion and fallback both failed")
             return None
 
 
