@@ -1118,7 +1118,15 @@ async def start(client: Client, message):
                     invite = await client.create_chat_invite_link(
                         int(channel_id), creates_join_request=(int(channel_id) == int(AUTH_CHANNEL) or int(channel_id) == int(AUTH_REQ_CHANNEL))
                     )
-                    btn.append([InlineKeyboardButton("⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️", url=invite.invite_link)])
+                    try:
+                        channel_chat = await client.get_chat(int(channel_id))
+                        channel_label = channel_chat.title or str(channel_id)
+                    except Exception:
+                        channel_label = str(channel_id)
+                    # Include the channel identity so users can distinguish multiple FSub channels.
+                    btn.append([
+                        InlineKeyboardButton(f"📢 Join: {channel_label}", url=invite.invite_link)
+                    ])
                 except Exception:
                     logger.exception("Could not create FSub invite for channel %s", channel_id)
 
