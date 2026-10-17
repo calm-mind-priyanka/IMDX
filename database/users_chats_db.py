@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import datetime
 import pytz
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -9,26 +10,393 @@ from pymongo.errors import DuplicateKeyError
 # from utils import get_seconds
 from info import *
 
-client = AsyncIOMotorClient(DATABASE_URI)
+
+logger = logging.getLogger(__name__)
+
+
+class _ResilientCursor:
+    """Motor cursor wrapper that falls back to the mirrored backup on read errors."""
+    def __init__(self, primary, backup=None):
+        self.primary = primary
+        self.backup = backup
+
+    def _apply(self, method, *args, **kwargs):
+        for cursor in (self.primary, self.backup):
+            if cursor is not None:
+                try:
+                    getattr(cursor, method)(*args, **kwargs)
+                except Exception:
+                    logger.debug("Could not apply cursor option %s", method, exc_info=True)
+        return self
+
+    def sort(self, *args, **kwargs): return self._apply("sort", *args, **kwargs)
+    def limit(self, *args, **kwargs): return self._apply("limit", *args, **kwargs)
+    def skip(self, *args, **kwargs): return self._apply("skip", *args, **kwargs)
+
+    async def to_list(self, length=None):
+        try:
+            return await self.primary.to_list(length=length)
+        except Exception:
+            logger.exception("Primary application-data cursor failed; trying backup")
+            if self.backup is None:
+                raise
+            return await self.backup.to_list(length=length)
+
+    async def _iterate(self):
+        try:
+            async for item in self.primary:
+                yield item
+            return
+        except Exception:
+            logger.exception("Primary application-data iteration failed; trying backup")
+        if self.backup is not None:
+            async for item in self.backup:
+                yield item
+
+    def __aiter__(self):
+        return self._iterate()
+
+
+class _ResilientCollection:
+    """Read-fallback + dual-write wrapper with a replay journal for failover writes."""
+    def __init__(self, primary, backup=None, journal=None):
+        self.primary = primary
+        self.backup = backup
+        self.journal = journal
+
+    async def _journal_write(self, method, args, kwargs):
+        if self.journal is None:
+            return
+        if method not in {"update_one", "update_many", "delete_one", "delete_many", "replace_one", "insert_one", "find_one_and_update"}:
+            return
+        try:
+            clean_kwargs = {k: v for k, v in kwargs.items() if k != "return_document"}
+            await self.journal.insert_one({
+                "collection": self.primary.name,
+                "method": method,
+                "args": list(args),
+                "kwargs": clean_kwargs,
+                "created_at": datetime.datetime.utcnow(),
+            })
+        except Exception:
+            logger.exception("Could not journal application-data failover write for %s", self.primary.name)
+
+    async def find_one(self, *args, **kwargs):
+        try:
+            return await self.primary.find_one(*args, **kwargs)
+        except Exception:
+            logger.exception("Primary application-data read failed; trying backup")
+            if self.backup is None:
+                raise
+            return await self.backup.find_one(*args, **kwargs)
+
+    def find(self, *args, **kwargs):
+        primary_cursor = self.primary.find(*args, **kwargs)
+        backup_cursor = self.backup.find(*args, **kwargs) if self.backup is not None else None
+        return _ResilientCursor(primary_cursor, backup_cursor)
+
+    def aggregate(self, *args, **kwargs):
+        primary_cursor = self.primary.aggregate(*args, **kwargs)
+        backup_cursor = self.backup.aggregate(*args, **kwargs) if self.backup is not None else None
+        return _ResilientCursor(primary_cursor, backup_cursor)
+
+    async def count_documents(self, *args, **kwargs):
+        try:
+            return await self.primary.count_documents(*args, **kwargs)
+        except Exception:
+            logger.exception("Primary application-data count failed; trying backup")
+            if self.backup is None: raise
+            return await self.backup.count_documents(*args, **kwargs)
+
+    async def _write(self, method, *args, **kwargs):
+        primary_error = None
+        result = None
+        try:
+            result = await getattr(self.primary, method)(*args, **kwargs)
+        except Exception as exc:
+            primary_error = exc
+            logger.exception("Primary application-data write %s failed", method)
+        if primary_error is None and method == "find_one_and_update" and result is None:
+            # Preserve conditional/atomic semantics: do not let a stale backup
+            # match a filter that no longer matches the primary.
+            return None
+        backup_result = None
+        backup_error = None
+        if self.backup is not None:
+            try:
+                backup_result = await getattr(self.backup, method)(*args, **kwargs)
+            except Exception as exc:
+                backup_error = exc
+                logger.exception("Backup application-data mirror write %s failed", method)
+        if primary_error is not None:
+            if backup_error is None and self.backup is not None:
+                await self._journal_write(method, args, kwargs)
+                return backup_result
+            raise primary_error
+        return result
+
+    async def insert_one(self, document, *args, **kwargs):
+        primary_error = None
+        result = None
+        try:
+            result = await self.primary.insert_one(document, *args, **kwargs)
+        except Exception as exc:
+            primary_error = exc
+            logger.exception("Primary application-data insert failed")
+        backup_result = None
+        backup_error = None
+        if self.backup is not None:
+            try:
+                if isinstance(document, dict) and "_id" in document:
+                    backup_result = await self.backup.replace_one({"_id": document["_id"]}, document, upsert=True)
+                else:
+                    backup_result = await self.backup.insert_one(document, *args, **kwargs)
+            except Exception as exc:
+                backup_error = exc
+                logger.exception("Backup application-data insert mirror failed")
+        if primary_error is not None:
+            if self.backup is not None and backup_error is None:
+                await self._journal_write("insert_one", (document, *args), kwargs)
+                return backup_result
+            raise primary_error
+        return result
+
+    async def update_one(self, *args, **kwargs): return await self._write("update_one", *args, **kwargs)
+    async def update_many(self, *args, **kwargs): return await self._write("update_many", *args, **kwargs)
+    async def delete_one(self, *args, **kwargs): return await self._write("delete_one", *args, **kwargs)
+    async def delete_many(self, *args, **kwargs): return await self._write("delete_many", *args, **kwargs)
+    async def find_one_and_update(self, *args, **kwargs): return await self._write("find_one_and_update", *args, **kwargs)
+    async def replace_one(self, *args, **kwargs): return await self._write("replace_one", *args, **kwargs)
+
+    async def create_index(self, *args, **kwargs):
+        result = await self.primary.create_index(*args, **kwargs)
+        if self.backup is not None:
+            try: await self.backup.create_index(*args, **kwargs)
+            except Exception: logger.exception("Could not mirror application-data index")
+        return result
+
+    async def drop(self):
+        result = await self.primary.drop()
+        if self.backup is not None:
+            try: await self.backup.drop()
+            except Exception: logger.exception("Could not mirror collection drop")
+        return result
+
+    def __getattr__(self, name):
+        # Keep compatibility with the few less-common Motor collection methods.
+        attr = getattr(self.primary, name)
+        if not callable(attr): return attr
+        async def invoke(*args, **kwargs):
+            try:
+                result = await attr(*args, **kwargs)
+            except Exception:
+                logger.exception("Primary application-data operation %s failed", name)
+                if self.backup is None: raise
+                return await getattr(self.backup, name)(*args, **kwargs)
+            if self.backup is not None and name in {"bulk_write", "insert_many"}:
+                try: await getattr(self.backup, name)(*args, **kwargs)
+                except Exception: logger.exception("Could not mirror application-data operation %s", name)
+            return result
+        return invoke
+
+
+client = AsyncIOMotorClient(DATABASE_URI, serverSelectionTimeoutMS=5000)
 mydb = client[DATABASE_NAME]
+_backup_uri = str(globals().get("APP_DATA_BACKUP_URI", "") or "").strip()
+_backup_name = str(globals().get("APP_DATA_BACKUP_NAME", f"{DATABASE_NAME}_backup") or f"{DATABASE_NAME}_backup")
+_backup_client = AsyncIOMotorClient(_backup_uri, serverSelectionTimeoutMS=2000) if _backup_uri and (_backup_uri != DATABASE_URI or _backup_name != DATABASE_NAME) else None
+_backup_db = _backup_client[_backup_name] if _backup_client is not None else None
 
 
 class Database:
     def __init__(self):
-        self.col = mydb.users
-        self.grp = mydb.groups
-        self.misc = mydb.misc
-        self.verify_id = mydb.verify_id
-        self.users = mydb.uersz
-        self.req = mydb.requests
-        self.mGrp = mydb.mGrp
-        self.pmMode = mydb.pmMode
-        self.jisshu_ads_link = mydb.jisshu_ads_link
-        self.movies_update_channel = mydb.movies_update_channel
-        self.botcol = mydb.botcol
-        self.premium_orders = mydb.premium_orders
-        self.payment_submissions = mydb.payment_submissions
-        self.support_feedback = mydb.support_feedback
+        self._primary_db = mydb
+        self._backup_db = _backup_db
+        self.col = self._collection("users")
+        self.grp = self._collection("groups")
+        self.misc = self._collection("misc")
+        self.verify_id = self._collection("verify_id")
+        self.users = self._collection("uersz")
+        self.req = self._collection("requests")
+        self.mGrp = self._collection("mGrp")
+        self.pmMode = self._collection("pmMode")
+        self.jisshu_ads_link = self._collection("jisshu_ads_link")
+        self.movies_update_channel = self._collection("movies_update_channel")
+        self.botcol = self._collection("botcol")
+        self.premium_orders = self._collection("premium_orders")
+        self.payment_submissions = self._collection("payment_submissions")
+        self.support_feedback = self._collection("support_feedback")
+        self.ad_cycle_verify = self._collection("ad_cycle_verify")
+        self.ad_cycle_state = self._collection("ad_cycle_state")
+
+    def _collection(self, name):
+        primary = self._primary_db[name]
+        backup = self._backup_db[name] if self._backup_db is not None else None
+        journal = self._backup_db["_app_data_recovery_journal"] if self._backup_db is not None else None
+        return _ResilientCollection(primary, backup, journal)
+
+    async def initialize_backup(self):
+        """Seed and refresh the backup from primary before normal bot startup.
+
+        Every subsequent application-data write is mirrored. This startup copy
+        also brings pre-existing users/groups/settings into the backup. It is
+        intentionally best-effort so an unavailable backup never blocks startup.
+        """
+        if self._backup_db is None:
+            return False
+        try:
+            await self._backup_db.command("ping")
+        except Exception:
+            logger.exception("Application-data backup is unavailable; continuing with primary only")
+            return False
+        try:
+            names = await self._primary_db.list_collection_names()
+        except Exception:
+            logger.exception("Primary data store unavailable during backup sync; continuing with failover reads")
+            return False
+        # Replay writes accepted by the backup while the primary was down/full.
+        journal = self._backup_db["_app_data_recovery_journal"]
+        try:
+            pending = await journal.find({}).sort("created_at", 1).to_list(length=1000)
+        except Exception:
+            logger.exception("Could not read application-data recovery journal")
+            pending = []
+        for entry in pending:
+            try:
+                collection_name = str(entry.get("collection") or "")
+                method = str(entry.get("method") or "")
+                args = list(entry.get("args") or [])
+                kwargs = dict(entry.get("kwargs") or {})
+                target = self._primary_db[collection_name]
+                if method == "insert_one" and args and isinstance(args[0], dict) and "_id" in args[0]:
+                    await target.replace_one({"_id": args[0]["_id"]}, args[0], upsert=True)
+                elif method in {"update_one", "update_many", "delete_one", "delete_many", "replace_one", "find_one_and_update"}:
+                    await getattr(target, method)(*args, **kwargs)
+                else:
+                    continue
+                await journal.delete_one({"_id": entry["_id"]})
+            except Exception:
+                logger.exception("Could not replay recovery journal entry for %s", entry.get("collection"))
+        for name in names:
+            try:
+                source = self._primary_db[name]
+                target = self._backup_db[name]
+                cursor = source.find({})
+                async for document in cursor:
+                    await target.replace_one({"_id": document["_id"]}, document, upsert=True)
+            except Exception:
+                logger.exception("Could not synchronize application-data collection %s", name)
+        return True
+
+    async def backup_sync_loop(self, interval=600):
+        """Periodically reconcile primary and backup and replay failover writes."""
+        while self._backup_db is not None:
+            await asyncio.sleep(max(60, int(interval)))
+            try:
+                await self.initialize_backup()
+            except Exception:
+                logger.exception("Periodic application-data backup reconciliation failed")
+
+    async def get_ad_cycle_state(self, user_id, group_id):
+        return await self.ad_cycle_state.find_one({"user_id": int(user_id), "group_id": int(group_id)})
+
+    async def create_ad_cycle_verification(self, token, user_id, group_id, delivery_key, step, required_steps, mode="file"):
+        now = datetime.datetime.now(pytz.timezone("Asia/Kolkata"))
+        # A fresh movie request invalidates older unfinished links for this
+        # user/group. This prevents old links being replayed in a later cycle.
+        await self.ad_cycle_verify.update_many(
+            {"user_id": int(user_id), "group_id": int(group_id), "verified": False, "superseded": {"$ne": True}},
+            {"$set": {"superseded": True, "superseded_at": now}},
+        )
+        await self.ad_cycle_verify.insert_one({
+            "token": str(token), "user_id": int(user_id), "group_id": int(group_id),
+            "delivery_key": str(delivery_key), "mode": str(mode or "file"), "step": int(step),
+            "required_steps": int(required_steps), "created_at": now,
+            "verified": False, "shortlink": "", "clicked_at": None,
+        })
+
+    async def get_ad_cycle_verification(self, token):
+        return await self.ad_cycle_verify.find_one({"token": str(token)})
+
+    async def update_ad_cycle_verification(self, token, values):
+        return await self.ad_cycle_verify.update_one({"token": str(token)}, {"$set": values})
+
+    async def complete_ad_cycle_verification(self, token, user_id):
+        """Accept only the current expected step and advance the cycle atomically."""
+        now = datetime.datetime.now(pytz.timezone("Asia/Kolkata"))
+        uid = int(user_id)
+        preview = await self.ad_cycle_verify.find_one({"token": str(token), "user_id": uid})
+        if not preview or preview.get("verified") or preview.get("superseded"):
+            return None, None
+        gid = int(preview.get("group_id") or 0)
+        state_query = {"user_id": uid, "group_id": gid}
+        state = await self.ad_cycle_state.find_one(state_query)
+        if state:
+            access_until = state.get("access_until")
+            if access_until is not None:
+                if getattr(access_until, "tzinfo", None) is None:
+                    access_until = access_until.replace(tzinfo=pytz.UTC)
+                else:
+                    access_until = access_until.astimezone(pytz.UTC)
+                if access_until > now.astimezone(pytz.UTC):
+                    return None, None
+        completed = max(0, int((state or {}).get("step_count", 0)))
+        expected_step = completed + 1
+        required = max(2, min(3, int(preview.get("required_steps", 3))))
+        if int(preview.get("step", 0)) != expected_step or expected_step > required:
+            # A stale link from a prior request cannot increment the counter twice.
+            return None, None
+
+        # Ensure the state document exists before using a conditional transition.
+        await self.ad_cycle_state.update_one(
+            state_query,
+            {"$setOnInsert": {"user_id": uid, "group_id": gid, "step_count": 0}},
+            upsert=True,
+        )
+        record = await self.ad_cycle_verify.find_one_and_update(
+            {"token": str(token), "user_id": uid, "verified": False, "superseded": {"$ne": True}, "step": expected_step},
+            {"$set": {"verified": True, "verified_at": now}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if not record:
+            return None, None
+
+        count = completed + 1
+        update = {
+            "user_id": uid, "group_id": gid,
+            "step_count": 0 if count >= required else count,
+            "bypass_nonce": str(token),
+            "bypass_expires_at": now + datetime.timedelta(minutes=15),
+            "updated_at": now,
+        }
+        finished = count >= required
+        if finished:
+            update.update({"last_completed_count": required,
+                           "access_until": now + datetime.timedelta(hours=24)})
+        state_after = await self.ad_cycle_state.find_one_and_update(
+            {"user_id": uid, "group_id": gid, "step_count": completed},
+            {"$set": update},
+            return_document=ReturnDocument.AFTER,
+        )
+        if not state_after:
+            # A concurrent completion won the step. Release this token rather
+            # than falsely recording a successful extra step.
+            await self.ad_cycle_verify.update_one(
+                {"token": str(token)},
+                {"$set": {"verified": False}, "$unset": {"verified_at": ""}},
+            )
+            return None, None
+        return record, {**update, "finished": finished, "completed_count": count, "required_steps": required}
+
+    async def consume_ad_cycle_delivery_bypass(self, user_id, group_id, nonce):
+        now = datetime.datetime.now(pytz.timezone("Asia/Kolkata"))
+        state = await self.ad_cycle_state.find_one_and_update(
+            {"user_id": int(user_id), "group_id": int(group_id),
+             "bypass_nonce": str(nonce), "bypass_expires_at": {"$gt": now}},
+            {"$unset": {"bypass_nonce": "", "bypass_expires_at": ""}},
+            return_document=ReturnDocument.BEFORE,
+        )
+        return bool(state)
 
     default = {
         "spell_check": SPELL_CHECK,
@@ -60,6 +428,16 @@ class Database:
         "delete_time": DELETE_TIME,
         "request_channel": REQUEST_CHANNEL,
         "fsub_channels": [AUTH_CHANNEL],
+        # Separate 2/3-step shortener; independent from the legacy shortener keys.
+        "ad_cycle_enabled": False,
+        "ad_cycle_steps": 3,
+        "ad_cycle_domain_1": "",
+        "ad_cycle_api_1": "",
+        "ad_cycle_domain_2": "",
+        "ad_cycle_api_2": "",
+        "ad_cycle_domain_3": "",
+        "ad_cycle_api_3": "",
+        "ad_cycle_tutorial": "",
     }
 
     def new_user(self, id, name):
@@ -200,7 +578,15 @@ class Database:
         return self.grp.find({})
 
     async def get_db_size(self):
-        return (await mydb.command("dbstats"))["dataSize"]
+        try:
+            return (await mydb.command("dbstats"))["dataSize"]
+        except Exception:
+            if self._backup_db is not None:
+                try:
+                    return (await self._backup_db.command("dbstats"))["dataSize"]
+                except Exception:
+                    logger.exception("Primary and backup application-data stats failed")
+            raise
 
     async def get_notcopy_user(self, user_id):
         user_id = int(user_id)
@@ -564,6 +950,14 @@ class Database:
             except Exception:
                 # Index creation must never prevent the bot from starting.
                 logging.exception("Could not create verification index: %s", keys)
+        for collection, keys in (
+            (self.ad_cycle_verify, [("token", 1)]),
+            (self.ad_cycle_state, [("user_id", 1), ("group_id", 1)]),
+        ):
+            try:
+                await collection.create_index(keys, unique=(keys == [("token", 1)]))
+            except Exception:
+                logging.exception("Could not create independent ad-cycle index: %s", keys)
 
     async def ensure_premium_indexes(self):
         await self.premium_orders.create_index("user_id", unique=True)
