@@ -2007,6 +2007,43 @@ async def set_tutorial_3(client, message):
     )
 
 
+async def _probe_shortener(domain: str, api_token: str) -> str:
+    """Validate a shortener API without assuming every provider returns JSON."""
+    domain = str(domain or "").strip().rstrip("/")
+    api_token = str(api_token or "").strip()
+    if not domain or not api_token:
+        raise ValueError("Please provide both the shortener domain and API token.")
+
+    # LinkCut has a dedicated async client so non-JSON / HTTP errors are reported clearly.
+    if "linkcut.org" in domain.lower():
+        return await shorten_with_linkcut(
+            "https://t.me/+BJfqwUjbkQFmNTU1", api_token, domain
+        )
+
+    # Keep compatibility with the other shorteners, but encode query parameters and
+    # handle HTML/error responses rather than leaking JSONDecodeError to the user.
+    import json
+    import requests
+    url = domain if domain.startswith(("http://", "https://")) else f"https://{domain}"
+    url = url.rstrip("/") + "/api"
+    response = requests.get(
+        url,
+        params={"api": api_token, "url": "https://t.me/+BJfqwUjbkQFmNTU1"},
+        timeout=12,
+    )
+    body = response.text or ""
+    if response.status_code != 200:
+        raise RuntimeError(f"Shortener API returned HTTP {response.status_code}: {body[:180]}")
+    try:
+        data = response.json()
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Shortener returned a non-JSON response: {body[:180] or '[empty response]'}") from exc
+    if not isinstance(data, dict) or data.get("status") != "success" or not data.get("shortenedUrl"):
+        detail = data.get("message", "API response did not include a successful shortenedUrl") if isinstance(data, dict) else "Unexpected API response"
+        raise RuntimeError(f"Shortener API error: {detail}")
+    return str(data["shortenedUrl"])
+
+
 @Client.on_message(filters.command("set_verify"))
 async def set_shortner(c, m):
     grp_id = m.chat.id
@@ -2026,11 +2063,7 @@ async def set_shortner(c, m):
     try:
         URL = m.command[1]
         API = m.command[2]
-        resp = requests.get(
-            f"https://{URL}/api?api={API}&url=https://t.me/+BJfqwUjbkQFmNTU1"
-        ).json()
-        if resp["status"] == "success":
-            SHORT_LINK = resp["shortenedUrl"]
+        SHORT_LINK = await _probe_shortener(URL, API)
         await save_group_settings(grp_id, "shortner", URL)
         await save_group_settings(grp_id, "api", API)
         await m.reply_text(
@@ -2050,8 +2083,6 @@ async def set_shortner(c, m):
             LOG_API_CHANNEL, log_message, disable_web_page_preview=True
         )
     except Exception as e:
-        await save_group_settings(grp_id, "shortner", SHORTENER_WEBSITE)
-        await save_group_settings(grp_id, "api", SHORTENER_API)
         await m.reply_text(
             f"<b><u>💢 ᴇʀʀᴏʀ ᴏᴄᴄᴏᴜʀᴇᴅ!!</u>\n\nᴀᴜᴛᴏ ᴀᴅᴅᴇᴅ ʙᴏᴛ ᴏᴡɴᴇʀ ᴅᴇꜰᴜʟᴛ sʜᴏʀᴛɴᴇʀ\n\nɪꜰ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴄʜᴀɴɢᴇ ᴛʜᴇɴ ᴜsᴇ ᴄᴏʀʀᴇᴄᴛ ꜰᴏʀᴍᴀᴛ ᴏʀ ᴀᴅᴅ ᴠᴀʟɪᴅ sʜᴏʀᴛʟɪɴᴋ ᴅᴏᴍᴀɪɴ ɴᴀᴍᴇ & ᴀᴘɪ\n\nʏᴏᴜ ᴄᴀɴ ᴀʟsᴏ ᴄᴏɴᴛᴀᴄᴛ ᴏᴜʀ <a href=https://telegram.me/+JWsoDEJEB9EyNDU1>sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ</a> ꜰᴏʀ sᴏʟᴠᴇ ᴛʜɪs ɪssᴜᴇ...\n\nʟɪᴋᴇ -\n\n`/set_shortner mdiskshortner.link e7beb3c8f756dfa15d0bec495abc65f58c0dfa95`\n\n💔 ᴇʀʀᴏʀ - <code>{e}</code></b>",
             quote=True,
@@ -2077,11 +2108,7 @@ async def set_shortner_2(c, m):
     try:
         URL = m.command[1]
         API = m.command[2]
-        resp = requests.get(
-            f"https://{URL}/api?api={API}&url=https://t.me/+BJfqwUjbkQFmNTU1"
-        ).json()
-        if resp["status"] == "success":
-            SHORT_LINK = resp["shortenedUrl"]
+        SHORT_LINK = await _probe_shortener(URL, API)
         await save_group_settings(grp_id, "shortner_two", URL)
         await save_group_settings(grp_id, "api_two", API)
         await m.reply_text(
@@ -2101,8 +2128,6 @@ async def set_shortner_2(c, m):
             LOG_API_CHANNEL, log_message, disable_web_page_preview=True
         )
     except Exception as e:
-        await save_group_settings(grp_id, "shortner_two", SHORTENER_WEBSITE2)
-        await save_group_settings(grp_id, "api_two", SHORTENER_API2)
         await m.reply_text(
             f"<b><u>💢 ᴇʀʀᴏʀ ᴏᴄᴄᴏᴜʀᴇᴅ!!</u>\n\nᴀᴜᴛᴏ ᴀᴅᴅᴇᴅ ʙᴏᴛ ᴏᴡɴᴇʀ ᴅᴇꜰᴜʟᴛ sʜᴏʀᴛɴᴇʀ\n\nɪꜰ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴄʜᴀɴɢᴇ ᴛʜᴇɴ ᴜsᴇ ᴄᴏʀʀᴇᴄᴛ ꜰᴏʀᴍᴀᴛ ᴏʀ ᴀᴅᴅ ᴠᴀʟɪᴅ sʜᴏʀᴛʟɪɴᴋ ᴅᴏᴍᴀɪɴ ɴᴀᴍᴇ & ᴀᴘɪ\n\nʏᴏᴜ ᴄᴀɴ ᴀʟsᴏ ᴄᴏɴᴛᴀᴄᴛ ᴏᴜʀ <a href=https://telegram.me/+JWsoDEJEB9EyNDU1>sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ</a> ꜰᴏʀ sᴏʟᴠᴇ ᴛʜɪs ɪssᴜᴇ...\n\nʟɪᴋᴇ -\n\n`/set_shortner_2 mdiskshortner.link e7beb3c8f756dfa15d0bec495abc65f58c0dfa95`\n\n💔 ᴇʀʀᴏʀ - <code>{e}</code></b>",
             quote=True,
@@ -2138,11 +2163,7 @@ async def set_shortner_3(c, m):
     try:
         URL = m.command[1]
         API = m.command[2]
-        resp = requests.get(
-            f"https://{URL}/api?api={API}&url=https://t.me/+BJfqwUjbkQFmNTU1"
-        ).json()
-        if resp["status"] == "success":
-            SHORT_LINK = resp["shortenedUrl"]
+        SHORT_LINK = await _probe_shortener(URL, API)
         await save_group_settings(grp_id, "shortner_three", URL)
         await save_group_settings(grp_id, "api_three", API)
         await m.reply_text(
@@ -2161,8 +2182,6 @@ async def set_shortner_3(c, m):
             LOG_API_CHANNEL, log_message, disable_web_page_preview=True
         )
     except Exception as e:
-        await save_group_settings(grp_id, "shortner_three", SHORTENER_WEBSITE3)
-        await save_group_settings(grp_id, "api_three", SHORTENER_API3)
         await m.reply_text(
             f"<b><u>💢 ᴇʀʀᴏʀ ᴏᴄᴄᴏᴜʀᴇᴅ!!</u>\n\nᴀᴜᴛᴏ ᴀᴅᴅᴇᴅ ʙᴏᴛ ᴏᴡɴᴇʀ ᴅᴇꜰᴜʟᴛ sʜᴏʀᴛɴᴇʀ\n\nɪꜰ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴄʜᴀɴɢᴇ ᴛʜᴇɴ ᴜsᴇ ᴄᴏʀʀᴇᴄᴛ ꜰᴏʀᴍᴀᴛ ᴏʀ ᴀᴅᴅ ᴠᴀʟɪᴅ sʜᴏʀᴛʟɪɴᴋ ᴅᴏᴍᴀɪɴ ɴᴀᴍᴇ & ᴀᴘɪ\n\nʏᴏᴜ ᴄᴀɴ ᴀʟsᴏ ᴄᴏɴᴛᴀᴄᴛ ᴏᴜʀ <a href=https://telegram.me/+JWsoDEJEB9EyNDU1>sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ</a> ꜰᴏʀ sᴏʟᴠᴇ ᴛʜɪs ɪssᴜᴇ...\n\nʟɪᴋᴇ -\n\n`/set_shortner_3 mdiskshortner.link e7beb3c8f756dfa15d0bec495abc65f58c0dfa95`\n\n💔 ᴇʀʀᴏʀ - <code>{e}</code></b>",
             quote=True,
