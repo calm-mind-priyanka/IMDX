@@ -473,7 +473,7 @@ async def next_page(bot, query):
     ads, ads_name, _ = await mdb.get_advirtisment()
     ads_text = ""
     if ads is not None and ads_name is not None:
-        ads_url = f"https://t.me/{temp.U_NAME}?start=ads"
+        ads_url = f"https://telegram.dog/{temp.U_NAME}?start=ads"
         ads_text = f"<a href={ads_url}>{ads_name}</a>"
     js_ads = (
         f"\n━━━━━━━━━━━━━━━━━━\n <b>{ads_text}</b> \n━━━━━━━━━━━━━━━━━━"
@@ -493,13 +493,13 @@ async def next_page(bot, query):
     if settings.get("link", True):
         btn = []
         for file_num, file in enumerate(files, start=offset + 1):
-            links += f"""<b>\n\n{file_num}. <a href="https://t.me/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}">[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
+            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
     else:
         btn = [
             [
                 InlineKeyboardButton(
                     text=f"📁 {get_size(file.file_size)}≽ {formate_file_name(file.file_name)}",
-                    url=f"https://t.me/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}",
+                    url=f"https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}",
                 ),
             ]
             for file in files
@@ -559,7 +559,7 @@ async def next_page(bot, query):
     if settings.get("link", True):
         links = ""
         for file_num, file in enumerate(files, start=offset + 1):
-            links += f"""<b>\n\n{file_num}. <a href="https://t.me/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}">[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
+            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
         await query.message.edit_text(
             cap + links + del_msg + js_ads,
             disable_web_page_preview=True,
@@ -676,7 +676,7 @@ async def season_search(client: Client, query: CallbackQuery):
     ads, ads_name, _ = await mdb.get_advirtisment()
     ads_text = ""
     if ads is not None and ads_name is not None:
-        ads_url = f"https://t.me/{temp.U_NAME}?start=ads"
+        ads_url = f"https://telegram.dog/{temp.U_NAME}?start=ads"
         ads_text = f"<a href={ads_url}>{ads_name}</a>"
     js_ads = (
         f"\n━━━━━━━━━━━━━━━━━━\n <b>{ads_text}</b> \n━━━━━━━━━━━━━━━━━━"
@@ -687,13 +687,13 @@ async def season_search(client: Client, query: CallbackQuery):
     if settings.get("link", True):
         btn = []
         for file_num, file in enumerate(files, start=offset + 1):
-            links += f"""<b>\n\n{file_num}. <a href="https://t.me/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}">[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
+            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
     else:
         btn = [
             [
                 InlineKeyboardButton(
                     text=f"🔗 {get_size(file.file_size)}≽ {formate_file_name(file.file_name)}",
-                    url=f"https://t.me/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}",
+                    url=f"https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}",
                 ),
             ]
             for file in files
@@ -857,7 +857,7 @@ async def year_search(client: Client, query: CallbackQuery):
     ads, ads_name, _ = await mdb.get_advirtisment()
     ads_text = ""
     if ads is not None and ads_name is not None:
-        ads_url = f"https://t.me/{temp.U_NAME}?start=ads"
+        ads_url = f"https://telegram.dog/{temp.U_NAME}?start=ads"
         ads_text = f"<a href={ads_url}>{ads_name}</a>"
     js_ads = (
         f"\n━━━━━━━━━━━━━━━━━━\n <b>{ads_text}</b> \n━━━━━━━━━━━━━━━━━━"
@@ -868,13 +868,13 @@ async def year_search(client: Client, query: CallbackQuery):
     if settings.get("link", True):
         btn = []
         for file_num, file in enumerate(files, start=offset + 1):
-            links += f"""<b>\n\n{file_num}. <a href="https://t.me/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}">[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
+            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
     else:
         btn = [
             [
                 InlineKeyboardButton(
                     text=f"🔗 {get_size(file.file_size)}≽ {formate_file_name(file.file_name)}",
-                    url=f"https://t.me/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}",
+                    url=f"https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}",
                 ),
             ]
             for file in files
@@ -1055,7 +1055,7 @@ async def quality_search(client: Client, query: CallbackQuery):
     ads, ads_name, _ = await mdb.get_advirtisment()
     ads_text = ""
     if ads is not None and ads_name is not None:
-        ads_url = f"https://t.me/{temp.U_NAME}?start=ads"
+        ads_url = f"https://telegram.dog/{temp.U_NAME}?start=ads"
         ads_text = f"<a href={ads_url}>{ads_name}</a>"
     js_ads = (
         f"\n━━━━━━━━━━━━━━━━━━\n <b>{ads_text}</b> \n━━━━━━━━━━━━━━━━━━"
@@ -1066,13 +1066,13 @@ async def quality_search(client: Client, query: CallbackQuery):
     if settings.get("link", True):
         btn = []
         for file_num, file in enumerate(files, start=offset + 1):
-            links += f"""<b>\n\n{file_num}. <a href="https://t.me/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}">[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
+            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
     else:
         btn = [
             [
                 InlineKeyboardButton(
                     text=f"🔗 {get_size(file.file_size)}≽ {formate_file_name(file.file_name)}",
-                    url=f"https://t.me/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}",
+                    url=f"https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}",
                 ),
             ]
             for file in files
@@ -1265,7 +1265,7 @@ async def lang_search(client: Client, query: CallbackQuery):
     ads, ads_name, _ = await mdb.get_advirtisment()
     ads_text = ""
     if ads is not None and ads_name is not None:
-        ads_url = f"https://t.me/{temp.U_NAME}?start=ads"
+        ads_url = f"https://telegram.dog/{temp.U_NAME}?start=ads"
         ads_text = f"<a href={ads_url}>{ads_name}</a>"
 
     js_ads = (
@@ -1277,13 +1277,13 @@ async def lang_search(client: Client, query: CallbackQuery):
     if settings.get("link", True):
         btn = []
         for file_num, file in enumerate(files, start=offset + 1):
-            links += f"""<b>\n\n{file_num}. <a href="https://t.me/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}">[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
+            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}</a></b>"""
     else:
         btn = [
             [
                 InlineKeyboardButton(
                     text=f"🔗 {get_size(file.file_size)}≽ {formate_file_name(file.file_name)}",
-                    url=f"https://t.me/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}",
+                    url=f"https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{file.file_id}",
                 ),
             ]
             for file in files
@@ -1410,7 +1410,7 @@ async def pmfile_cb(client, query):
         return
 
     await query.answer(
-        f"https://t.me/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{fileid}"
+        f"https://telegram.dog/{temp.U_NAME}?start=file_{await _group_id_for_query(query)}_{fileid}"
     )
     return
 
@@ -1554,7 +1554,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
     elif query.data == "start":
         ui_lang = await get_user_language(query.from_user.id, query.from_user)
         buttons = [
-            [InlineKeyboardButton(home_tr(ui_lang, "add_group"), url=f"https://t.me/{temp.U_NAME}?startgroup=start")],
+            [InlineKeyboardButton(home_tr(ui_lang, "add_group"), url=f"http://telegram.dog/{temp.U_NAME}?startgroup=start")],
             [InlineKeyboardButton(home_tr(ui_lang, "disable_ads"), callback_data="jisshupremium"), InlineKeyboardButton(home_tr(ui_lang, "special"), callback_data="special")],
             [InlineKeyboardButton(home_tr(ui_lang, "help"), callback_data="help"), InlineKeyboardButton(home_tr(ui_lang, "about"), callback_data="about")],
             [InlineKeyboardButton(home_tr(ui_lang, "earn"), callback_data="earn")],
@@ -1815,7 +1815,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             [
                 InlineKeyboardButton(
                     "⇆ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘs ⇆",
-                    url=f"https://t.me/{temp.U_NAME}?startgroup=start",
+                    url=f"http://telegram.dog/{temp.U_NAME}?startgroup=start",
                 )
             ],
             [InlineKeyboardButton(tr(ui_lang, "back"), callback_data="help")],
@@ -2277,7 +2277,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             await query.answer(script.ALRT_TXT, show_alert=True)
             return
         link = (
-            f"https://t.me/{temp.U_NAME}?start=allfiles_{group_id}-{message_id}"
+            f"https://telegram.me/{temp.U_NAME}?start=allfiles_{group_id}-{message_id}"
         )
         await query.answer(url=link)
         return
@@ -2376,24 +2376,9 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
             "gu":"શોધી રહ્યા છીએ","pa":"ਖੋਜਿਆ ਜਾ ਰਿਹਾ ਹੈ","ur":"تلاش جاری ہے","as":"বিচৰা হৈছে",
             "ne":"खोजिँदैछ","hinglish":"SEARCH HO RAHA HAI"
         }
-        searching_text = f"🎯 {searching_labels.get(ui_lang, searching_labels['en'])} {search}"
-        # Telegram can transiently reject a send (including duplicate random IDs
-        # during a low-level retry). Respect FloodWait and make at most one fresh
-        # send attempt instead of hammering Telegram.
-        try:
-            searching_msg = await msg.reply_text(searching_text)
-        except FloodWait as exc:
-            await asyncio.sleep(max(1, int(getattr(exc, "value", 1))))
-            searching_msg = await msg.reply_text(searching_text)
-        except Exception as exc:
-            if "RANDOM_ID_DUPLICATE" not in str(exc).upper() and "RandomIdDuplicate" not in type(exc).__name__:
-                raise
-            await asyncio.sleep(1)
-            searching_msg = await client.send_message(
-                chat_id=msg.chat.id,
-                text=searching_text,
-                reply_to_message_id=msg.id,
-            )
+        searching_msg = await msg.reply_text(
+            f"🎯 {searching_labels.get(ui_lang, searching_labels['en'])} {search}"
+        )
         files, offset, total_results = await get_search_results(search, max_results=max_results)
         await searching_msg.delete()
         if not files:
@@ -2442,13 +2427,13 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
     if settings.get("link", True):
         btn = []
         for file_num, file in enumerate(files, start=1):
-            links += f"""<b>\n\n{file_num}. <a href="https://t.me/{temp.U_NAME}?start=file_{origin_group_id}_{file.file_id}">[{get_size(file.file_size)}] {formate_file_name(file.file_name)}</a></b>"""
+            links += f"""<b>\n\n{file_num}. <a href=https://telegram.dog/{temp.U_NAME}?start=file_{origin_group_id}_{file.file_id}>[{get_size(file.file_size)}] {formate_file_name(file.file_name)}</a></b>"""
     else:
         btn = [
             [
                 InlineKeyboardButton(
                     text=f"🔗 {get_size(file.file_size)}≽ {formate_file_name(file.file_name)}",
-                    url=f"https://t.me/{temp.U_NAME}?start=file_{origin_group_id}_{file.file_id}",
+                    url=f"https://telegram.dog/{temp.U_NAME}?start=file_{origin_group_id}_{file.file_id}",
                 ),
             ]
             for file in files
@@ -2582,7 +2567,7 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
     ads, ads_name, _ = await mdb.get_advirtisment()
     ads_text = ""
     if ads is not None and ads_name is not None:
-        ads_url = f"https://t.me/{temp.U_NAME}?start=ads"
+        ads_url = f"https://telegram.dog/{temp.U_NAME}?start=ads"
         ads_text = f"<a href={ads_url}>{ads_name}</a>"
     js_ads = (
         f"\n━━━━━━━━━━━━━━━━━━\n <b>{ads_text}</b> \n━━━━━━━━━━━━━━━━━━"

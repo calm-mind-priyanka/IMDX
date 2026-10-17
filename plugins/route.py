@@ -16,36 +16,6 @@ from info import *
 routes = web.RouteTableDef()
 
 
-@routes.get(r"/ad-click/{token}")
-async def independent_ad_cycle_click_tracker(request: web.Request):
-    """Track the separate ad-cycle shortener click and return to its token."""
-    token = str(request.match_info.get("token") or "").strip()
-    if not token:
-        raise web.HTTPNotFound(text="Invalid verification link")
-    from database.users_chats_db import db
-    from utils import temp
-    import pytz
-    from datetime import datetime
-
-    try:
-        record = await db.get_ad_cycle_verification(token)
-    except Exception:
-        logging.exception("Independent ad-cycle click lookup failed")
-        raise web.HTTPServiceUnavailable(text="Verification service unavailable")
-    if not record or record.get("verified") or record.get("superseded"):
-        raise web.HTTPGone(text="Verification link expired")
-    now = datetime.now(pytz.timezone("Asia/Kolkata"))
-    try:
-        await db.update_ad_cycle_verification(token, {"clicked_at": now})
-    except Exception:
-        # The final Telegram return token is still the actual completion proof.
-        logging.exception("Could not record independent ad-cycle click")
-    bot_username = str(getattr(temp, "U_NAME", "") or getattr(JisshuBot, "username", "") or "").lstrip("@")
-    if not bot_username:
-        raise web.HTTPServiceUnavailable(text="Bot is starting")
-    raise web.HTTPFound(f"https://t.me/{bot_username}?start=ad_{token}")
-
-
 @routes.get(r"/verify-click/{token}")
 async def verification_click_tracker(request: web.Request):
     """Record the user's shortener-button click, then return to the bot."""
