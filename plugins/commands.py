@@ -1044,16 +1044,19 @@ async def start(client: Client, message):
 
     data = message.command[1]
     ad_bypass_token = None
+    ad_cycle_delivery_request = False
     try:
         pre, grp_id, file_id = data.split("_", 2)
         print(f"Group Id - {grp_id}")
         if pre in ("adpass", "adallpass"):
             ad_bypass_token, file_id = file_id.split("~", 1)
+            ad_cycle_delivery_request = bool(ad_bypass_token)
             pre = "allfiles" if pre == "adallpass" else "file"
             data = f"{pre}_{grp_id}_{file_id}"
     except Exception:
         pre, grp_id, file_id = "", 0, data
         ad_bypass_token = None
+        ad_cycle_delivery_request = False
 
     # A verified Telegram deep-link is the final Get File/Send All click.
     # Track it separately from shortener completion so redirect/click problems
@@ -1283,7 +1286,11 @@ async def start(client: Client, message):
         if is_third_shortener and not (settings.get("shortner_three") and settings.get("api_three")):
             is_third_shortener = False
 
-        if (not file_mode_completed) and verification_enabled and primary_shortener_available and ((not user_verified) or is_second_shortener or is_third_shortener):
+        # A Get File click that came from the independent ad-cycle flow has
+        # already passed that flow's token check. Do not immediately stack the
+        # legacy shortener gate on the same click; ordinary requests continue
+        # to use the original verification system unchanged.
+        if (not file_mode_completed) and (not ad_cycle_delivery_request) and verification_enabled and primary_shortener_available and ((not user_verified) or is_second_shortener or is_third_shortener):
             verify_id = "".join(random.choices(string.ascii_uppercase + string.digits, k=7))
             step = 3 if is_third_shortener else (2 if is_second_shortener else 1)
             if is_third_shortener:
