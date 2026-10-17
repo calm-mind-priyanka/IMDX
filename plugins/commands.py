@@ -41,6 +41,8 @@ from utils import (
 )
 import re
 import base64
+import html
+from shortzy import Shortzy
 from info import *
 
 # Verification recovery/customer-care settings. Defaults are intentionally conservative.
@@ -666,6 +668,65 @@ async def start(client: Client, message):
         start_payload = ""
 
     logger.info("/start received: user=%s payload=%s", user_id, start_payload[:80])
+    if start_payload.startswith("ad_"):
+        token = start_payload[3:].strip()
+        try:
+            record = await db.get_ad_cycle_verification(token)
+        except Exception:
+            logger.exception("Independent ad-cycle verification lookup failed")
+            await message.reply_text("⚠️ Verification is temporarily unavailable. Please try again shortly.")
+            return
+        if not record or record.get("verified") or record.get("superseded"):
+            await message.reply_text("This verification link has expired. Please request the movie again.")
+            return
+        if int(record.get("user_id") or 0) != int(message.from_user.id):
+            await message.reply_text("This verification link is not valid for your account.")
+            return
+        try:
+            accepted, state = await db.complete_ad_cycle_verification(token, message.from_user.id)
+        except Exception:
+            logger.exception("Could not record independent ad-cycle completion")
+            await message.reply_text("⚠️ Verification could not be saved right now. Please try the link again.")
+            return
+        if not accepted or not state:
+            await message.reply_text("This verification link has expired. Please request the movie again.")
+            return
+        grp_id = int(accepted.get("group_id") or 0)
+        delivery_key = str(accepted.get("delivery_key") or "")
+        mode = accepted.get("mode", "file")
+        if mode == "allfiles":
+            file_link = f"https://telegram.me/{temp.U_NAME}?start=adallpass_{grp_id}_{token}~{delivery_key}"
+        else:
+            file_link = f"https://telegram.me/{temp.U_NAME}?start=adpass_{grp_id}_{token}~{delivery_key}"
+        required = int(state.get("required_steps", accepted.get("required_steps", 3)))
+        if state.get("finished"):
+            caption = (
+                "<b>✅ All required ad verifications are complete.</b>\n\n"
+                "You now have direct access for the next 24 hours. After that, this verification cycle starts again."
+            )
+        else:
+            completed = int(state.get("completed_count", 1))
+            caption = (
+                f"<b>✅ Verification {completed}/{required} completed.</b>\n\n"
+                "Your progress is saved. Time gaps do not reset it. The next verification is requested with your next movie request."
+            )
+        buttons = [[InlineKeyboardButton("📁 GET FILE", url=file_link)]]
+        try:
+            tutorial = str((await get_settings(grp_id)).get("ad_cycle_tutorial") or "").strip()
+        except Exception:
+            logger.exception("Could not load independent ad-cycle tutorial setting")
+            tutorial = ""
+        if tutorial.startswith(("https://", "http://")):
+            buttons.append([InlineKeyboardButton("❓ HOW TO VERIFY / DOWNLOAD", url=tutorial)])
+        buttons.append([InlineKeyboardButton("💎 BUY PREMIUM", callback_data="getpremium")])
+        await message.reply_photo(
+            photo=VERIFY_IMG,
+            caption=caption,
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=enums.ParseMode.HTML,
+        )
+        return
+
     if start_payload.startswith("vr_"):
         logger.info("Processing verification return token for user=%s", user_id)
         # New verification-return links carry only a short opaque token.
@@ -982,11 +1043,17 @@ async def start(client: Client, message):
         return
 
     data = message.command[1]
+    ad_bypass_token = None
     try:
         pre, grp_id, file_id = data.split("_", 2)
         print(f"Group Id - {grp_id}")
-    except:
+        if pre in ("adpass", "adallpass"):
+            ad_bypass_token, file_id = file_id.split("~", 1)
+            pre = "allfiles" if pre == "adallpass" else "file"
+            data = f"{pre}_{grp_id}_{file_id}"
+    except Exception:
         pre, grp_id, file_id = "", 0, data
+        ad_bypass_token = None
 
     # A verified Telegram deep-link is the final Get File/Send All click.
     # Track it separately from shortener completion so redirect/click problems
@@ -1013,62 +1080,158 @@ async def start(client: Client, message):
     if not premium_active:
         # Preserve the legacy fsub_id field while allowing the settings UI to manage
         # multiple force-subscribe channels independently for each group.
-        fsub_channels = settings.get("fsub_channels") or [settings.get("fsub_id", AUTH_CHANNEL)]
+        fsub_channels = settings.get("fsub_channels") or []
         try:
             fsub_channels = [int(c) for c in fsub_channels]
         except (TypeError, ValueError):
+            fsub_channels = []
+        # Migrate legacy single-channel settings transparently, even when an
+        # older group already has the newer list populated with only defaults.
+        legacy_fsub = int(settings.get("fsub_id", AUTH_CHANNEL))
+        if legacy_fsub not in fsub_channels:
+            fsub_channels.append(legacy_fsub)
+        if not fsub_channels:
             fsub_channels = [int(AUTH_CHANNEL)]
 
-        if AUTH_REQ_CHANNEL and int(AUTH_REQ_CHANNEL) in fsub_channels:
-            if not await is_req_subscribed(client, message):
+        # Check every configured channel independently. The request-join
+        # channel must not short-circuit checks for other custom FSub channels.
+        btn = []
+        missing_any = False
+        checked_request_channels = set()
+
+        async def add_request_join_button(channel_id):
+            nonlocal missing_any
+            if not channel_id or int(channel_id) in checked_request_channels:
+                return
+            checked_request_channels.add(int(channel_id))
+            try:
+                # Preserve the existing join-request semantics for AUTH_CHANNEL.
+                if int(channel_id) == int(AUTH_CHANNEL):
+                    subscribed = await is_req_subscribed(client, message)
+                else:
+                    subscribed = await is_subscribed(client, message.from_user.id, int(channel_id))
+            except Exception:
+                subscribed = False
+            if not subscribed:
+                missing_any = True
                 try:
-                    invite_link = await client.create_chat_invite_link(
-                        int(AUTH_REQ_CHANNEL), creates_join_request=True
+                    invite = await client.create_chat_invite_link(
+                        int(channel_id), creates_join_request=(int(channel_id) == int(AUTH_CHANNEL) or int(channel_id) == int(AUTH_REQ_CHANNEL))
                     )
-                except ChatAdminRequired:
-                    logger.error("Make sure Bot is admin in Forcesub channel")
+                    btn.append([InlineKeyboardButton("⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️", url=invite.invite_link)])
+                except Exception:
+                    logger.exception("Could not create FSub invite for channel %s", channel_id)
+
+        # Always preserve the bot's default force-subscribe requirement.
+        await add_request_join_button(int(AUTH_CHANNEL))
+        # If AUTH_REQ_CHANNEL is configured as an additional required channel,
+        # check it too; do not let it suppress any channels below.
+        if AUTH_REQ_CHANNEL and int(AUTH_REQ_CHANNEL) != int(AUTH_CHANNEL) and int(AUTH_REQ_CHANNEL) in fsub_channels:
+            await add_request_join_button(int(AUTH_REQ_CHANNEL))
+
+        for channel in fsub_channels:
+            if channel in (int(AUTH_CHANNEL), int(AUTH_REQ_CHANNEL or AUTH_CHANNEL)):
+                continue
+            await add_request_join_button(channel)
+
+        if message.command[1] != "subscribe" and missing_any:
+            btn.append([InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", url=f"https://t.me/{temp.U_NAME}?start={message.command[1]}")])
+        if btn:
+            await client.send_photo(
+                chat_id=message.from_user.id, photo=FORCESUB_IMG, caption=script.FORCESUB_TEXT,
+                reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML,
+            )
+            return
+
+    # Independent 2/3-step shortener. Its configuration, token records, progress,
+    # and 24-hour access window are separate from the original shortener system.
+    if not premium_active and not file_mode_completed and bool(settings.get("ad_cycle_enabled", False)):
+        bypass_this_delivery = False
+        try:
+            state = await db.get_ad_cycle_state(user_id, int(grp_id))
+            if ad_bypass_token:
+                bypass_this_delivery = await db.consume_ad_cycle_delivery_bypass(
+                    user_id, int(grp_id), str(ad_bypass_token)
+                )
+            if bypass_this_delivery:
+                state = await db.get_ad_cycle_state(user_id, int(grp_id))
+            now_utc = dt.now(pytz.UTC)
+            access_until = (state or {}).get("access_until")
+            if access_until is not None:
+                if getattr(access_until, "tzinfo", None) is None:
+                    access_until = access_until.replace(tzinfo=pytz.UTC)
+                else:
+                    access_until = access_until.astimezone(pytz.UTC)
+            has_direct_access = bool(access_until and access_until > now_utc)
+        except Exception:
+            logger.exception("Independent ad-cycle state unavailable")
+            await m.reply_text("⚠️ The verification service is temporarily unavailable. Please try again shortly.")
+            return
+
+        if not has_direct_access and not bypass_this_delivery:
+            try:
+                required_steps = 2 if int(settings.get("ad_cycle_steps", 3) or 3) == 2 else 3
+                completed_steps = max(0, int((state or {}).get("step_count", 0)))
+                if completed_steps >= required_steps:
+                    # If the admin changed the required cycle length mid-cycle,
+                    # normalize the counter before creating the new first-step token.
+                    await db.ad_cycle_state.update_one(
+                        {"user_id": int(user_id), "group_id": int(grp_id)},
+                        {"$set": {"step_count": 0}},
+                        upsert=True,
+                    )
+                    completed_steps = 0
+                step = completed_steps + 1
+                domain = str(settings.get(f"ad_cycle_domain_{step}") or "").strip()
+                api_key = str(settings.get(f"ad_cycle_api_{step}") or "").strip()
+                if not domain or not api_key:
+                    await m.reply_text(
+                        f"⚠️ The independent {required_steps}-step shortener is enabled, but Step {step} is not configured. Please contact the group administrator."
+                    )
                     return
-                btn = [[InlineKeyboardButton("⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️", url=invite_link.invite_link)]]
-                if message.command[1] != "subscribe":
-                    btn.append([[InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", url=f"https://t.me/{temp.U_NAME}?start={message.command[1]}")]][0])
-                await client.send_photo(
-                    chat_id=message.from_user.id, photo=FORCESUB_IMG, caption=script.FORCESUB_TEXT,
-                    reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML,
+                token = "".join(random.choices(string.ascii_letters + string.digits, k=20))
+                delivery_mode = "allfiles" if str(pre) == "allfiles" else "file"
+                await db.create_ad_cycle_verification(
+                    token, user_id, int(grp_id), str(file_id), step, required_steps, mode=delivery_mode
+                )
+                bot_return = f"https://telegram.me/{temp.U_NAME}?start=ad_{token}"
+                tracking_base = str(URL or "").strip().rstrip("/")
+                if tracking_base and not tracking_base.startswith(("http://", "https://")):
+                    tracking_base = "https://" + tracking_base
+                target = f"{tracking_base}/ad-click/{token}" if tracking_base else bot_return
+                shortener = Shortzy(api_key, domain)
+                try:
+                    short_url = await shortener.convert(target)
+                except Exception:
+                    logger.exception("Independent ad-cycle convert failed at step %s; trying quick-link fallback", step)
+                    short_url = None
+                if not short_url:
+                    try:
+                        short_url = await shortener.get_quick_link(target)
+                    except Exception:
+                        logger.exception("Independent ad-cycle quick-link fallback failed at step %s", step)
+                        short_url = None
+                if not short_url:
+                    await m.reply_text("⚠️ This shortener is temporarily unavailable. Please try again later.")
+                    return
+                await db.update_ad_cycle_verification(token, {"shortlink": str(short_url)})
+                tutorial = str(settings.get("ad_cycle_tutorial") or "").strip()
+                buttons = [[InlineKeyboardButton(f"🔗 VERIFY STEP {step}/{required_steps}", url=str(short_url))]]
+                if tutorial.startswith(("https://", "http://")):
+                    buttons.append([InlineKeyboardButton("❓ HOW TO VERIFY / DOWNLOAD", url=tutorial)])
+                buttons.append([InlineKeyboardButton("💎 BUY PREMIUM", callback_data="getpremium")])
+                await m.reply_text(
+                    f"<b>🔐 Independent verification: Step {step}/{required_steps}</b>\n\n"
+                    "Complete this link to receive the requested file. Progress is saved between requests, even if you wait. "
+                    "After the final step, you get 24 hours of direct access.",
+                    reply_markup=InlineKeyboardMarkup(buttons),
+                    parse_mode=enums.ParseMode.HTML,
+                    disable_web_page_preview=True,
                 )
                 return
-        else:
-            btn = []
-            missing_custom = False
-            for channel in fsub_channels:
-                if channel == int(AUTH_CHANNEL):
-                    continue
-                try:
-                    subscribed = await is_subscribed(client, message.from_user.id, channel)
-                except Exception:
-                    subscribed = False
-                if not subscribed:
-                    missing_custom = True
-                    try:
-                        invite = await client.create_chat_invite_link(channel)
-                        btn.append([InlineKeyboardButton("⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️", url=invite.invite_link)])
-                    except Exception:
-                        pass
-
-            default_missing = not await is_req_subscribed(client, message)
-            if default_missing:
-                try:
-                    invite_link_default = await client.create_chat_invite_link(int(AUTH_CHANNEL), creates_join_request=True)
-                    btn.append([InlineKeyboardButton("⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️", url=invite_link_default.invite_link)])
-                except Exception:
-                    pass
-
-            if message.command[1] != "subscribe" and (missing_custom or default_missing):
-                btn.append([InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", url=f"https://t.me/{temp.U_NAME}?start={message.command[1]}")])
-            if btn:
-                await client.send_photo(
-                    chat_id=message.from_user.id, photo=FORCESUB_IMG, caption=script.FORCESUB_TEXT,
-                    reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML,
-                )
+            except Exception:
+                logger.exception("Could not generate independent ad-cycle verification link")
+                await m.reply_text("⚠️ The verification service is temporarily unavailable. Please try again shortly.")
                 return
 
     if not premium_active:
@@ -2045,6 +2208,27 @@ async def all_settings(client, message):
     if not await is_check_admin(client, grp_id, message.from_user.id):
         return await message.reply_text("<b>ʏᴏᴜ ᴀʀᴇ ɴᴏᴛ ᴀᴅᴍɪɴ ɪɴ ᴛʜɪꜱ ɢʀᴏᴜᴘ</b>")
     settings = await get_settings(grp_id)
+    fsub_channels = list(settings.get("fsub_channels") or [])
+    try:
+        fsub_channels = [int(c) for c in fsub_channels]
+    except (TypeError, ValueError):
+        fsub_channels = []
+    legacy_fsub = int(settings.get("fsub_id", AUTH_CHANNEL))
+    if legacy_fsub not in fsub_channels:
+        fsub_channels.append(legacy_fsub)
+    if not fsub_channels:
+        fsub_channels = [int(AUTH_CHANNEL)]
+    fsub_lines = []
+    for channel_id in dict.fromkeys(fsub_channels):
+        try:
+            channel = await client.get_chat(int(channel_id))
+            channel_name = channel.title or (f"@{channel.username}" if channel.username else "Channel name unavailable")
+        except Exception:
+            channel_name = "Channel name unavailable"
+        fsub_lines.append(f"• {html.escape(str(channel_name))} — <code>{int(channel_id)}</code>")
+    fsub_details = "\n".join(fsub_lines) if fsub_lines else "No custom channels configured."
+    ad_cycle_state = "ON" if settings.get("ad_cycle_enabled", False) else "OFF"
+    ad_cycle_steps = 2 if int(settings.get("ad_cycle_steps", 3) or 3) == 2 else 3
     text = f"""<b><u>⚙️ ʏᴏᴜʀ sᴇᴛᴛɪɴɢs ꜰᴏʀ -</u> {title}
 
 <u>✅️ 1sᴛ ᴠᴇʀɪꜰʏ sʜᴏʀᴛɴᴇʀ ɴᴀᴍᴇ/ᴀᴘɪ</u>
@@ -2065,7 +2249,10 @@ async def all_settings(client, message):
 
 📝 ʟᴏɢ ᴄʜᴀɴɴᴇʟ ɪᴅ - `{settings['log']}`
 
-🌀 ꜰꜱᴜʙ ᴄʜᴀɴɴᴇʟ ɪᴅ - `{settings['fsub_id']}`
+🌀 ꜰᴏʀᴄᴇ-sᴜʙ ᴄʜᴀɴɴᴇʟs ({len(fsub_lines)})
+{fsub_details}
+
+🆕 2/3-step URL shortener - {ad_cycle_state} ({ad_cycle_steps} steps)
 
 📍1 ᴛᴜᴛᴏʀɪᴀʟ ʟɪɴᴋ - {settings['tutorial']}
 
@@ -2319,6 +2506,16 @@ async def set_fsub(client, message):
         return await message.reply_text(
             f"🫥 <code>{channel_id}</code> ᴛʜɪꜱ ɪꜱ ɴᴏᴛ ᴄʜᴀɴɴᴇʟ, ꜱᴇɴᴅ ᴍᴇ ᴏɴʟʏ ᴄʜᴀɴɴᴇʟ ɪᴅ ɴᴏᴛ ɢʀᴏᴜᴘ ɪᴅ</b>"
         )
+    # Keep the legacy field for older commands while also updating the actual
+    # multi-channel list used by the subscription gate.
+    settings = await get_settings(grp_id)
+    channels = [int(c) for c in (settings.get("fsub_channels") or [])]
+    legacy_fsub = int(settings.get("fsub_id", AUTH_CHANNEL))
+    if legacy_fsub not in channels:
+        channels.append(legacy_fsub)
+    if channel_id not in channels:
+        channels.append(channel_id)
+    await save_group_settings(grp_id, "fsub_channels", channels)
     await save_group_settings(grp_id, "fsub_id", channel_id)
     mention = message.from_user.mention
     await client.send_message(
@@ -2340,18 +2537,24 @@ async def remove_fsub(client, message):
     if not await is_check_admin(client, grp_id, message.from_user.id):
         return await message.reply_text("<b>ʏᴏᴜ ᴀʀᴇ ɴᴏᴛ ᴀᴅᴍɪɴ ɪɴ ᴛʜɪꜱ ɢʀᴏᴜᴘ</b>")
     settings = await get_settings(grp_id)
-    if settings["fsub_id"] == AUTH_CHANNEL:
+    channels = [int(c) for c in (settings.get("fsub_channels") or [])]
+    legacy_fsub = int(settings.get("fsub_id", AUTH_CHANNEL))
+    if legacy_fsub not in channels:
+        channels.append(legacy_fsub)
+    custom_channels = [c for c in channels if c != int(AUTH_CHANNEL)]
+    if not custom_channels and int(settings.get("fsub_id", AUTH_CHANNEL)) == int(AUTH_CHANNEL):
         await message.reply_text(
             "<b>ᴄᴜʀʀᴇɴᴛʟʏ ɴᴏ ᴀɴʏ ғᴏʀᴄᴇ ꜱᴜʙ ᴄʜᴀɴɴᴇʟ.... <code>[ᴅᴇғᴀᴜʟᴛ ᴀᴄᴛɪᴠᴀᴛᴇ]</code></b>"
         )
-    else:
-        await save_group_settings(grp_id, "fsub_id", AUTH_CHANNEL)
-        mention = message.from_user.mention
-        await client.send_message(
-            LOG_API_CHANNEL,
-            f"#Remove_Fsub_Channel\n\nᴜꜱᴇʀ - {mention} ʀᴇᴍᴏᴠᴇ ꜰꜱᴜʙ ᴄʜᴀɴɴᴇʟ ꜰʀᴏᴍ {title}",
-        )
-        await message.reply_text("<b>✅ ꜱᴜᴄᴄᴇꜱꜱғᴜʟʟʏ ʀᴇᴍᴏᴠᴇᴅ ꜰᴏʀᴄᴇ ꜱᴜʙ ᴄʜᴀɴɴᴇʟ.</b>")
+        return
+    await save_group_settings(grp_id, "fsub_id", AUTH_CHANNEL)
+    await save_group_settings(grp_id, "fsub_channels", [int(AUTH_CHANNEL)])
+    mention = message.from_user.mention
+    await client.send_message(
+        LOG_API_CHANNEL,
+        f"#Remove_Fsub_Channel\n\nᴜꜱᴇʀ - {mention} ʀᴇᴍᴏᴠᴇᴅ ᴄᴜsᴛᴏᴍ ꜰꜱᴜʙ ᴄʜᴀɴɴᴇʟs ꜰʀᴏᴍ {title}",
+    )
+    await message.reply_text("<b>✅ ꜱᴜᴄᴄᴇssғᴜʟʟʏ ʀᴇᴍᴏᴠᴇᴅ ᴄᴜsᴛᴏᴍ ꜰᴏʀᴄᴇ-sᴜʙ ᴄʜᴀɴɴᴇʟs.</b>")
 
 
 @Client.on_message(filters.command("reset_group"))

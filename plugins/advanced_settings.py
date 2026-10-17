@@ -1,6 +1,7 @@
 import asyncio
 import re
 import requests
+import html
 from pyrogram import Client, filters, enums, ContinuePropagation
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -180,6 +181,12 @@ def _main_settings_buttons(settings, grp_id, include_premium=False):
         ],
         [
             InlineKeyboardButton(
+                "🆕 2/3-STEP URL SHORTENER",
+                callback_data=f"set_page#ad_cycle#{grp_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
                 "👥 ꜰᴏʀᴄᴇ ᴄʜᴀɴɴᴇʟ",
                 callback_data=f"set_page#fsub#{grp_id}"
             ),
@@ -329,6 +336,21 @@ def _page_text(key, settings):
     if key == "fsub":
         channels = settings.get("fsub_channels") or [settings.get("fsub_id", AUTH_CHANNEL)]
         return "<b>📢 FORCE CHANNEL</b>\n\nMultiple force-subscribe channels are supported.\n\n" + "\n".join(f"• <code>{c}</code>" for c in channels)
+    if key == "ad_cycle":
+        state = "ON ✅" if settings.get("ad_cycle_enabled", False) else "OFF ❌"
+        steps = 2 if int(settings.get("ad_cycle_steps", 3) or 3) == 2 else 3
+        def val(n, field):
+            return html.escape(str(settings.get(f"ad_cycle_{field}_{n}") or "NOT SET"))
+        return (
+            "<b>🆕 INDEPENDENT 2/3-STEP URL SHORTENER</b>\n\n"
+            f"Status: <b>{state}</b>\nRequired successful steps: <b>{steps}</b>\n"
+            "After the final successful step, direct access lasts 24 hours. Gaps between steps do not reset progress.\n\n"
+            f"Step 1: <code>{val(1, 'domain')}</code>\n"
+            f"Step 2: <code>{val(2, 'domain')}</code>\n"
+            f"Step 3: <code>{val(3, 'domain')}</code>\n"
+            f"Tutorial: {html.escape(str(settings.get('ad_cycle_tutorial') or 'NOT SET'))}\n\n"
+            "This system has separate settings and progress from the original URL shortener."
+        )
     if key == "max_results":
         return f"<b>🔢 SET MAX RESULTS</b>\n\nCurrent: <code>{settings.get('max_results', MAX_BTN)}</code>\nAllowed: 1–20"
     if key == "details":
@@ -491,6 +513,19 @@ def _page_buttons(key, settings, grp_id):
         if key == "auto_delete":
             b.append([InlineKeyboardButton("⏱️ sᴇᴛ ᴛɪᴍᴇ", callback_data=f"set_input#delete_time#{grp_id}")])
 
+    elif key == "ad_cycle":
+        state_label = "TURN OFF ❌" if settings.get("ad_cycle_enabled", False) else "TURN ON ✅"
+        steps = 2 if int(settings.get("ad_cycle_steps", 3) or 3) == 2 else 3
+        b = [
+            [InlineKeyboardButton(state_label, callback_data=f"set_toggle#ad_cycle_enabled#{grp_id}#ad_cycle")],
+            [InlineKeyboardButton("2 successful steps", callback_data=f"set_ad_cycle_steps#2#{grp_id}"), InlineKeyboardButton("3 successful steps", callback_data=f"set_ad_cycle_steps#3#{grp_id}")],
+            [InlineKeyboardButton("Step 1: Set domain", callback_data=f"set_input#ad_cycle_domain_1#{grp_id}"), InlineKeyboardButton("Set API", callback_data=f"set_input#ad_cycle_api_1#{grp_id}")],
+            [InlineKeyboardButton("Step 2: Set domain", callback_data=f"set_input#ad_cycle_domain_2#{grp_id}"), InlineKeyboardButton("Set API", callback_data=f"set_input#ad_cycle_api_2#{grp_id}")],
+            [InlineKeyboardButton("Step 3: Set domain", callback_data=f"set_input#ad_cycle_domain_3#{grp_id}"), InlineKeyboardButton("Set API", callback_data=f"set_input#ad_cycle_api_3#{grp_id}")],
+            [InlineKeyboardButton("Set tutorial/how-to link", callback_data=f"set_input#ad_cycle_tutorial#{grp_id}")],
+        ]
+        b.append(_back(grp_id, "main"))
+        return b
     elif key == "shortlink":
         return _shortlink_master_buttons(settings, grp_id)
     elif key == "shortlink_list":
@@ -545,6 +580,45 @@ def _page_buttons(key, settings, grp_id):
     b.append(_back(grp_id, "main"))
     return b
 
+async def _fsub_page_text(client, settings):
+    channels = list(settings.get("fsub_channels") or [])
+    legacy_fsub = int(settings.get("fsub_id", AUTH_CHANNEL))
+    if legacy_fsub not in [int(c) for c in channels if str(c).lstrip("-").isdigit()]:
+        channels.append(legacy_fsub)
+    if not channels:
+        channels = [AUTH_CHANNEL]
+    lines = []
+    seen = set()
+    for raw_channel in channels:
+        try:
+            channel_id = int(raw_channel)
+        except (TypeError, ValueError):
+            continue
+        if channel_id in seen:
+            continue
+        seen.add(channel_id)
+        title = "Channel name unavailable"
+        try:
+            chat = await client.get_chat(channel_id)
+            title = chat.title or (f"@{chat.username}" if chat.username else title)
+        except Exception:
+            # Bot must be able to access the channel to resolve its title.
+            pass
+        lines.append(f"• <b>{html.escape(title)}</b> — <code>{channel_id}</code>")
+    body = "\n".join(lines) if lines else "No force-subscribe channels configured."
+    return (
+        "<b>📢 FORCE-SUBSCRIBE CHANNELS</b>\n\n"
+        f"Configured channels: <b>{len(lines)}</b>\n"
+        "Each channel is listed separately with its name and ID.\n\n" + body
+    )
+
+
+async def _details_page_text(client, settings):
+    text = _page_text("details", settings)
+    text = "\n".join(line for line in text.splitlines() if not line.startswith("Force channels:"))
+    return text + "\n\n" + await _fsub_page_text(client, settings)
+
+
 async def show_page(client, query, key, grp_id, extra=None):
     settings = await _fast_settings(int(grp_id))
 
@@ -562,7 +636,7 @@ async def show_page(client, query, key, grp_id, extra=None):
         text = _time_page_text(settings, int(extra or 1))
         buttons = _time_page_buttons(grp_id, int(extra or 1))
     else:
-        text = _page_text(key, settings)
+        text = await _fsub_page_text(client, settings) if key == "fsub" else await _details_page_text(client, settings) if key == "details" else _page_text(key, settings)
         buttons = _page_buttons(key, settings, grp_id)
 
     await query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML)
@@ -589,6 +663,12 @@ async def _authorize(client, query, grp_id):
 
 
 def _prompt_state(query, gid, kind, origin_page, **extra):
+    # One active text prompt per user. If the same admin opens a prompt in a
+    # different group, the older prompt is discarded so input can never be
+    # written into the wrong group's settings.
+    for pending_key in list(PENDING):
+        if pending_key[0] == query.from_user.id:
+            PENDING.pop(pending_key, None)
     state = {
         "type": kind,
         "origin_page": origin_page,
@@ -845,7 +925,7 @@ async def settings_callback(client, query):
         elif action == "set_back":
             key = parts[1]
             gid = int(parts[2])
-        elif action in {"set_shortner", "set_shortner_action", "set_delete_shortner", "set_gap", "set_gap_input"}:
+        elif action in {"set_shortner", "set_shortner_action", "set_delete_shortner", "set_gap", "set_gap_input", "set_ad_cycle_steps"}:
             key = parts[1]
             gid = int(parts[-1])
         elif action == "set_cancel":
@@ -891,6 +971,8 @@ async def settings_callback(client, query):
             _invalidate_settings_cache(gid)
             if len(parts) > 3 and parts[3] == "shortlink":
                 return await show_page(client, query, "shortlink", gid)
+            if len(parts) > 3 and parts[3] == "ad_cycle":
+                return await show_page(client, query, "ad_cycle", gid)
             return await show_page(client, query, key, gid)
 
         if action == "set_default":
@@ -916,7 +998,8 @@ async def settings_callback(client, query):
                 "fsub_delete": "fsub",
             }
             origin_page = (
-                "shortlink_list" if key in {"shortner", "shortner_two", "shortner_three"}
+                "ad_cycle" if key.startswith("ad_cycle_")
+                else "shortlink_list" if key in {"shortner", "shortner_two", "shortner_three"}
                 else "verification_gap" if key in {"verify_time", "third_verify_time"}
                 else "tutorial" if key in {"tutorial", "tutorial_2", "tutorial_3"}
                 else origin_page_map.get(key, "main")
@@ -933,7 +1016,8 @@ async def settings_callback(client, query):
                 "tutorial": "sᴇɴᴅ ᴛᴜᴛᴏʀɪᴀʟ 1 ᴜʀʟ.",
                 "tutorial_2": "sᴇɴᴅ ᴛᴜᴛᴏʀɪᴀʟ 2 ᴜʀʟ.",
                 "tutorial_3": "sᴇɴᴅ ᴛᴜᴛᴏʀɪᴀʟ 3 ᴜʀʟ.",
-            }.get(key, "sᴇɴᴅ ᴛʜᴇ ɴᴇᴡ ᴠᴀʟᴜᴇ.")
+                "ad_cycle_tutorial": "Send the separate 2/3-step shortener tutorial/how-to-download URL.",
+            }.get(key, "Send the value for this separate 2/3-step shortener setting.")
 
             return await _edit_prompt(
                 client, state,
@@ -952,6 +1036,14 @@ async def settings_callback(client, query):
                 "ᴄᴀɴᴄᴇʟʟᴇᴅ ᴛʜɪs ᴘʀᴏᴄᴇss...",
                 InlineKeyboardMarkup([_back(gid, "main")])
             )
+
+        if action == "set_ad_cycle_steps":
+            steps = int(key)
+            if steps not in (2, 3):
+                return await query.answer("Choose 2 or 3 steps.", show_alert=True)
+            await save_group_settings(gid, "ad_cycle_steps", steps)
+            _invalidate_settings_cache(gid)
+            return await show_page(client, query, "ad_cycle", gid)
 
         if action == "set_shortner":
             return await show_page(client, query, "shortener", gid, int(key))
@@ -1295,6 +1387,31 @@ async def advanced_input(client, message):
         PENDING.pop((uid, gid), None)
         await _delete_input_message()
 
+    elif key.startswith("ad_cycle_domain_"):
+        domain = value.replace("https://", "").replace("http://", "").strip().rstrip("/")
+        if not re.fullmatch(r"[A-Za-z0-9.-]+(?::\d+)?", domain):
+            return await message.reply_text("Send only a valid shortener domain, for example: tnshort.net")
+        await save_group_settings(gid, key, domain)
+        _invalidate_settings_cache(gid)
+        PENDING.pop((uid, gid), None)
+        await _delete_input_message()
+
+    elif key.startswith("ad_cycle_api_"):
+        if not value.strip():
+            return await message.reply_text("Send a non-empty API key or /cancel")
+        await save_group_settings(gid, key, value.strip())
+        _invalidate_settings_cache(gid)
+        PENDING.pop((uid, gid), None)
+        await _delete_input_message()
+
+    elif key == "ad_cycle_tutorial":
+        if not (value.startswith("http://") or value.startswith("https://")):
+            return await message.reply_text("Send a valid http/https URL or /cancel")
+        await save_group_settings(gid, key, value)
+        _invalidate_settings_cache(gid)
+        PENDING.pop((uid, gid), None)
+        await _delete_input_message()
+
     elif key.startswith("tutorial"):
         if not (value.startswith("http://") or value.startswith("https://")):
             return await message.reply_text("Send a valid http/https URL or /cancel")
@@ -1326,6 +1443,9 @@ async def advanced_input(client, message):
             return await message.reply_text("Send a valid channel ID or /cancel")
         settings = await get_settings(gid)
         channels = list(settings.get("fsub_channels") or [])
+        legacy_fsub = int(settings.get("fsub_id", AUTH_CHANNEL))
+        if legacy_fsub not in [int(c) for c in channels if str(c).lstrip("-").isdigit()]:
+            channels.append(legacy_fsub)
         if value_int not in channels:
             channels.append(value_int)
         await save_group_settings(gid, "fsub_channels", channels)
@@ -1340,6 +1460,9 @@ async def advanced_input(client, message):
             return await message.reply_text("Send a valid channel ID or /cancel")
         settings = await get_settings(gid)
         channels = [int(c) for c in (settings.get("fsub_channels") or []) if int(c) != value_int]
+        legacy_fsub = int(settings.get("fsub_id", AUTH_CHANNEL))
+        if legacy_fsub != value_int and legacy_fsub not in channels:
+            channels.append(legacy_fsub)
         if not channels:
             channels = [AUTH_CHANNEL]
         await save_group_settings(gid, "fsub_channels", channels)
@@ -1366,7 +1489,7 @@ async def advanced_input(client, message):
             )
             buttons = _main_settings_buttons(settings, gid)
         else:
-            text = _page_text(page, settings)
+            text = await _fsub_page_text(client, settings) if page == "fsub" else await _details_page_text(client, settings) if page == "details" else _page_text(page, settings)
             buttons = _page_buttons(page, settings, gid)
         await client.edit_message_text(
             state["prompt_chat_id"],
