@@ -38,6 +38,7 @@ from utils import (
     temp,
     get_readable_time,
     save_default_settings,
+    shorten_with_linkcut,
 )
 import re
 import base64
@@ -1210,18 +1211,23 @@ async def start(client: Client, message):
                 if tracking_base and not tracking_base.startswith(("http://", "https://")):
                     tracking_base = "https://" + tracking_base
                 target = f"{tracking_base}/ad-click/{token}" if tracking_base else bot_return
-                shortener = Shortzy(api_key, domain)
-                try:
-                    short_url = await shortener.convert(target)
-                except Exception:
-                    logger.exception("Independent ad-cycle convert failed at step %s; trying quick-link fallback", step)
-                    short_url = None
-                if not short_url:
+                short_url = None
+                if "linkcut.org" in domain.lower():
                     try:
-                        short_url = await shortener.get_quick_link(target)
+                        short_url = await shorten_with_linkcut(target, api_key, domain)
                     except Exception:
-                        logger.exception("Independent ad-cycle quick-link fallback failed at step %s", step)
-                        short_url = None
+                        logger.exception("Independent LinkCut API failed at step %s", step)
+                else:
+                    shortener = Shortzy(api_key, domain)
+                    try:
+                        short_url = await shortener.convert(target)
+                    except Exception:
+                        logger.exception("Independent ad-cycle convert failed at step %s; trying quick-link fallback", step)
+                    if not short_url:
+                        try:
+                            short_url = await shortener.get_quick_link(target)
+                        except Exception:
+                            logger.exception("Independent ad-cycle quick-link fallback failed at step %s", step)
                 if not short_url:
                     await m.reply_text("⚠️ This shortener is temporarily unavailable. Please try again later.")
                     return
