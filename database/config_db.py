@@ -1,84 +1,14 @@
 from motor.motor_asyncio import AsyncIOMotorClient
-import asyncio
-import logging
-from database.users_chats_db import _ResilientCollection
-from info import DATABASE_URI, PREMIUM_PLANS, APP_DATA_BACKUP_URI, APP_DATA_BACKUP_NAME
+from info import DATABASE_URI, PREMIUM_PLANS
 from datetime import datetime
-
-
-logger = logging.getLogger(__name__)
 
 
 class Database:
     def __init__(self, uri, db_name):
-        self.client = AsyncIOMotorClient(uri, serverSelectionTimeoutMS=5000)
+        self.client = AsyncIOMotorClient(uri)
         self.db = self.client[db_name]
-        backup_uri = str(APP_DATA_BACKUP_URI or "").strip()
-        self.backup_client = AsyncIOMotorClient(backup_uri, serverSelectionTimeoutMS=2000) if backup_uri else None
-        self.backup_db = self.backup_client[APP_DATA_BACKUP_NAME] if self.backup_client is not None else None
-        journal = self.backup_db["_admin_data_recovery_journal"] if self.backup_db is not None else None
-        self.col = _ResilientCollection(
-            self.db.user,
-            self.backup_db.user if self.backup_db is not None else None,
-            journal,
-        )
-        self.config_col = _ResilientCollection(
-            self.db.configuration,
-            self.backup_db.configuration if self.backup_db is not None else None,
-            journal,
-        )
-
-    async def initialize_backup(self):
-        """Seed and reconcile admin/configuration data in the same backup DB."""
-        if self.backup_db is None:
-            return False
-        try:
-            await self.backup_db.command("ping")
-        except Exception:
-            logger.exception("Admin-data backup is unavailable; continuing with primary only")
-            return False
-        try:
-            names = await self.db.list_collection_names()
-        except Exception:
-            logger.exception("Admin data primary unavailable during backup sync")
-            return False
-        journal = self.backup_db["_admin_data_recovery_journal"]
-        try:
-            pending = await journal.find({}).sort("created_at", 1).to_list(length=1000)
-        except Exception:
-            logger.exception("Could not read admin-data recovery journal")
-            pending = []
-        for entry in pending:
-            try:
-                target = self.db[str(entry.get("collection") or "")]
-                method = str(entry.get("method") or "")
-                args = list(entry.get("args") or [])
-                kwargs = dict(entry.get("kwargs") or {})
-                if method == "insert_one" and args and isinstance(args[0], dict) and "_id" in args[0]:
-                    await target.replace_one({"_id": args[0]["_id"]}, args[0], upsert=True)
-                elif method in {"update_one", "update_many", "delete_one", "delete_many", "replace_one", "find_one_and_update"}:
-                    await getattr(target, method)(*args, **kwargs)
-                else:
-                    continue
-                await journal.delete_one({"_id": entry["_id"]})
-            except Exception:
-                logger.exception("Could not replay admin-data recovery journal entry")
-        for name in names:
-            try:
-                source, target = self.db[name], self.backup_db[name]
-                async for document in source.find({}):
-                    await target.replace_one({"_id": document["_id"]}, document, upsert=True)
-            except Exception:
-                logger.exception("Could not sync admin-data collection %s", name)
-        return True
-
-    async def backup_sync_loop(self, interval=600):
-        while self.backup_db is not None:
-            await asyncio.sleep(max(60, int(interval)))
-            try:
-                await self.initialize_backup()
-            except Exception:
-                logger.exception("Periodic admin-data backup reconciliation failed")
+        self.col = self.db.user
+        self.config_col = self.db.configuration
 
     async def update_top_messages(self, user_id, message_text):
         user = await self.col.find_one(
