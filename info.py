@@ -19,7 +19,7 @@ SESSION = environ.get("SESSION", "Media_search")
 API_ID = int(environ.get("API_ID", "24222039"))
 API_HASH = environ.get("API_HASH", "6dd2dc70434b2f577f76a2e993135662")
 BOT_TOKEN = environ.get("BOT_TOKEN", "")
-PORT = int(environ.get("PORT", "8080"))
+PORT = environ.get("PORT", "8082")
 
 
 # Premium payment bot (optional second Telegram bot used only for screenshots).
@@ -77,12 +77,9 @@ BUILD_VERSION = environ.get("BUILD_VERSION", "stable")
 # MongoDB
 DATABASE_URI = environ.get("DATABASE_URI", "mongodb+srv://mayurgogoi821:Ae5eEMIJV9aYED81@cluster0.930txsz.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 DATABASE_NAME = environ.get("DATABASE_NAME", "sdyimdx")
-# Optional independent backup/failover store for users, groups, settings, and verification state.
-APP_DATA_BACKUP_URI = environ.get("APP_DATA_BACKUP_URI", "mongodb+srv://Vivekchaun24_23:SPNaSnJhXQ39ZMtg@cluster0.74vyoq2.mongodb.net/?appName=Cluster0")
-APP_DATA_BACKUP_NAME = environ.get("APP_DATA_BACKUP_NAME", f"{DATABASE_NAME}_backup")
 # DreamX-style optional second search database. Enable with MULTIPLE_DB=True.
-DATABASE_URI2 = environ.get("DATABASE_URI2", "mongodb+srv://Vivekchaun24_23:SPNaSnJhXQ39ZMtg@cluster0.74vyoq2.mongodb.net/?appName=Cluster0")
-MULTIPLE_DB = is_enabled(environ.get("MULTIPLE_DB", "True"), True)
+DATABASE_URI2 = environ.get("DATABASE_URI2", "")
+MULTIPLE_DB = is_enabled(environ.get("MULTIPLE_DB", "False"), False)
 ULTRA_FAST_MODE = is_enabled(environ.get("ULTRA_FAST_MODE", "True"), True)
 USE_CAPTION_FILTER = is_enabled(environ.get("USE_CAPTION_FILTER", "True"), True)
 INDEX_CAPTION = is_enabled(environ.get("SAVE_CAPTION", "True"), True)

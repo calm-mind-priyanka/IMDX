@@ -21,7 +21,7 @@ logging.getLogger("aiohttp.web").setLevel(logging.ERROR)
 
 from pyrogram import __version__
 from pyrogram.raw.all import layer
-from database.ia_filterdb import Media, Media2
+from database.ia_filterdb import Media
 from database.users_chats_db import db
 from database.config_db import mdb
 from info import *
@@ -49,26 +49,10 @@ pyrogram.utils.MIN_CHANNEL_ID = -1009147483647
 
 
 async def Jisshu_start():
-    # Start the HTTP health endpoint before Telegram/database initialization.
-    # Koyeb can then pass its TCP health check while the bot warms up.
-    health_runner = web.AppRunner(await web_server())
-    await health_runner.setup()
-    await web.TCPSite(health_runner, "0.0.0.0", int(PORT)).start()
-    logging.info("Health/web server listening on 0.0.0.0:%s", PORT)
-    print("\\n")
+    print("\n")
     print("Credit - Telegram @JISSHU_BOTS")
     bot_info = await JisshuBot.get_me()
-    # Resolve the public bot username immediately. The client can receive updates
-    # before the slower database/index initialization below finishes; movie links
-    # must never be built while temp.U_NAME is still None.
-    if not bot_info.username:
-        raise RuntimeError("Telegram did not return a username for the main bot; refusing to generate invalid deep links")
-    temp.ME = bot_info.id
-    temp.U_NAME = bot_info.username.lstrip("@")
-    temp.B_NAME = bot_info.first_name
-    temp.B_LINK = bot_info.mention
-    JisshuBot.username = temp.U_NAME
-    logging.info("Main bot identity resolved: @%s (id=%s)", temp.U_NAME, temp.ME)
+    JisshuBot.username = bot_info.username
     await initialize_clients()
     for name in files:
         with open(name) as a:
@@ -83,41 +67,19 @@ async def Jisshu_start():
             print("JisshuBot Imported => " + plugin_name)
     if ON_HEROKU:
         asyncio.create_task(ping_server())
-    # Seed the optional application-data backup and enable mirrored writes before
-    # loading state. Backup failures are best-effort and must never stop startup.
-    await db.initialize_backup()
-    if getattr(db, "_backup_db", None) is not None:
-        asyncio.create_task(db.backup_sync_loop())
-    try:
-        await mdb.initialize_backup()
-        if getattr(mdb, "backup_db", None) is not None:
-            asyncio.create_task(mdb.backup_sync_loop())
-    except Exception:
-        logging.exception("Could not initialize admin/configuration backup; bot will continue")
-    try:
-        b_users, b_chats = await db.get_banned()
-    except Exception:
-        logging.exception("Could not load banned-user/group state; starting with empty in-memory lists")
-        b_users, b_chats = [], []
+    b_users, b_chats = await db.get_banned()
     temp.BANNED_USERS = b_users
     temp.BANNED_CHATS = b_chats
-    for movie_model in {Media, Media2}:
-        try:
-            await movie_model.ensure_indexes()
-        except Exception:
-            logging.exception("A movie DB index setup failed; bot will start and keep healthy DB paths available")
-    try:
-        await db.ensure_premium_indexes()
-        await db.ensure_verification_indexes()
-    except Exception:
-        logging.exception("Application-data index setup failed; bot will continue startup")
-    try:
-        await mdb.load_premium_plans()
-    except Exception:
-        logging.exception("Could not load persisted Premium plans; bot will continue startup")
-    # Reuse the identity resolved before plugin loading and database setup.
-    # This avoids a window where handlers generate links containing "None".
-    me = bot_info
+    await Media.ensure_indexes()
+    await db.ensure_premium_indexes()
+    await db.ensure_verification_indexes()
+    await mdb.load_premium_plans()
+    me = await JisshuBot.get_me()
+    temp.ME = me.id
+    temp.U_NAME = me.username
+    temp.B_NAME = me.first_name
+    temp.B_LINK = me.mention
+    JisshuBot.username = "@" + me.username
 
     # Start the dedicated payment/screenshot bot only when configured.
     # It is a separate Telegram account/token and does not replace the main bot.
@@ -165,25 +127,19 @@ async def Jisshu_start():
     )
     logging.info(script.LOGO)
     tz = pytz.timezone("Asia/Kolkata")
+    today = date.today()
     now = datetime.now(tz)
-    today = now.date()  # Keep the date and time in the same timezone (IST).
     time = now.strftime("%H:%M:%S %p")
-
-    # Notifications are best-effort: a missing/incorrect log or support channel
-    # must not prevent the bot from reaching idle after successfully starting.
-    try:
-        await JisshuBot.send_message(
-            chat_id=LOG_CHANNEL,
-            text=script.RESTART_TXT.format(me.mention, today, time),
-        )
-    except Exception:
-        logging.exception("Could not send startup/restart notice to LOG_CHANNEL=%s", LOG_CHANNEL)
-    try:
-        await JisshuBot.send_message(
-            chat_id=SUPPORT_GROUP, text=f"<b>{me.mention} ʀᴇsᴛᴀʀᴛᴇᴅ 🤖</b>"
-        )
-    except Exception:
-        logging.exception("Could not send startup/restart notice to SUPPORT_GROUP=%s", SUPPORT_GROUP)
+    await JisshuBot.send_message(
+        chat_id=LOG_CHANNEL, text=script.RESTART_TXT.format(me.mention, today, time)
+    )
+    await JisshuBot.send_message(
+        chat_id=SUPPORT_GROUP, text=f"<b>{me.mention} ʀᴇsᴛᴀʀᴛᴇᴅ 🤖</b>"
+    )
+    app = web.AppRunner(await web_server())
+    await app.setup()
+    bind_address = "0.0.0.0"
+    await web.TCPSite(app, bind_address, PORT).start()
     await idle()
 
 
