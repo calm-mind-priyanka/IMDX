@@ -49,7 +49,13 @@ pyrogram.utils.MIN_CHANNEL_ID = -1009147483647
 
 
 async def Jisshu_start():
-    print("\n")
+    # Start the HTTP health endpoint before Telegram/database initialization.
+    # Koyeb can then pass its TCP health check while the bot warms up.
+    health_runner = web.AppRunner(await web_server())
+    await health_runner.setup()
+    await web.TCPSite(health_runner, "0.0.0.0", int(PORT)).start()
+    logging.info("Health/web server listening on 0.0.0.0:%s", PORT)
+    print("\\n")
     print("Credit - Telegram @JISSHU_BOTS")
     bot_info = await JisshuBot.get_me()
     JisshuBot.username = bot_info.username
@@ -161,10 +167,6 @@ async def Jisshu_start():
     await JisshuBot.send_message(
         chat_id=SUPPORT_GROUP, text=f"<b>{me.mention} ʀᴇsᴛᴀʀᴛᴇᴅ 🤖</b>"
     )
-    app = web.AppRunner(await web_server())
-    await app.setup()
-    bind_address = "0.0.0.0"
-    await web.TCPSite(app, bind_address, PORT).start()
     await idle()
 
 
