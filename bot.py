@@ -67,13 +67,38 @@ async def Jisshu_start():
             print("JisshuBot Imported => " + plugin_name)
     if ON_HEROKU:
         asyncio.create_task(ping_server())
-    b_users, b_chats = await db.get_banned()
+    # Seed the optional application-data backup and enable mirrored writes before
+    # loading state. Backup failures are best-effort and must never stop startup.
+    await db.initialize_backup()
+    if getattr(db, "_backup_db", None) is not None:
+        asyncio.create_task(db.backup_sync_loop())
+    try:
+        await mdb.initialize_backup()
+        if getattr(mdb, "backup_db", None) is not None:
+            asyncio.create_task(mdb.backup_sync_loop())
+    except Exception:
+        logging.exception("Could not initialize admin/configuration backup; bot will continue")
+    try:
+        b_users, b_chats = await db.get_banned()
+    except Exception:
+        logging.exception("Could not load banned-user/group state; starting with empty in-memory lists")
+        b_users, b_chats = [], []
     temp.BANNED_USERS = b_users
     temp.BANNED_CHATS = b_chats
-    await Media.ensure_indexes()
-    await db.ensure_premium_indexes()
-    await db.ensure_verification_indexes()
-    await mdb.load_premium_plans()
+    for movie_model in {Media, Media2}:
+        try:
+            await movie_model.ensure_indexes()
+        except Exception:
+            logging.exception("A movie DB index setup failed; bot will start and keep healthy DB paths available")
+    try:
+        await db.ensure_premium_indexes()
+        await db.ensure_verification_indexes()
+    except Exception:
+        logging.exception("Application-data index setup failed; bot will continue startup")
+    try:
+        await mdb.load_premium_plans()
+    except Exception:
+        logging.exception("Could not load persisted Premium plans; bot will continue startup")
     me = await JisshuBot.get_me()
     temp.ME = me.id
     temp.U_NAME = me.username

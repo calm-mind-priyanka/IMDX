@@ -77,6 +77,9 @@ BUILD_VERSION = environ.get("BUILD_VERSION", "stable")
 # MongoDB
 DATABASE_URI = environ.get("DATABASE_URI", "mongodb+srv://mayurgogoi821:Ae5eEMIJV9aYED81@cluster0.930txsz.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 DATABASE_NAME = environ.get("DATABASE_NAME", "sdyimdx")
+# Optional independent backup/failover store for users, groups, settings, and verification state.
+APP_DATA_BACKUP_URI = environ.get("APP_DATA_BACKUP_URI", "")
+APP_DATA_BACKUP_NAME = environ.get("APP_DATA_BACKUP_NAME", f"{DATABASE_NAME}_backup")
 # DreamX-style optional second search database. Enable with MULTIPLE_DB=True.
 DATABASE_URI2 = environ.get("DATABASE_URI2", "")
 MULTIPLE_DB = is_enabled(environ.get("MULTIPLE_DB", "False"), False)
