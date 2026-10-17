@@ -3,7 +3,7 @@ from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors.exceptions.bad_request_400 import MessageTooLong
 from info import ADMINS, LOG_CHANNEL, USERNAME
 from database.users_chats_db import db
-from database.ia_filterdb import Media, Media2, get_files_db_size
+from database.ia_filterdb import Media, get_files_db_size
 from utils import get_size, temp
 from Script import script
 import psutil
@@ -100,25 +100,11 @@ async def groups_list(bot, message):
 
 @Client.on_message(filters.command("stats") & filters.user(ADMINS) & filters.incoming)
 async def get_ststs(bot, message):
-    try:
-        users = await db.total_users_count()
-    except Exception:
-        users = 0
-    try:
-        groups = await db.total_chat_count()
-    except Exception:
-        groups = 0
-    try:
-        size = get_size(await db.get_db_size())
-    except Exception:
-        size = "Unavailable"
+    users = await db.total_users_count()
+    groups = await db.total_chat_count()
+    size = get_size(await db.get_db_size())
     free = get_size(536870912)
-    files = 0
-    for model in {Media, Media2}:
-        try:
-            files += await model.count_documents({})
-        except Exception:
-            logging.exception("Could not count files in one movie DB for stats")
+    files = await Media.count_documents()
     db2_size = get_size(await get_files_db_size())
     db2_free = get_size(536870912)
     uptime = time.strftime("%Hh %Mm %Ss", time.gmtime(time.time() - time.time()))
