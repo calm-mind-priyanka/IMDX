@@ -165,15 +165,25 @@ async def Jisshu_start():
     )
     logging.info(script.LOGO)
     tz = pytz.timezone("Asia/Kolkata")
-    today = date.today()
     now = datetime.now(tz)
+    today = now.date()  # Keep the date and time in the same timezone (IST).
     time = now.strftime("%H:%M:%S %p")
-    await JisshuBot.send_message(
-        chat_id=LOG_CHANNEL, text=script.RESTART_TXT.format(me.mention, today, time)
-    )
-    await JisshuBot.send_message(
-        chat_id=SUPPORT_GROUP, text=f"<b>{me.mention} ʀᴇsᴛᴀʀᴛᴇᴅ 🤖</b>"
-    )
+
+    # Notifications are best-effort: a missing/incorrect log or support channel
+    # must not prevent the bot from reaching idle after successfully starting.
+    try:
+        await JisshuBot.send_message(
+            chat_id=LOG_CHANNEL,
+            text=script.RESTART_TXT.format(me.mention, today, time),
+        )
+    except Exception:
+        logging.exception("Could not send startup/restart notice to LOG_CHANNEL=%s", LOG_CHANNEL)
+    try:
+        await JisshuBot.send_message(
+            chat_id=SUPPORT_GROUP, text=f"<b>{me.mention} ʀᴇsᴛᴀʀᴛᴇᴅ 🤖</b>"
+        )
+    except Exception:
+        logging.exception("Could not send startup/restart notice to SUPPORT_GROUP=%s", SUPPORT_GROUP)
     await idle()
 
 
