@@ -336,20 +336,48 @@ def _page_text(key, settings):
     if key == "fsub":
         channels = settings.get("fsub_channels") or [settings.get("fsub_id", AUTH_CHANNEL)]
         return "<b>📢 FORCE CHANNEL</b>\n\nMultiple force-subscribe channels are supported.\n\n" + "\n".join(f"• <code>{c}</code>" for c in channels)
+    if key == "ad_cycle_config":
+        steps = 2 if int(settings.get("ad_cycle_steps", 3) or 3) == 2 else 3
+        state = "ON ✅" if settings.get("ad_cycle_enabled", False) else "OFF ❌"
+        return ("<b>🆕 INDEPENDENT URL SHORTENER — CONFIGURATION</b>\n\n"
+                f"Status: <b>{state}</b>\nSelected mode: <b>{steps} successful steps → 24-hour access</b>\n\n"
+                "Choose a step to configure its domain and API. All values here are separate from the original shortener.\n"
+                "The tutorial is also independent. Changing it will not change the original tutorial.\n"
+                "This system requests the next step on the next file request; it does not use the original verification-gap settings.\n"
+                "Step 3 is not used in 2-step mode.\n"
+                f"Tutorial: {html.escape(str(settings.get('ad_cycle_tutorial') or 'NOT SET'))}\n"
+                "Verification progress is saved between bot restarts.")
+    if key.startswith("ad_cycle_step_") and key[-1:] in {"1", "2", "3"}:
+        n = int(key[-1])
+        return (f"<b>🆕 INDEPENDENT SHORTENER — STEP {n}</b>\n\n"
+                f"Domain: <code>{html.escape(str(settings.get(f'ad_cycle_domain_{n}') or 'NOT SET'))}</code>\n"
+                f"API: <b>{'SET ✅' if str(settings.get(f'ad_cycle_api_{n}') or '').strip() else 'NOT SET ❌'}</b>\n\n"
+                "Use the buttons below to set this step's domain and API.")
     if key == "ad_cycle":
         state = "ON ✅" if settings.get("ad_cycle_enabled", False) else "OFF ❌"
         steps = 2 if int(settings.get("ad_cycle_steps", 3) or 3) == 2 else 3
         def val(n, field):
             return html.escape(str(settings.get(f"ad_cycle_{field}_{n}") or "NOT SET"))
+        def api_status(n):
+            return "SET ✅" if str(settings.get(f"ad_cycle_api_{n}") or "").strip() else "NOT SET ❌"
+        configured = all(str(settings.get(f"ad_cycle_{field}_{n}") or "").strip() for n in range(1, steps + 1) for field in ("domain", "api"))
+        setup_status = "READY TO ENABLE ✅" if configured else "SET ALL REQUIRED DOMAINS + APIs ⚠️"
         return (
-            "<b>🆕 INDEPENDENT 2/3-STEP URL SHORTENER</b>\n\n"
-            f"Status: <b>{state}</b>\nRequired successful steps: <b>{steps}</b>\n"
-            "After the final successful step, direct access lasts 24 hours. Gaps between steps do not reset progress.\n\n"
-            f"Step 1: <code>{val(1, 'domain')}</code>\n"
-            f"Step 2: <code>{val(2, 'domain')}</code>\n"
-            f"Step 3: <code>{val(3, 'domain')}</code>\n"
+            "<b>🆕 INDEPENDENT URL SHORTENER — SETUP</b>\n\n"
+            f"Status: <b>{state}</b> | Selected mode: <b>{steps} successful steps</b>\n"
+            f"Setup: <b>{setup_status}</b>\n\n"
+            "<b>HOW TO SET UP</b>\n"
+            f"1. Select <b>{steps} successful steps</b> below.\n"
+            f"2. Configure a domain AND API for each required step (1–{steps}).\n"
+            "3. Set the tutorial link if you want to show one.\n"
+            "4. Turn ON only after the required steps are configured.\n\n"
+            f"<b>STEP 1</b> — Domain: <code>{val(1, 'domain')}</code> | API: <b>{api_status(1)}</b>\n"
+            f"<b>STEP 2</b> — Domain: <code>{val(2, 'domain')}</code> | API: <b>{api_status(2)}</b>\n"
+            f"<b>STEP 3</b> — Domain: <code>{val(3, 'domain')}</code> | API: <b>{api_status(3)}</b>"
+            f"{' (NOT REQUIRED IN 2-STEP MODE)' if steps == 2 else ''}\n"
             f"Tutorial: {html.escape(str(settings.get('ad_cycle_tutorial') or 'NOT SET'))}\n\n"
-            "This system has separate settings and progress from the original URL shortener."
+            "<b>How it works:</b> Each user completes one step per file request. After the final successful step, direct access lasts 24 hours. Time gaps do not reset progress.\n"
+            "<b>Isolation:</b> the new system uses separate ad_cycle domain/API/tutorial settings and separate progress records. Changing its tutorial or shortener credentials does not overwrite the original tutorial, domains, APIs, or verification-gap settings. This flow requests the next step on the next file request; it does not use the original verification-gap settings. Disable one system if you do not want both verification gates to run."
         )
     if key == "max_results":
         return f"<b>🔢 SET MAX RESULTS</b>\n\nCurrent: <code>{settings.get('max_results', MAX_BTN)}</code>\nAllowed: 1–20"
@@ -513,17 +541,42 @@ def _page_buttons(key, settings, grp_id):
         if key == "auto_delete":
             b.append([InlineKeyboardButton("⏱️ sᴇᴛ ᴛɪᴍᴇ", callback_data=f"set_input#delete_time#{grp_id}")])
 
-    elif key == "ad_cycle":
-        state_label = "TURN OFF ❌" if settings.get("ad_cycle_enabled", False) else "TURN ON ✅"
+    elif key == "ad_cycle_config":
         steps = 2 if int(settings.get("ad_cycle_steps", 3) or 3) == 2 else 3
         b = [
-            [InlineKeyboardButton(state_label, callback_data=f"set_toggle#ad_cycle_enabled#{grp_id}#ad_cycle")],
-            [InlineKeyboardButton("2 successful steps", callback_data=f"set_ad_cycle_steps#2#{grp_id}"), InlineKeyboardButton("3 successful steps", callback_data=f"set_ad_cycle_steps#3#{grp_id}")],
-            [InlineKeyboardButton("Step 1: Set domain", callback_data=f"set_input#ad_cycle_domain_1#{grp_id}"), InlineKeyboardButton("Set API", callback_data=f"set_input#ad_cycle_api_1#{grp_id}")],
-            [InlineKeyboardButton("Step 2: Set domain", callback_data=f"set_input#ad_cycle_domain_2#{grp_id}"), InlineKeyboardButton("Set API", callback_data=f"set_input#ad_cycle_api_2#{grp_id}")],
-            [InlineKeyboardButton("Step 3: Set domain", callback_data=f"set_input#ad_cycle_domain_3#{grp_id}"), InlineKeyboardButton("Set API", callback_data=f"set_input#ad_cycle_api_3#{grp_id}")],
-            [InlineKeyboardButton("Set tutorial/how-to link", callback_data=f"set_input#ad_cycle_tutorial#{grp_id}")],
+            [InlineKeyboardButton("1️⃣ Configure Step 1", callback_data=f"set_page#ad_cycle_step_1#{grp_id}")],
+            [InlineKeyboardButton("2️⃣ Configure Step 2", callback_data=f"set_page#ad_cycle_step_2#{grp_id}")],
         ]
+        if steps == 3:
+            b.append([InlineKeyboardButton("3️⃣ Configure Step 3", callback_data=f"set_page#ad_cycle_step_3#{grp_id}")])
+        else:
+            b.append([InlineKeyboardButton("3️⃣ Step 3 (not used in 2-step mode)", callback_data=f"set_page#ad_cycle_step_3#{grp_id}")])
+        b.extend([
+            [InlineKeyboardButton("📖 Set independent tutorial/how-to link", callback_data=f"set_input#ad_cycle_tutorial#{grp_id}")],
+            _back(grp_id, "ad_cycle"),
+        ])
+        return b
+    elif key.startswith("ad_cycle_step_") and key[-1:] in {"1", "2", "3"}:
+        n = int(key[-1])
+        b = [
+            [InlineKeyboardButton(f"🌐 Set Step {n} domain", callback_data=f"set_input#ad_cycle_domain_{n}#{grp_id}")],
+            [InlineKeyboardButton(f"🔑 Set Step {n} API", callback_data=f"set_input#ad_cycle_api_{n}#{grp_id}")],
+            _back(grp_id, "ad_cycle_config"),
+        ]
+        return b
+    elif key == "ad_cycle":
+        enabled = bool(settings.get("ad_cycle_enabled", False))
+        state_label = "TURN OFF ❌" if enabled else "TURN ON ✅"
+        steps = 2 if int(settings.get("ad_cycle_steps", 3) or 3) == 2 else 3
+        configured = all(str(settings.get(f"ad_cycle_{field}_{n}") or "").strip() for n in range(1, steps + 1) for field in ("domain", "api"))
+        b = [
+            [InlineKeyboardButton(state_label, callback_data=f"set_toggle#ad_cycle_enabled#{grp_id}#ad_cycle")],
+            [InlineKeyboardButton(("✅ " if steps == 2 else "") + "2 successful steps · 24 hours", callback_data=f"set_ad_cycle_steps#2#{grp_id}"), InlineKeyboardButton(("✅ " if steps == 3 else "") + "3 successful steps · 24 hours", callback_data=f"set_ad_cycle_steps#3#{grp_id}")],
+            [InlineKeyboardButton("⚙️ Configure selected shorteners", callback_data=f"set_page#ad_cycle_config#{grp_id}")],
+            [InlineKeyboardButton("📖 Set independent tutorial/how-to link", callback_data=f"set_input#ad_cycle_tutorial#{grp_id}")],
+        ]
+        if enabled and not configured:
+            b.append([InlineKeyboardButton("⚠️ Required domains/APIs are missing", callback_data=f"set_page#ad_cycle_config#{grp_id}")])
         b.append(_back(grp_id, "main"))
         return b
     elif key == "shortlink":
@@ -998,7 +1051,9 @@ async def settings_callback(client, query):
                 "fsub_delete": "fsub",
             }
             origin_page = (
-                "ad_cycle" if key.startswith("ad_cycle_")
+                f"ad_cycle_step_{key[-1]}" if key.startswith("ad_cycle_domain_") or key.startswith("ad_cycle_api_")
+                else "ad_cycle_config" if key == "ad_cycle_tutorial"
+                else "ad_cycle" if key.startswith("ad_cycle_")
                 else "shortlink_list" if key in {"shortner", "shortner_two", "shortner_three"}
                 else "verification_gap" if key in {"verify_time", "third_verify_time"}
                 else "tutorial" if key in {"tutorial", "tutorial_2", "tutorial_3"}
