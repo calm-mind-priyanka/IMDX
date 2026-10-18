@@ -6,7 +6,7 @@ from info import *
 from utils import *
 from pyrogram import Client, filters
 from database.users_chats_db import db
-from database.ia_filterdb import save_file, unpack_new_file_id
+from database.ia_filterdb import save_file, unpack_new_file_id, notify_movie_storage_failure
 import aiohttp
 from typing import Optional
 from collections import defaultdict
@@ -70,6 +70,8 @@ async def media(bot, message):
         media.file_type = message.media.value
         media.caption = message.caption
         success_sts = await save_file(media)
+        if success_sts == "err":
+            await notify_movie_storage_failure(bot, "incoming channel movie write failed in every configured movie database")
         if success_sts == "suc" and await db.get_send_movie_update_status(bot_id):
             file_id, file_ref = unpack_new_file_id(media.file_id)
             await queue_movie_file(bot, media)

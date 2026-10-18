@@ -180,6 +180,17 @@ def _main_settings_buttons(settings, grp_id, include_premium=False):
         ],
         [
             InlineKeyboardButton(
+                f"📣 ɢʀᴏᴜᴘ ꜰsᴜʙ: {'ON ✅' if settings.get('fsub_enabled') else 'OFF ❌'}",
+                callback_data=f"set_toggle#fsub_enabled#{grp_id}"
+            ),
+            InlineKeyboardButton(
+                f"🔗 ɴᴇᴡ 3-sᴛᴇᴘ: {'ON ✅' if settings.get('new_shortener_enabled') else 'OFF ❌'}",
+                callback_data=f"set_toggle#new_shortener_enabled#{grp_id}"
+            )
+        ],
+        [InlineKeyboardButton("⚙️ NEW 3-STEP SETTINGS", callback_data=f"set_page#new_shortener#{grp_id}")],
+        [
+            InlineKeyboardButton(
                 "👥 ꜰᴏʀᴄᴇ ᴄʜᴀɴɴᴇʟ",
                 callback_data=f"set_page#fsub#{grp_id}"
             ),
@@ -327,8 +338,15 @@ def _page_text(key, settings):
     if key == "request_channel":
         return f"<b>📢 SET MOVIE REQ</b>\n\nCurrent request channel: <code>{settings.get('request_channel', REQUEST_CHANNEL)}</code>"
     if key == "fsub":
-        channels = settings.get("fsub_channels") or [settings.get("fsub_id", AUTH_CHANNEL)]
-        return "<b>📢 FORCE CHANNEL</b>\n\nMultiple force-subscribe channels are supported.\n\n" + "\n".join(f"• <code>{c}</code>" for c in channels)
+        channels = settings.get("fsub_channels") or []
+        return "<b>📢 GROUP FORCE SUBSCRIPTION</b>\n\nGroup-specific FSUB: " + ("ON ✅" if settings.get("fsub_enabled") else "OFF ❌") + "\nGlobal AUTH_CHANNEL/AUTH_REQ_CHANNEL remains enforced for compatibility.\n\n" + ("\n".join(f"• <code>{c}</code>" for c in channels) or "No group-specific channels configured.")
+    if key == "new_shortener":
+        return ("<b>🔗 NEW THREE-STEP SHORTENER</b>\n\n" +
+                f"Enabled for this group: {'ON ✅' if settings.get('new_shortener_enabled') else 'OFF ❌'}\n" +
+                f"Step 1 URL: <code>{settings.get('new_shortener_step1_url') or 'Not configured'}</code>\n" +
+                f"Step 2 URL: <code>{settings.get('new_shortener_step2_url') or 'Not configured'}</code>\n" +
+                f"Step 3 URL: <code>{settings.get('new_shortener_step3_url') or 'Not configured'}</code>\n\n" +
+                "This setting is stored independently per group. URL/API input and runtime verification integration must be configured before enabling.")
     if key == "max_results":
         return f"<b>🔢 SET MAX RESULTS</b>\n\nCurrent: <code>{settings.get('max_results', MAX_BTN)}</code>\nAllowed: 1–20"
     if key == "details":
@@ -530,10 +548,26 @@ def _page_buttons(key, settings, grp_id):
             InlineKeyboardButton("ᴅᴇʟᴇᴛᴇ ᴄʜᴀɴɴᴇʟ", callback_data=f"set_delete#request_channel#{grp_id}")
         ]]
     elif key == "fsub":
-        b = [[
-            InlineKeyboardButton("sᴇᴛ ᴄʜᴀɴɴᴇʟ", callback_data=f"set_input#fsub_add#{grp_id}"),
-            InlineKeyboardButton("ᴅᴇʟᴇᴛᴇ ᴄʜᴀɴɴᴇʟ", callback_data=f"set_input#fsub_delete#{grp_id}")
-        ]]
+        b = [
+            [InlineKeyboardButton("sᴇᴛ ᴄʜᴀɴɴᴇʟ", callback_data=f"set_input#fsub_add#{grp_id}"),
+             InlineKeyboardButton("ᴅᴇʟᴇᴛᴇ ᴄʜᴀɴɴᴇʟ", callback_data=f"set_input#fsub_delete#{grp_id}")],
+            [InlineKeyboardButton("ᴄᴜsᴛᴏᴍ ᴊᴏɪɴ ʙᴜᴛᴛᴏɴ ʟᴀʙᴇʟ", callback_data=f"set_input#fsub_label#{grp_id}"),
+             InlineKeyboardButton("ʀᴇsᴇᴛ ʟᴀʙᴇʟ", callback_data=f"set_input#fsub_label_reset#{grp_id}")],
+        ]
+    elif key == "new_shortener":
+        b = [
+            [InlineKeyboardButton("SET STEP 1 URL", callback_data=f"set_input#new_shortener_step1_url#{grp_id}")],
+            [InlineKeyboardButton("SET STEP 2 URL", callback_data=f"set_input#new_shortener_step2_url#{grp_id}")],
+            [InlineKeyboardButton("SET STEP 3 URL", callback_data=f"set_input#new_shortener_step3_url#{grp_id}")],
+            [InlineKeyboardButton("SET STEP 1 API", callback_data=f"set_input#new_shortener_api1#{grp_id}")],
+            [InlineKeyboardButton("SET STEP 2 API", callback_data=f"set_input#new_shortener_api2#{grp_id}")],
+            [InlineKeyboardButton("SET STEP 3 API", callback_data=f"set_input#new_shortener_api3#{grp_id}")],
+            [InlineKeyboardButton("SET TUTORIAL 1", callback_data=f"set_input#new_shortener_tutorial1#{grp_id}"),
+             InlineKeyboardButton("SET TUTORIAL 2", callback_data=f"set_input#new_shortener_tutorial2#{grp_id}")],
+            [InlineKeyboardButton("SET TUTORIAL 3", callback_data=f"set_input#new_shortener_tutorial3#{grp_id}")],
+            [InlineKeyboardButton("SET GAP 1", callback_data=f"set_input#new_shortener_gap1#{grp_id}"),
+             InlineKeyboardButton("SET GAP 2", callback_data=f"set_input#new_shortener_gap2#{grp_id}")],
+        ]
     elif key == "max_results":
         b = [[
             InlineKeyboardButton("sᴇᴛ ᴍᴀx ʀᴇsᴜʟᴛ", callback_data=f"set_input#max_results#{grp_id}"),
@@ -914,9 +948,18 @@ async def settings_callback(client, query):
                 "request_channel": "request_channel",
                 "fsub_add": "fsub",
                 "fsub_delete": "fsub",
+                "fsub_label": "fsub",
+                "fsub_label_reset": "fsub",
+            }
+            new_shortener_keys = {
+                "new_shortener_step1_url", "new_shortener_step2_url", "new_shortener_step3_url",
+                "new_shortener_api1", "new_shortener_api2", "new_shortener_api3",
+                "new_shortener_tutorial1", "new_shortener_tutorial2", "new_shortener_tutorial3",
+                "new_shortener_gap1", "new_shortener_gap2",
             }
             origin_page = (
-                "shortlink_list" if key in {"shortner", "shortner_two", "shortner_three"}
+                "new_shortener" if key in new_shortener_keys
+                else "shortlink_list" if key in {"shortner", "shortner_two", "shortner_three"}
                 else "verification_gap" if key in {"verify_time", "third_verify_time"}
                 else "tutorial" if key in {"tutorial", "tutorial_2", "tutorial_3"}
                 else origin_page_map.get(key, "main")
@@ -930,6 +973,19 @@ async def settings_callback(client, query):
                 "request_channel": "sᴇɴᴅ ʀᴇǫᴜᴇsᴛ ᴄʜᴀɴɴᴇʟ ɪᴅ.",
                 "fsub_add": "sᴇɴᴅ ꜰᴏʀᴄᴇ-sᴜʙsᴄʀɪʙᴇ ᴄʜᴀɴɴᴇʟ ɪᴅ.",
                 "fsub_delete": "sᴇɴᴅ ᴛʜᴇ ꜰᴏʀᴄᴇ-sᴜʙsᴄʀɪʙᴇ ᴄʜᴀɴɴᴇʟ ɪᴅ ᴛᴏ ᴅᴇʟᴇᴛᴇ.",
+                "fsub_label": "Send channel ID and button text separated by | (example: -1001234567890 | Join Movie Channel).",
+                "fsub_label_reset": "Send the channel ID whose custom join-button text should be reset.",
+                "new_shortener_step1_url": "Send Step 1 shortener domain/URL (http/https URL or domain).",
+                "new_shortener_step2_url": "Send Step 2 shortener domain/URL (http/https URL or domain).",
+                "new_shortener_step3_url": "Send Step 3 shortener domain/URL (http/https URL or domain).",
+                "new_shortener_api1": "Send Step 1 shortener API key.",
+                "new_shortener_api2": "Send Step 2 shortener API key.",
+                "new_shortener_api3": "Send Step 3 shortener API key.",
+                "new_shortener_tutorial1": "Send Step 1 tutorial URL.",
+                "new_shortener_tutorial2": "Send Step 2 tutorial URL.",
+                "new_shortener_tutorial3": "Send Step 3 tutorial URL.",
+                "new_shortener_gap1": "Send the Step 1 verification gap in seconds.",
+                "new_shortener_gap2": "Send the Step 2 verification gap in seconds.",
                 "tutorial": "sᴇɴᴅ ᴛᴜᴛᴏʀɪᴀʟ 1 ᴜʀʟ.",
                 "tutorial_2": "sᴇɴᴅ ᴛᴜᴛᴏʀɪᴀʟ 2 ᴜʀʟ.",
                 "tutorial_3": "sᴇɴᴅ ᴛᴜᴛᴏʀɪᴀʟ 3 ᴜʀʟ.",
@@ -1295,7 +1351,7 @@ async def advanced_input(client, message):
         PENDING.pop((uid, gid), None)
         await _delete_input_message()
 
-    elif key.startswith("tutorial"):
+    elif key.startswith("tutorial") or key.startswith("new_shortener_tutorial"):
         if not (value.startswith("http://") or value.startswith("https://")):
             return await message.reply_text("Send a valid http/https URL or /cancel")
         await save_group_settings(gid, key, value)
@@ -1303,7 +1359,11 @@ async def advanced_input(client, message):
         PENDING.pop((uid, gid), None)
         await _delete_input_message()
 
-    elif key in {"shortner", "shortner_two", "shortner_three", "api", "api_two", "api_three", "verify_time", "third_verify_time"}:
+    elif key in {"shortner", "shortner_two", "shortner_three", "api", "api_two", "api_three", "verify_time", "third_verify_time",
+                 "new_shortener_step1_url", "new_shortener_step2_url", "new_shortener_step3_url",
+                 "new_shortener_api1", "new_shortener_api2", "new_shortener_api3"}:
+        if key.endswith("_url") and value and not (value.startswith("http://") or value.startswith("https://") or "." in value):
+            return await message.reply_text("Send a valid URL/domain or /cancel")
         await save_group_settings(gid, key, value)
         _invalidate_settings_cache(gid)
         PENDING.pop((uid, gid), None)
@@ -1315,6 +1375,50 @@ async def advanced_input(client, message):
         except ValueError:
             return await message.reply_text("Send a valid channel ID or /cancel")
         await save_group_settings(gid, key, value_int)
+        _invalidate_settings_cache(gid)
+        PENDING.pop((uid, gid), None)
+        await _delete_input_message()
+
+    elif key == "fsub_label":
+        try:
+            channel_text, label = value.split("|", 1)
+            channel_id = int(channel_text.strip())
+            label = label.strip()
+            if not label or len(label) > 64:
+                raise ValueError
+        except (ValueError, TypeError):
+            return await message.reply_text("Use: CHANNEL_ID | Button text (1–64 characters).")
+        settings = await get_settings(gid)
+        channels = {str(k): str(v) for k, v in (settings.get("fsub_button_labels") or {}).items()}
+        if channel_id not in [int(c) for c in (settings.get("fsub_channels") or [])]:
+            return await message.reply_text("That channel is not configured for this group yet.")
+        channels[str(channel_id)] = label
+        await save_group_settings(gid, "fsub_button_labels", channels)
+        _invalidate_settings_cache(gid)
+        PENDING.pop((uid, gid), None)
+        await _delete_input_message()
+
+    elif key == "fsub_label_reset":
+        try:
+            channel_id = int(value.strip())
+        except (ValueError, TypeError):
+            return await message.reply_text("Send a valid channel ID or /cancel")
+        settings = await get_settings(gid)
+        channels = {str(k): str(v) for k, v in (settings.get("fsub_button_labels") or {}).items()}
+        channels.pop(str(channel_id), None)
+        await save_group_settings(gid, "fsub_button_labels", channels)
+        _invalidate_settings_cache(gid)
+        PENDING.pop((uid, gid), None)
+        await _delete_input_message()
+
+    elif key.startswith("new_shortener_gap"):
+        try:
+            gap = int(value)
+            if gap < 0 or gap > 86400:
+                raise ValueError
+        except (ValueError, TypeError):
+            return await message.reply_text("Send a number of seconds from 0 to 86400.")
+        await save_group_settings(gid, key, gap)
         _invalidate_settings_cache(gid)
         PENDING.pop((uid, gid), None)
         await _delete_input_message()
@@ -1340,9 +1444,9 @@ async def advanced_input(client, message):
             return await message.reply_text("Send a valid channel ID or /cancel")
         settings = await get_settings(gid)
         channels = [int(c) for c in (settings.get("fsub_channels") or []) if int(c) != value_int]
-        if not channels:
-            channels = [AUTH_CHANNEL]
         await save_group_settings(gid, "fsub_channels", channels)
+        labels = {str(k): v for k, v in (settings.get("fsub_button_labels") or {}).items() if str(k) != str(value_int)}
+        await save_group_settings(gid, "fsub_button_labels", labels)
         _invalidate_settings_cache(gid)
         PENDING.pop((uid, gid), None)
         await _delete_input_message()

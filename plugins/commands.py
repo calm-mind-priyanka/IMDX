@@ -41,6 +41,7 @@ from utils import (
 )
 import re
 import base64
+from shortzy import Shortzy
 from info import *
 
 # Verification recovery/customer-care settings. Defaults are intentionally conservative.
@@ -633,6 +634,97 @@ async def clean_home_callback(client, query):
     raise StopPropagation
 
 
+async def _new_shortener_make_url(domain, api, target):
+    """Create a URL for the independent group-specific three-step shortener."""
+    if not domain or not api or not target:
+        return None
+    shortener = Shortzy(str(api).strip(), str(domain).strip())
+    try:
+        result = await shortener.convert(target)
+        if result:
+            return str(result)
+    except Exception:
+        logger.exception("New shortener conversion failed")
+    try:
+        result = await shortener.get_quick_link(target)
+        return str(result) if result else None
+    except Exception:
+        logger.exception("New shortener quick-link fallback failed")
+        return None
+
+
+async def _new_shortener_send_step(client, message, user_id, group_id, delivery_key, mode, step):
+    """Issue a single date/user/group-bound attempt and send its short link."""
+    from database.new_shortener import begin_step, save_attempt
+    settings = await get_settings(int(group_id))
+    suffix = str(step)
+    domain = settings.get(f"new_shortener_step{suffix}_url")
+    api = settings.get(f"new_shortener_api{suffix}")
+    tutorial = settings.get(f"new_shortener_tutorial{suffix}")
+    if not domain or not api:
+        await message.reply_text(
+            f"⚠️ The group administrator has not configured New Shortener Step {step}. Please contact the group admin."
+        )
+        return False
+    token = await begin_step(user_id, group_id, step)
+    if not token:
+        await message.reply_text("This verification step is no longer valid. Please request the movie link again.")
+        return False
+    await save_attempt(token, user_id, group_id, step, delivery_key, mode)
+    bot_username = (getattr(temp, "U_NAME", "") or "").lstrip("@")
+    if not bot_username:
+        await message.reply_text("⚠️ The bot username is unavailable. Please try again later.")
+        return False
+    target = f"https://t.me/{bot_username}?start=ns_{token}"
+    short_url = await _new_shortener_make_url(domain, api, target)
+    if not short_url:
+        await message.reply_text("⚠️ Shortener service is temporarily unavailable. Please try again later.")
+        return False
+    buttons = [[InlineKeyboardButton(f"🔗 VERIFY STEP {step}/3", url=short_url)]]
+    if tutorial:
+        buttons.append([InlineKeyboardButton("📘 Tutorial", url=str(tutorial))])
+    await message.reply_text(
+        f"<b>🔐 New link verification — Step {step}/3</b>\nComplete this step to continue. Progress resets at midnight IST.",
+        reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML,
+    )
+    return True
+
+
+async def _new_shortener_return(client, message, token):
+    """Validate a shortener return, progress the ordered steps, then deliver."""
+    from database.new_shortener import consume_attempt, accept_step, get_attempt
+    attempt = await get_attempt(token)
+    if not attempt or int(attempt.get("user_id", 0)) != int(message.from_user.id):
+        await message.reply_text("⚠️ This verification link is invalid, expired, or belongs to another user.")
+        return True
+    user_id = int(attempt["user_id"])
+    group_id = int(attempt["group_id"])
+    step = int(attempt["step"])
+    settings = await get_settings(group_id)
+    if not settings.get("new_shortener_enabled", False):
+        await message.reply_text("New Shortener verification is disabled for this group. Request the movie link again.")
+        return True
+    claimed = await consume_attempt(token, user_id, group_id, step)
+    if not claimed or not await accept_step(user_id, group_id, step, token, enabled=True):
+        await message.reply_text("⚠️ This verification step has expired or was already used. Request the movie link again.")
+        return True
+    delivery_key = str(attempt.get("delivery_key") or "")
+    mode = str(attempt.get("mode") or "file")
+    if step < 3:
+        await _new_shortener_send_step(
+            client, message, user_id, group_id, delivery_key, mode, step + 1
+        )
+    else:
+        payload_prefix = "allfilesmode" if mode == "allfiles" else "filemode"
+        payload = f"{payload_prefix}_{group_id}_{delivery_key}"
+        await message.reply_text(
+            "✅ <b>Verification completed.</b> Tap below to receive your requested file.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📥 GET FILE", url=f"https://t.me/{temp.U_NAME}?start={payload}")]]),
+            parse_mode=enums.ParseMode.HTML,
+        )
+    return True
+
+
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client: Client, message):
     await message.react(emoji=random.choice(REACTIONS))
@@ -666,6 +758,13 @@ async def start(client: Client, message):
         start_payload = ""
 
     logger.info("/start received: user=%s payload=%s", user_id, start_payload[:80])
+    if start_payload.startswith("ns_"):
+        token = start_payload[3:].strip()
+        if not token:
+            await message.reply_text("⚠️ Invalid verification link. Please request the movie link again.")
+            return
+        await _new_shortener_return(client, message, token)
+        return
     if start_payload.startswith("vr_"):
         logger.info("Processing verification return token for user=%s", user_id)
         # New verification-return links carry only a short opaque token.
@@ -1013,13 +1112,16 @@ async def start(client: Client, message):
     if not premium_active:
         # Preserve the legacy fsub_id field while allowing the settings UI to manage
         # multiple force-subscribe channels independently for each group.
-        fsub_channels = settings.get("fsub_channels") or [settings.get("fsub_id", AUTH_CHANNEL)]
+        # Group-specific channels are enforced only when explicitly enabled.
+        # Legacy global AUTH_CHANNEL/AUTH_REQ_CHANNEL remains separately enforced
+        # below, preserving existing deployments without leaking one group's list.
+        fsub_channels = settings.get("fsub_channels", []) if settings.get("fsub_enabled", False) else []
         try:
-            fsub_channels = [int(c) for c in fsub_channels]
+            fsub_channels = [int(c) for c in fsub_channels if str(c).strip()]
         except (TypeError, ValueError):
-            fsub_channels = [int(AUTH_CHANNEL)]
+            fsub_channels = []
 
-        if AUTH_REQ_CHANNEL and int(AUTH_REQ_CHANNEL) in fsub_channels:
+        if AUTH_REQ_CHANNEL and int(AUTH_REQ_CHANNEL) in fsub_channels and len(fsub_channels) == 1:
             if not await is_req_subscribed(client, message):
                 try:
                     invite_link = await client.create_chat_invite_link(
@@ -1028,7 +1130,8 @@ async def start(client: Client, message):
                 except ChatAdminRequired:
                     logger.error("Make sure Bot is admin in Forcesub channel")
                     return
-                btn = [[InlineKeyboardButton("⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️", url=invite_link.invite_link)]]
+                label = (settings.get("fsub_button_labels") or {}).get(str(int(AUTH_REQ_CHANNEL)), "⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️")
+                btn = [[InlineKeyboardButton(str(label)[:64], url=invite_link.invite_link)]]
                 if message.command[1] != "subscribe":
                     btn.append([[InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", url=f"https://t.me/{temp.U_NAME}?start={message.command[1]}")]][0])
                 await client.send_photo(
@@ -1050,7 +1153,8 @@ async def start(client: Client, message):
                     missing_custom = True
                     try:
                         invite = await client.create_chat_invite_link(channel)
-                        btn.append([InlineKeyboardButton("⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️", url=invite.invite_link)])
+                        label = (settings.get("fsub_button_labels") or {}).get(str(channel), "⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️")
+                        btn.append([InlineKeyboardButton(str(label)[:64], url=invite.invite_link)])
                     except Exception:
                         pass
 
@@ -1058,7 +1162,8 @@ async def start(client: Client, message):
             if default_missing:
                 try:
                     invite_link_default = await client.create_chat_invite_link(int(AUTH_CHANNEL), creates_join_request=True)
-                    btn.append([InlineKeyboardButton("⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️", url=invite_link_default.invite_link)])
+                    label = (settings.get("fsub_button_labels") or {}).get(str(int(AUTH_CHANNEL)), "⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️")
+                    btn.append([InlineKeyboardButton(str(label)[:64], url=invite_link_default.invite_link)])
                 except Exception:
                     pass
 
@@ -1078,6 +1183,20 @@ async def start(client: Client, message):
         settings = await get_settings(grp_id)
         print(f"Id Settings - {settings}")
         verification_enabled = bool(settings.get("is_verify", IS_VERIFY))
+
+        # Independent three-step shortener. It is intentionally evaluated before
+        # the legacy shortener and uses separate per-group settings/state.
+        if settings.get("new_shortener_enabled", False) and not file_mode_completed:
+            from database.new_shortener import get_state
+            new_state = await get_state(user_id, grp_id)
+            if not new_state.get("completed", False):
+                next_step = int(new_state.get("completed_step", 0)) + 1
+                if next_step in (1, 2, 3):
+                    await _new_shortener_send_step(
+                        client, message, user_id, grp_id, str(file_id),
+                        "allfiles" if pre == "allfiles" else "file", next_step
+                    )
+                    return
 
         # The verification gate only runs when a real shortener is configured.
         # Deleting/disabling the shortener must restore the original direct-file
