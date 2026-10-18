@@ -189,3 +189,43 @@ later use `/pending`, `/premium USER_ID`, `/approve USER_ID`, `/remove USER_ID`,
 
 Supported plan keys for `/renew` are `week`, `month`, `3month`, `6month`,
 `year`, and `lifetime`.
+
+## Database reliability and verification notes (IMDX modification)
+
+### Logical data ownership
+
+The movie/file index is managed by `database/ia_filterdb.py` using `FILES_DATABASE` (falling back to `DATABASE_URI`), `DATABASE_NAME`, and `COLLECTION_NAME`. The optional movie-index secondary is configured by `MULTIPLE_DB=True` and `DATABASE_URI2`. These settings are implemented by the existing code; a second database is an independent store, not an automatically replicated MongoDB replica.
+
+General bot data is currently managed by `database/users_chats_db.py` and `database/config_db.py` using `DATABASE_URI` and `DATABASE_NAME`. **A separate secondary/failover path for general bot data is not implemented in this modification.** Do not assume general-data failover or fully consistent multi-database updates/deletes.
+
+### Movie write failures
+
+Movie indexing now attempts the primary movie database first and, when configured, attempts the secondary after a primary write exception. A failed write returns `err` rather than a success status. Indexing entry points report the failure and best-effort notify `OWNER_ID`, with in-memory five-minute alert throttling. The alert does not contain connection strings or credentials. Reads query configured movie stores independently so one failed store does not automatically hide results from the other. A read outage can still limit completeness, and the bounded search window is not an exact global count across arbitrarily large, overlapping stores.
+
+### Group-specific settings
+
+The group settings document supports `fsub_enabled`, `fsub_channels`, `fsub_button_labels`, and `new_shortener_enabled`, with independent values stored in each group's existing settings document. The legacy global `AUTH_CHANNEL` and `AUTH_REQ_CHANNEL` checks remain for backward compatibility. Group FSUB channel enforcement is only enabled when `fsub_enabled` is true. Existing inline settings now expose group FSUB and new-shortener enable/disable toggles.
+
+### New shortener calendar-state helper
+
+`database/new_shortener.py` provides a separate user/group-keyed state model in the existing general-data `misc` collection. Its date calculation uses `Asia/Kolkata`; state from a previous IST date is treated as expired on read, including after restart. The helper validates ordered steps and date-bound attempt tokens. **This helper is not yet wired into the live movie-request/shortener callback workflow, and the new shortener URL/API settings are not fully exposed as editable inline inputs.** The original shortener workflow was not intentionally changed to midnight expiration.
+
+### Tests and verification
+
+Run `python -m unittest discover -s tests -v` for the included mocked/pure calendar-date tests. They verify IST date conversion and the midnight boundary only; they are not live MongoDB or Telegram integration tests. Run `python -m compileall -q .` for syntax compilation. Live database failover, Telegram membership checks, shortener API returns, and the original shortener's end-to-end regression still require integration testing.
+
+### Known limitations
+
+This change is not a declaration of production readiness. General-data secondary failover, fully consistent cross-store update/delete/count handling, complete group-specific FSUB custom button-label management, and end-to-end activation of the separate three-step shortener remain to be implemented and tested before all requirements in the supplied specification can be accepted.
+
+## General-data MongoDB failover
+
+The existing general-data store continues to use `DATABASE_URI` and `DATABASE_NAME`. An optional independent secondary endpoint can be configured with `GENERAL_DATABASE_URI2`. When set, the bot retries general-data collection operations against that secondary if the primary operation fails. Normal operations remain primary-first; writes are sent to the secondary only after a primary error to avoid double-applying non-idempotent operations such as `$inc`. This is operational failover, not a MongoDB replica set or automatic background reconciliation: for high availability and automatic consistency, configure MongoDB replica sets/Atlas replication at the database layer. `DATABASE_URI2` remains the optional movie-index secondary controlled by `MULTIPLE_DB=True`.
+
+## Independent group three-step shortener
+
+The Advanced Settings menu contains a separate `NEW 3-STEP SETTINGS` page. Configure each step's domain, API key, and optional tutorial URL, then enable `New 3-step` for that group. It is independent of the legacy verification shortener settings and is only applied to file-delivery deep links for that group. Verification progress and opaque return attempts are stored in the existing general-data `misc` collection, scoped by Telegram user and group. Progress is tied to the Asia/Kolkata calendar date and expires logically at midnight IST; no scheduler or extra database is required. A completed sequence leads to the existing file-delivery path rather than changing file IDs or media storage. Keep the bot's general MongoDB credentials private and grant the bot only the permissions it needs.
+
+## Automated checks
+
+Run `python -m unittest discover -s tests -v` and `python -m compileall -q database plugins`. These are local unit/syntax checks. They do not validate live Telegram delivery, real shortener-provider APIs, or failover against production MongoDB instances; those require staging credentials and controlled integration tests.

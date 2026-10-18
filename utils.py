@@ -411,8 +411,10 @@ async def save_group_settings(group_id, key, value):
     group_id = int(group_id)
     current = await get_settings(group_id)
     current[key] = value
+    # Do not mutate the cache until MongoDB confirms the persistent write.
     await db.update_settings(group_id, current)
     _SETTINGS_CACHE[group_id] = current.copy()
+    return True
 
 
 def get_size(size):
