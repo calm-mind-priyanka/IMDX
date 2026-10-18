@@ -1,4 +1,5 @@
 import logging
+import os
 import datetime
 import pytz
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -9,26 +10,35 @@ from pymongo.errors import DuplicateKeyError
 # from utils import get_seconds
 from info import *
 
+# Optional secondary for the general-data system. This is deliberately separate
+# from DATABASE_URI2, which belongs to the movie index system.
+GENERAL_DATABASE_URI2 = os.environ.get("GENERAL_DATABASE_URI2", "").strip()
 client = AsyncIOMotorClient(DATABASE_URI)
 mydb = client[DATABASE_NAME]
+if GENERAL_DATABASE_URI2 and GENERAL_DATABASE_URI2 != DATABASE_URI:
+    general_client2 = AsyncIOMotorClient(GENERAL_DATABASE_URI2)
+    general_db2 = general_client2[DATABASE_NAME]
+else:
+    general_client2 = None
+    general_db2 = None
+
+
+from database.failover import _FailoverCollection
 
 
 class Database:
     def __init__(self):
-        self.col = mydb.users
-        self.grp = mydb.groups
-        self.misc = mydb.misc
-        self.verify_id = mydb.verify_id
-        self.users = mydb.uersz
-        self.req = mydb.requests
-        self.mGrp = mydb.mGrp
-        self.pmMode = mydb.pmMode
-        self.jisshu_ads_link = mydb.jisshu_ads_link
-        self.movies_update_channel = mydb.movies_update_channel
-        self.botcol = mydb.botcol
-        self.premium_orders = mydb.premium_orders
-        self.payment_submissions = mydb.payment_submissions
-        self.support_feedback = mydb.support_feedback
+        collection_map = {
+            "col": "users", "grp": "groups", "misc": "misc", "verify_id": "verify_id",
+            "users": "uersz", "req": "requests", "mGrp": "mGrp", "pmMode": "pmMode",
+            "jisshu_ads_link": "jisshu_ads_link", "movies_update_channel": "movies_update_channel",
+            "botcol": "botcol", "premium_orders": "premium_orders",
+            "payment_submissions": "payment_submissions", "support_feedback": "support_feedback",
+        }
+        for attribute, collection_name in collection_map.items():
+            primary_collection = mydb[collection_name]
+            secondary_collection = general_db2[collection_name] if general_db2 is not None else None
+            setattr(self, attribute, _FailoverCollection(primary_collection, secondary_collection, collection_name))
 
     default = {
         "spell_check": SPELL_CHECK,
@@ -59,7 +69,21 @@ class Database:
         "max_results": MAX_BTN,
         "delete_time": DELETE_TIME,
         "request_channel": REQUEST_CHANNEL,
-        "fsub_channels": [AUTH_CHANNEL],
+        "fsub_channels": [],
+        "fsub_enabled": False,
+        "fsub_button_labels": {},
+        "new_shortener_enabled": False,
+        "new_shortener_step1_url": "",
+        "new_shortener_step2_url": "",
+        "new_shortener_step3_url": "",
+        "new_shortener_api1": "",
+        "new_shortener_api2": "",
+        "new_shortener_api3": "",
+        "new_shortener_tutorial1": "",
+        "new_shortener_tutorial2": "",
+        "new_shortener_tutorial3": "",
+        "new_shortener_gap1": THREE_VERIFY_GAP,
+        "new_shortener_gap2": THREE_VERIFY_GAP,
     }
 
     def new_user(self, id, name):
@@ -190,7 +214,16 @@ class Database:
         return False if not chat else chat.get("chat_status")
 
     async def update_settings(self, id, settings):
-        await self.grp.update_one({"id": int(id)}, {"$set": {"settings": settings}})
+        """Persist settings and fail loudly if MongoDB did not acknowledge the write."""
+        result = await self.grp.update_one(
+            {"id": int(id)},
+            {"$set": {"settings": settings}, "$setOnInsert": {"id": int(id), "title": str(id),
+             "chat_status": {"is_disabled": False, "reason": ""}}},
+            upsert=True,
+        )
+        if not getattr(result, "acknowledged", False):
+            raise RuntimeError("General-data MongoDB did not acknowledge group settings write")
+        return True
 
     async def total_chat_count(self):
         count = await self.grp.count_documents({})

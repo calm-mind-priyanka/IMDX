@@ -82,62 +82,92 @@ async def _db_size_mb(database):
     return (stats.get("dataSize", 0) + stats.get("indexSize", 0)) / (1024 * 1024)
 
 
+_last_movie_storage_alert = 0.0
+
+async def notify_movie_storage_failure(bot, reason="all configured movie databases rejected the write"):
+    """Rate-limited best-effort owner notification; never includes secrets."""
+    global _last_movie_storage_alert
+    import time
+    from info import OWNER_ID
+    now = time.monotonic()
+    if now - _last_movie_storage_alert < 300:
+        return False
+    _last_movie_storage_alert = now
+    message = ("⚠️ <b>Movie database storage failed.</b>\n"
+               "The incoming movie could not be saved. Please check the primary database, "
+               "optional secondary database, storage capacity, permissions, and connection status.\n"
+               f"Diagnostic: <code>{str(reason)[:180]}</code>")
+    try:
+        await bot.send_message(int(OWNER_ID), message)
+        return True
+    except Exception as exc:
+        print(f"MOVIE_DATABASE_OWNER_ALERT_FAILED: {type(exc).__name__}")
+        return False
+
+
+async def _owner_storage_alert(reason):
+    # save_file has no Telegram client in its public API. Callers send the alert
+    # with notify_movie_storage_failure when they receive the explicit 'err' status.
+    print(f"MOVIE_DATABASE_WRITE_FAILED: {str(reason)[:240]}")
+
+
 async def save_file(media):
-    """Save files using IMDX's existing schema with DreamX-style optional DB routing."""
+    """Persist one movie file; only return success after a confirmed write/duplicate."""
     file_id, file_ref = unpack_new_file_id(media.file_id)
     file_unique_id = getattr(media, "file_unique_id", None)
     file_name = re.sub(r"[_\-\.\+#$%^&*()!~`,;:\"?/<>{}\[\]=|\\]", " ", str(media.file_name))
     file_name = re.sub(r"\s+", " ", file_name).strip()
-
     duplicate_filter = {"_id": file_id}
     if file_unique_id:
         duplicate_filter = {"$or": [{"_id": file_id}, {"file_unique_id": file_unique_id}]}
 
-    try:
-        if await Media.find_one(duplicate_filter):
-            print(f'{getattr(media, "file_name", "NO_FILE")} is already saved in database')
-            return "dup"
-        if MULTIPLE_DB and DATABASE_URI2 and await Media2.find_one(duplicate_filter):
-            print(f'{getattr(media, "file_name", "NO_FILE")} is already saved in secondary database')
-            return "dup"
-    except Exception:
-        # A failed duplicate check must not prevent indexing; Mongo will still enforce _id uniqueness.
-        pass
-
-    target_model = Media
-    if MULTIPLE_DB and DATABASE_URI2:
+    # A database read failure is not evidence that the record is absent. Try all
+    # readable stores, but continue to a write attempt if reads are unavailable.
+    for model in ([Media, Media2] if MULTIPLE_DB and DATABASE_URI2 else [Media]):
         try:
-            # Same practical routing idea as DreamX: once primary grows beyond the
-            # configured threshold, new files go to the secondary database.
-            threshold_mb = float(__import__('os').environ.get("PRIMARY_DB_MAX_MB", "407"))
-            if await _db_size_mb(mydb) >= threshold_mb:
-                target_model = Media2
-        except Exception:
-            target_model = Media
+            if await model.find_one(duplicate_filter):
+                print(f'{getattr(media, "file_name", "NO_FILE")} is already saved in database')
+                return "dup"
+        except Exception as exc:
+            print(f"Movie duplicate lookup unavailable ({type(exc).__name__}); continuing safely")
 
     try:
-        file = target_model(
-            file_id=file_id,
-            file_unique_id=file_unique_id,
-            file_ref=file_ref,
-            file_name=file_name,
-            file_size=media.file_size,
-            mime_type=media.mime_type,
+        file = Media(
+            file_id=file_id, file_unique_id=file_unique_id, file_ref=file_ref,
+            file_name=file_name, file_size=media.file_size, mime_type=media.mime_type,
             caption=media.caption.html if media.caption and INDEX_CAPTION else None,
             file_type=(media.mime_type.split("/")[0] if media.mime_type else None),
         )
-    except ValidationError:
-        print("Error occurred while saving file in database")
+    except ValidationError as exc:
+        print(f"Movie record validation failed: {exc}")
         return "err"
 
-    try:
-        await file.commit()
-    except DuplicateKeyError:
-        print(f'{getattr(media, "file_name", "NO_FILE")} is already saved in database')
-        return "dup"
-    else:
-        print(f'{getattr(media, "file_name", "NO_FILE")} is saved to database')
-        return "suc"
+    write_errors = []
+    # Prefer primary first. The secondary is a fallback for a failed write, not
+    # an assumed replica; search always checks both configured stores.
+    targets = [Media]
+    if MULTIPLE_DB and DATABASE_URI2:
+        targets.append(Media2)
+    for model in targets:
+        try:
+            target = model(
+                file_id=file_id, file_unique_id=file_unique_id, file_ref=file_ref,
+                file_name=file_name, file_size=media.file_size, mime_type=media.mime_type,
+                caption=media.caption.html if media.caption and INDEX_CAPTION else None,
+                file_type=(media.mime_type.split("/")[0] if media.mime_type else None),
+            )
+            await target.commit()
+            print(f'{getattr(media, "file_name", "NO_FILE")} saved to movie database')
+            return "suc"
+        except DuplicateKeyError:
+            # A duplicate discovered during a race is not a storage failure.
+            return "dup"
+        except Exception as exc:
+            write_errors.append(f"{type(exc).__name__}: {str(exc)[:160]}")
+            print(f"Movie database write failed ({type(exc).__name__}); trying configured fallback if any")
+
+    await _owner_storage_alert("; ".join(write_errors) or "all configured movie stores rejected the write")
+    return "err"
 
 
 def _build_filter(query):
@@ -210,8 +240,11 @@ async def get_title_candidates(query, limit=240):
             return await model.find(filt, {"file_name": 1, "caption": 1}).limit(limit).to_list(length=limit)
 
         if MULTIPLE_DB and DATABASE_URI2:
-            rows1, rows2 = await asyncio.gather(fetch(Media), fetch(Media2))
-            rows = rows1 + rows2
+            results = await asyncio.gather(fetch(Media), fetch(Media2), return_exceptions=True)
+            rows = []
+            for result in results:
+                if not isinstance(result, Exception):
+                    rows.extend(result)
         else:
             rows = await fetch(Media)
     except Exception:
@@ -232,69 +265,53 @@ async def get_title_candidates(query, limit=240):
     return candidates[:limit * (2 if MULTIPLE_DB and DATABASE_URI2 else 1)]
 
 
+async def _read_model(model, mongo_filter, limit, offset=0, count=False):
+    """Read one store independently so an outage in one does not hide the other."""
+    try:
+        total = await model.count_documents(mongo_filter) if count else None
+        rows = await model.find(mongo_filter).sort("$natural", -1).skip(offset).limit(limit).to_list(length=limit)
+        return rows, total, None
+    except Exception as exc:
+        return [], None, exc
+
+
+def _dedupe_media(rows):
+    result, seen = [], set()
+    for row in rows:
+        key = str(row.get("file_unique_id") or row.get("file_id") or row.get("_id") or "")
+        if not key:
+            key = str(row.get("file_name", "")) + "|" + str(row.get("file_size", ""))
+        if key not in seen:
+            seen.add(key)
+            result.append(row)
+    return result
+
+
 async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None, chat_id=None, file_type=None, filter=False):
-    """DreamX-style fast search, while preserving IMDX's original call signature."""
+    """Search every configured movie store; tolerate a store outage and dedupe merged results."""
     mongo_filter = _build_filter(query)
     if mongo_filter is None:
         return [], "", 0
     if file_type:
         mongo_filter["file_type"] = file_type
-
     max_results = max(1, int(max_results or MAX_BTN))
-
-    if MULTIPLE_DB and DATABASE_URI2:
-        # Search both databases concurrently, exactly like DreamX.
-        if ULTRA_FAST_MODE:
-            limit = max_results + 1
-            # First-page searches are the latency-critical path.  Avoid fetching
-            # offset+limit documents from BOTH databases when offset is zero.
-            # Later pages keep the old merged-pagination behavior unchanged.
-            fetch_limit = limit if offset == 0 else offset + limit
-            primary_task = Media.find(mongo_filter).sort("$natural", -1).limit(fetch_limit).to_list(length=fetch_limit)
-            secondary_task = Media2.find(mongo_filter).sort("$natural", -1).limit(fetch_limit).to_list(length=fetch_limit)
-            primary, secondary = await asyncio.gather(primary_task, secondary_task)
-            merged = secondary + primary
-            files = merged[offset:offset + limit]
-            has_next = len(files) > max_results
-            if has_next:
-                files = files[:-1]
-            next_offset = offset + len(files) if has_next else ""
-            total_results = offset + len(files) + (1 if has_next else 0)
-            return files, next_offset, total_results
-
-        counts, found = await asyncio.gather(
-            asyncio.gather(Media.count_documents(mongo_filter), Media2.count_documents(mongo_filter)),
-            asyncio.gather(
-                Media.find(mongo_filter).sort("$natural", -1).limit(offset + max_results).to_list(length=offset + max_results),
-                Media2.find(mongo_filter).sort("$natural", -1).limit(offset + max_results).to_list(length=offset + max_results),
-            ),
-        )
-        total_results = sum(counts)
-        files = (found[1] + found[0])[offset:offset + max_results]
-        next_offset = offset + len(files)
-        if next_offset >= total_results:
-            next_offset = ""
-        return files, next_offset, total_results
-
-    # Single DB: DreamX ultra-fast path avoids count_documents when enabled.
-    if ULTRA_FAST_MODE:
-        limit = max_results + 1
-        files = await Media.find(mongo_filter).sort("$natural", -1).skip(offset).limit(limit).to_list(length=limit)
-        has_next = len(files) > max_results
-        if has_next:
-            files = files[:-1]
-        next_offset = offset + len(files) if has_next else ""
-        total_results = offset + len(files) + (1 if has_next else 0)
-        return files, next_offset, total_results
-
-    total_results, files = await asyncio.gather(
-        Media.count_documents(mongo_filter),
-        Media.find(mongo_filter).sort("$natural", -1).skip(offset).limit(max_results).to_list(length=max_results),
-    )
-    next_offset = offset + len(files)
-    if next_offset >= total_results:
-        next_offset = ""
-    return files, next_offset, total_results
+    models = [Media, Media2] if MULTIPLE_DB and DATABASE_URI2 else [Media]
+    fetch_limit = max_results + offset + 1
+    results = await asyncio.gather(*[_read_model(m, mongo_filter, fetch_limit, 0, True) for m in models])
+    rows, known_counts = [], []
+    for found, count, error in results:
+        if error is None:
+            rows.extend(found)
+            if count is not None:
+                known_counts.append(count)
+    rows = _dedupe_media(rows)
+    # A bounded result window can undercount very large overlapping datasets;
+    # never claim a sum of per-database counts because copies may overlap.
+    has_next = len(rows) > offset + max_results
+    page = rows[offset:offset + max_results]
+    next_offset = offset + len(page) if has_next else ""
+    total_results = max(offset + len(page) + (1 if has_next else 0), len(rows))
+    return page, next_offset, total_results
 
 
 async def get_bad_files(query, file_type=None, offset=0, filter=False):
@@ -306,8 +323,12 @@ async def get_bad_files(query, file_type=None, offset=0, filter=False):
     tasks = [Media.find(mongo_filter).sort("$natural", -1).to_list(300)]
     if MULTIPLE_DB and DATABASE_URI2:
         tasks.append(Media2.find(mongo_filter).sort("$natural", -1).to_list(300))
-    results = await asyncio.gather(*tasks)
-    files = results[1] + results[0] if len(results) > 1 else results[0]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    files = []
+    for result in results:
+        if not isinstance(result, Exception):
+            files.extend(result)
+    files = _dedupe_media(files)
     return files[:300], min(len(files), 300)
 
 
@@ -316,9 +337,9 @@ async def get_file_details(query):
     tasks = [Media.find(filt).to_list(length=1)]
     if MULTIPLE_DB and DATABASE_URI2:
         tasks.append(Media2.find(filt).to_list(length=1))
-    results = await asyncio.gather(*tasks)
+    results = await asyncio.gather(*tasks, return_exceptions=True)
     for filedetails in results:
-        if filedetails:
+        if not isinstance(filedetails, Exception) and filedetails:
             return filedetails
     return []
 
