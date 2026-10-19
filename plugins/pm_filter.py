@@ -205,7 +205,13 @@ logger.setLevel(logging.ERROR)
 
 @Client.on_message(filters.private & filters.text & filters.incoming)
 async def pm_search(client, message):
-    await mdb.update_top_messages(message.from_user.id, message.text)
+    # Analytics/history writes are optional. MongoDB Atlas can reject writes
+    # when the cluster is over quota; that must never prevent movie search.
+    try:
+        if message.from_user:
+            await mdb.update_top_messages(message.from_user.id, message.text)
+    except Exception as exc:
+        logger.warning("Could not update PM search history; continuing search (%s)", type(exc).__name__)
     bot_id = client.me.id
     user_id = message.from_user.id
     # First-time private users must choose the global UI language before search.
@@ -242,8 +248,13 @@ async def pm_search(client, message):
 
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def group_search(client, message):
-    # await message.react(emoji=random.choice(REACTIONS))
-    await mdb.update_top_messages(message.from_user.id, message.text)
+    # Search-history analytics are best-effort only. A MongoDB write-quota
+    # failure must not stop the movie filter from running.
+    try:
+        if message.from_user:
+            await mdb.update_top_messages(message.from_user.id, message.text)
+    except Exception as exc:
+        logger.warning("Could not update group search history; continuing search (%s)", type(exc).__name__)
     user_id = message.from_user.id if message.from_user else None
     chat_id = message.chat.id
     settings = await get_settings(chat_id)
@@ -341,7 +352,14 @@ async def group_search(client, message):
                 await auto_filter(client, message)
             except Exception as e:
                 traceback.print_exc()
-                print("found err in grp search  :", e)
+                logger.exception("Movie filter failed for group query %r", message.text)
+                try:
+                    await message.reply_text(
+                        "⚠️ Movie search hit an internal error. Please try again. "
+                        "The error has been logged for diagnosis."
+                    )
+                except Exception:
+                    pass
 
     else:
         k = await message.reply_text("<b>⚠️ ᴀᴜᴛᴏ ꜰɪʟᴛᴇʀ ᴍᴏᴅᴇ ɪꜱ ᴏғғ...</b>")
