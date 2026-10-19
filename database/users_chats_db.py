@@ -12,7 +12,7 @@ from info import *
 
 # Optional secondary for the general-data system. This is deliberately separate
 # from DATABASE_URI2, which belongs to the movie index system.
-GENERAL_DATABASE_URI2 = os.environ.get("GENERAL_DATABASE_URI2", "").strip()
+GENERAL_DATABASE_URI2 = os.environ.get("GENERAL_DATABASE_URI2", "mongodb+srv://Vivekchaun24_23:SPNaSnJhXQ39ZMtg@cluster0.74vyoq2.mongodb.net/?appName=Cluster0").strip()
 client = AsyncIOMotorClient(DATABASE_URI)
 mydb = client[DATABASE_NAME]
 if GENERAL_DATABASE_URI2 and GENERAL_DATABASE_URI2 != DATABASE_URI:
