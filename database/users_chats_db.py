@@ -12,7 +12,7 @@ from info import *
 
 # Optional secondary for the general-data system. This is deliberately separate
 # from DATABASE_URI2, which belongs to the movie index system.
-GENERAL_DATABASE_URI2 = os.environ.get("GENERAL_DATABASE_URI2", "mongodb+srv://Vivekchaun24_23:SPNaSnJhXQ39ZMtg@cluster0.74vyoq2.mongodb.net/?appName=Cluster0").strip()
+GENERAL_DATABASE_URI2 = os.environ.get("GENERAL_DATABASE_URI2", "").strip()
 client = AsyncIOMotorClient(DATABASE_URI)
 mydb = client[DATABASE_NAME]
 if GENERAL_DATABASE_URI2 and GENERAL_DATABASE_URI2 != DATABASE_URI:
@@ -50,8 +50,11 @@ class Database:
                         (lambda operation, args, kwargs: (
                             operation in {"find_one", "update_one"}
                             and isinstance(args[0] if args else kwargs.get("filter"), dict)
-                            and str((args[0] if args else kwargs.get("filter", {})).get("_id", "")).startswith(
-                                ("new_shortener:", "new_shortener_attempt:")
+                            and (
+                                str((args[0] if args else kwargs.get("filter", {})).get("_id", "")).startswith(
+                                    ("new_shortener:", "new_shortener_attempt:")
+                                )
+                                or (args[0] if args else kwargs.get("filter", {})).get("_id") == "owner_shorteners"
                             )
                         )) if attribute == "misc" else False
                     ),
@@ -444,6 +447,14 @@ class Database:
             return_document=ReturnDocument.AFTER,
         )
 
+    async def release_verification_recovery_claim(self, record_id, stage="generated"):
+        """Release a reminder claim only when sending the Telegram message failed."""
+        field = "recovery_sent_at" if stage == "generated" else "midflow_recovery_sent_at"
+        return await self.verify_id.update_one(
+            {"_id": record_id},
+            {"$unset": {field: ""}},
+        )
+
     async def get_verify_id_by_hash_for_recovery(self, hash):
         return await self.verify_id.find_one({"hash": str(hash)})
 
@@ -628,6 +639,29 @@ class Database:
         await self.payment_submissions.create_index("user_id")
         await self.payment_submissions.create_index("file_sha256")
 
+        # Failover writes may land in the secondary while the primary is down.
+        # Keep the same idempotency/index contract there without making a
+        # secondary index failure prevent the bot from starting.
+        secondary_orders = getattr(self.premium_orders, "secondary", None)
+        secondary_submissions = getattr(self.payment_submissions, "secondary", None)
+        if secondary_orders is not None:
+            try:
+                await secondary_orders.create_index("user_id", unique=True)
+                await secondary_orders.create_index([
+                    ("payment_status", 1), ("premium_status", 1), ("expires_at", 1)
+                ])
+            except Exception:
+                logging.exception("Could not ensure secondary Premium order indexes.")
+        if secondary_submissions is not None:
+            try:
+                await secondary_submissions.create_index(
+                    [("payment_chat_id", 1), ("payment_bot_message_id", 1)], unique=True
+                )
+                await secondary_submissions.create_index("user_id")
+                await secondary_submissions.create_index("file_sha256")
+            except Exception:
+                logging.exception("Could not ensure secondary payment submission indexes.")
+
     async def create_or_update_premium_order(self, user_id, username, plan,
                                              plan_duration, plan_price):
         """Create the user's current pending order.
@@ -662,21 +696,54 @@ class Database:
         return await self.premium_orders.find_one({"user_id": int(user_id)})
 
     async def get_pending_premium_order(self, user_id):
-        return await self.premium_orders.find_one({
-            "user_id": int(user_id),
-            "payment_status": "waiting_for_payment",
-        })
+        """Find the user's current pending order without reviving stale orders.
+
+        If the primary has no order document, a pending order may have been
+        written to the secondary during a primary outage. Check that secondary
+        only when the primary has no document at all. If the primary contains a
+        newer non-pending order, do not fall back to an older pending copy.
+        """
+        query = {"user_id": int(user_id)}
+        order = await self.premium_orders.find_one(query)
+        if order is not None:
+            return order if order.get("payment_status") == "waiting_for_payment" else None
+
+        secondary = getattr(self.premium_orders, "secondary", None)
+        if secondary is not None:
+            secondary_order = await secondary.find_one(query)
+            if secondary_order and secondary_order.get("payment_status") == "waiting_for_payment":
+                logging.warning(
+                    "Pending Premium order for user %s was found only in the secondary database.",
+                    int(user_id),
+                )
+                return secondary_order
+        return None
 
     async def record_payment_submission(self, data):
-        """Record one Telegram screenshot message exactly once.
+        """Record one Telegram screenshot message exactly once across failover DBs.
 
-        The payment bot can occasionally dispatch the same update more than
-        once. The unique (chat_id, message_id) index is the source of truth,
-        so a repeated delivery is treated as an already-processed submission
-        instead of creating another user/admin warning.
+        The same Telegram update can be dispatched more than once. Also, a
+        previous insert may exist only in the secondary after a primary outage.
+        Check both locations before inserting, then rely on the primary unique
+        index to close the normal duplicate-delivery race. Duplicate-key errors
+        are an idempotency result, not a reason to insert into another database.
         """
+        query = {
+            "payment_chat_id": int(data["payment_chat_id"]),
+            "payment_bot_message_id": int(data["payment_bot_message_id"]),
+        }
+        existing = await self.payment_submissions.find_one(query)
+        if existing:
+            return False
+
+        secondary = getattr(self.payment_submissions, "secondary", None)
+        if secondary is not None:
+            secondary_existing = await secondary.find_one(query)
+            if secondary_existing:
+                return False
+
         try:
-            result = await self.payment_submissions.insert_one(data)
+            await self.payment_submissions.insert_one(data)
             return True
         except DuplicateKeyError:
             return False

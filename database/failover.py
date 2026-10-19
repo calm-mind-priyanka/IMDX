@@ -1,11 +1,13 @@
 """Dependency-light application-level Mongo collection failover helpers."""
 import logging
+from pymongo.errors import DuplicateKeyError
 
 class _FailoverCursor:
     """Lazy Motor cursor wrapper: use the secondary if primary iteration fails."""
-    def __init__(self, primary_cursor, secondary_cursor):
+    def __init__(self, primary_cursor, secondary_cursor, fallback_on_empty=False):
         self._primary = primary_cursor
         self._secondary = secondary_cursor
+        self._fallback_on_empty = bool(fallback_on_empty)
         self._fallback = False
 
     def _cursor(self):
@@ -22,7 +24,13 @@ class _FailoverCursor:
         if name == "to_list":
             async def to_list(length=None):
                 try:
-                    return await self._primary.to_list(length=length)
+                    rows = await self._primary.to_list(length=length)
+                    # Verification recovery scans must also look in the secondary
+                    # when the primary is healthy but has no matching records.
+                    if not rows and self._fallback_on_empty and self._secondary is not None:
+                        self._fallback = True
+                        return await self._secondary.to_list(length=length)
+                    return rows
                 except Exception:
                     if self._secondary is None:
                         raise
@@ -34,21 +42,29 @@ class _FailoverCursor:
     def __aiter__(self):
         async def iterate():
             seen = set()
+            primary_rows = []
             try:
                 async for row in self._primary:
-                    key = row.get("_id") if isinstance(row, dict) else None
-                    if key is not None:
-                        seen.add(str(key))
-                    yield row
+                    primary_rows.append(row)
             except Exception:
                 if self._secondary is None:
                     raise
                 self._fallback = True
                 async for row in self._secondary:
-                    key = row.get("_id") if isinstance(row, dict) else None
-                    if key is not None and str(key) in seen:
-                        continue
                     yield row
+                return
+
+            if not primary_rows and self._fallback_on_empty and self._secondary is not None:
+                self._fallback = True
+                async for row in self._secondary:
+                    yield row
+                return
+
+            for row in primary_rows:
+                key = row.get("_id") if isinstance(row, dict) else None
+                if key is not None:
+                    seen.add(str(key))
+                yield row
         return iterate()
 
 
@@ -76,7 +92,9 @@ class _FailoverCollection:
         # Only opt-in collections should read the secondary when the primary
         # is reachable but does not contain the requested record. This is
         # needed for verification tokens written during a primary outage.
-        self.fallback_on_empty = bool(fallback_on_empty)
+        # Preserve predicate callbacks; coercing a callable to bool would make
+        # every lookup in that collection eligible for empty-result fallback.
+        self.fallback_on_empty = fallback_on_empty
 
     def __getattr__(self, name):
         primary_attr = getattr(self.primary, name)
@@ -85,7 +103,11 @@ class _FailoverCollection:
             def cursor_factory(*args, **kwargs):
                 primary_cursor = primary_attr(*args, **kwargs)
                 secondary_cursor = secondary_attr(*args, **kwargs) if secondary_attr else None
-                return _FailoverCursor(primary_cursor, secondary_cursor)
+                return _FailoverCursor(
+                    primary_cursor,
+                    secondary_cursor,
+                    fallback_on_empty=bool(self.fallback_on_empty) and not callable(self.fallback_on_empty),
+                )
             return cursor_factory
         if not callable(primary_attr):
             return primary_attr
@@ -97,8 +119,8 @@ class _FailoverCollection:
                 fallback_empty = self.fallback_on_empty
                 if callable(fallback_empty):
                     fallback_empty = bool(fallback_empty(name, args, kwargs))
-                if (name == "find_one" and result is None and self.secondary is not None
-                        and fallback_empty):
+                if (name in {"find_one", "find_one_and_update"} and result is None
+                        and self.secondary is not None and fallback_empty):
                     # A write may have been routed to the secondary while the
                     # primary was unavailable. Once the primary recovers, an
                     # empty primary lookup must not incorrectly mean "expired".
@@ -117,6 +139,12 @@ class _FailoverCollection:
                     if not _is_unmatched_write(fallback):
                         return fallback
                 return result
+            except DuplicateKeyError:
+                # A duplicate-key violation is a real application result, not a
+                # connectivity failure. Retrying it against the secondary can
+                # turn an already-processed payment screenshot into a new record
+                # and repeat the admin alert. Preserve idempotency by propagating it.
+                raise
             except Exception as primary_error:
                 if secondary_attr is None:
                     raise
@@ -126,6 +154,10 @@ class _FailoverCollection:
                         fallback = await fallback
                     logging.warning("General MongoDB primary operation %s failed; secondary handled it (%s)", name, type(primary_error).__name__)
                     return fallback
+                except DuplicateKeyError:
+                    # The secondary also recognizes this as an already-seen
+                    # record; let the caller's idempotency handler consume it.
+                    raise
                 except Exception:
                     raise primary_error
         return invoke
