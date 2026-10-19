@@ -38,7 +38,25 @@ class Database:
         for attribute, collection_name in collection_map.items():
             primary_collection = mydb[collection_name]
             secondary_collection = general_db2[collection_name] if general_db2 is not None else None
-            setattr(self, attribute, _FailoverCollection(primary_collection, secondary_collection, collection_name))
+            setattr(
+                self,
+                attribute,
+                _FailoverCollection(
+                    primary_collection,
+                    secondary_collection,
+                    collection_name,
+                    fallback_on_empty=(
+                        True if attribute == "verify_id" else
+                        (lambda operation, args, kwargs: (
+                            operation in {"find_one", "update_one"}
+                            and isinstance(args[0] if args else kwargs.get("filter"), dict)
+                            and str((args[0] if args else kwargs.get("filter", {})).get("_id", "")).startswith(
+                                ("new_shortener:", "new_shortener_attempt:")
+                            )
+                        )) if attribute == "misc" else False
+                    ),
+                ),
+            )
 
     default = {
         "spell_check": SPELL_CHECK,
