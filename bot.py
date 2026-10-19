@@ -70,9 +70,53 @@ async def Jisshu_start():
     b_users, b_chats = await db.get_banned()
     temp.BANNED_USERS = b_users
     temp.BANNED_CHATS = b_chats
-    await Media.ensure_indexes()
-    await db.ensure_premium_indexes()
-    await db.ensure_verification_indexes()
+    # MongoDB Atlas can block all writes (including createIndex) when the
+    # cluster exceeds its storage quota. Index creation is best-effort so this
+    # optional startup task cannot prevent the bot from serving existing movies.
+    try:
+        await Media.ensure_indexes()
+        logging.info("Primary movie database indexes verified.")
+    except Exception as exc:
+        logging.exception(
+            "Could not ensure primary movie indexes (%s). Continuing startup; "
+            "existing movie searches remain enabled and new files will use the "
+            "configured secondary database fallback when available.",
+            type(exc).__name__,
+        )
+
+    # Ensure the secondary movie collection's indexes independently, when it is
+    # configured. A full/unavailable primary must not stop the secondary from
+    # being initialized. This is also best-effort for quota/permission errors.
+    try:
+        from info import MULTIPLE_DB, DATABASE_URI2
+        if MULTIPLE_DB and DATABASE_URI2:
+            from database.ia_filterdb import Media2
+            await Media2.ensure_indexes()
+            logging.info("Secondary movie database indexes verified.")
+    except Exception as exc:
+        logging.exception(
+            "Could not ensure secondary movie indexes (%s). Continuing startup.",
+            type(exc).__name__,
+        )
+
+    # These collections are separate from the movie index. Keep their existing
+    # setup behavior, but log failures clearly instead of silently hiding them.
+    try:
+        await db.ensure_premium_indexes()
+    except Exception as exc:
+        logging.exception(
+            "Could not ensure premium/payment indexes (%s). Continuing startup; "
+            "premium/payment database operations may be limited until MongoDB "
+            "writes are available again.",
+            type(exc).__name__,
+        )
+    try:
+        await db.ensure_verification_indexes()
+    except Exception as exc:
+        logging.exception(
+            "Could not ensure verification indexes (%s). Continuing startup.",
+            type(exc).__name__,
+        )
     await mdb.load_premium_plans()
     me = await JisshuBot.get_me()
     temp.ME = me.id
