@@ -1,4 +1,5 @@
 import asyncio
+import html
 import re
 import requests
 from pyrogram import Client, filters, enums, ContinuePropagation
@@ -339,7 +340,20 @@ def _page_text(key, settings):
         return f"<b>📢 SET MOVIE REQ</b>\n\nCurrent request channel: <code>{settings.get('request_channel', REQUEST_CHANNEL)}</code>"
     if key == "fsub":
         channels = settings.get("fsub_channels") or []
-        return "<b>📢 GROUP FORCE SUBSCRIPTION</b>\n\nGroup-specific FSUB: " + ("ON ✅" if settings.get("fsub_enabled") else "OFF ❌") + "\nGlobal AUTH_CHANNEL/AUTH_REQ_CHANNEL remains enforced for compatibility.\n\n" + ("\n".join(f"• <code>{c}</code>" for c in channels) or "No group-specific channels configured.")
+        details = settings.get("fsub_channel_details") or {}
+        channel_lines = []
+        for channel_id in channels:
+            detail = details.get(str(channel_id), {}) if isinstance(details, dict) else {}
+            title = html.escape(str(detail.get("title") or "Channel title unavailable"))
+            username = html.escape(str(detail.get("username") or "").strip())
+            link = f" (@{username})" if username else ""
+            channel_lines.append(
+                f"• <b>{title}</b>{link}\n  ID: <code>{channel_id}</code>"
+            )
+        return ("<b>📢 GROUP FORCE SUBSCRIPTION</b>\n\n"
+                + "Group-specific FSUB: " + ("ON ✅" if settings.get("fsub_enabled") else "OFF ❌")
+                + "\nGlobal AUTH_CHANNEL/AUTH_REQ_CHANNEL remains enforced for compatibility.\n\n"
+                + ("\n".join(channel_lines) or "No group-specific channels configured."))
     if key == "new_shortener":
         return ("<b>🔗 NEW THREE-STEP SHORTENER</b>\n\n" +
                 f"Enabled for this group: {'ON ✅' if settings.get('new_shortener_enabled') else 'OFF ❌'}\n" +
@@ -1429,13 +1443,37 @@ async def advanced_input(client, message):
         except ValueError:
             return await message.reply_text("Send a valid channel ID or /cancel")
         settings = await get_settings(gid)
-        channels = list(settings.get("fsub_channels") or [])
-        if value_int not in channels:
+        channels = [int(c) for c in (settings.get("fsub_channels") or [])]
+        already_added = value_int in channels
+        if not already_added:
             channels.append(value_int)
+        details = dict(settings.get("fsub_channel_details") or {})
+        channel_title = "Channel title unavailable"
+        channel_username = ""
+        try:
+            chat = await client.get_chat(value_int)
+            channel_title = str(getattr(chat, "title", None) or getattr(chat, "first_name", None) or channel_title)
+            channel_username = str(getattr(chat, "username", None) or "")
+        except Exception:
+            # IDs can still be saved when Telegram cannot resolve a private
+            # channel; the settings page will clearly show that the title is
+            # unavailable rather than pretending the channel was not added.
+            pass
+        details[str(value_int)] = {"title": channel_title, "username": channel_username}
         await save_group_settings(gid, "fsub_channels", channels)
+        await save_group_settings(gid, "fsub_channel_details", details)
         _invalidate_settings_cache(gid)
         PENDING.pop((uid, gid), None)
         await _delete_input_message()
+        status = "already configured" if already_added else "added successfully"
+        safe_channel_title = html.escape(channel_title)
+        safe_channel_username = html.escape(channel_username)
+        await message.reply_text(
+            f"✅ <b>Force-subscription channel {status}.</b>\n\n"
+            f"Channel: <b>{safe_channel_title}</b>\nID: <code>{value_int}</code>"
+            + (f"\nUsername: @{safe_channel_username}" if channel_username else "\nUsername: unavailable/private"),
+            parse_mode=enums.ParseMode.HTML,
+        )
 
     elif key == "fsub_delete":
         try:
@@ -1446,7 +1484,9 @@ async def advanced_input(client, message):
         channels = [int(c) for c in (settings.get("fsub_channels") or []) if int(c) != value_int]
         await save_group_settings(gid, "fsub_channels", channels)
         labels = {str(k): v for k, v in (settings.get("fsub_button_labels") or {}).items() if str(k) != str(value_int)}
+        details = {str(k): v for k, v in (settings.get("fsub_channel_details") or {}).items() if str(k) != str(value_int)}
         await save_group_settings(gid, "fsub_button_labels", labels)
+        await save_group_settings(gid, "fsub_channel_details", details)
         _invalidate_settings_cache(gid)
         PENDING.pop((uid, gid), None)
         await _delete_input_message()
