@@ -2379,8 +2379,32 @@ async def auto_filter(client, msg, spoll=False, pm_mode=False):
         searching_msg = await msg.reply_text(
             f"🎯 {searching_labels.get(ui_lang, searching_labels['en'])} {search}"
         )
-        files, offset, total_results = await get_search_results(search, max_results=max_results)
-        await searching_msg.delete()
+        try:
+            files, offset, total_results = await get_search_results(search, max_results=max_results)
+        except Exception as exc:
+            logger.exception("Movie search failed for query %r", search)
+            try:
+                await searching_msg.edit_text(
+                    "⚠️ Movie search is temporarily unavailable because the configured movie database(s) could not be read. "
+                    "Existing movie data has not been deleted. Please try again shortly."
+                )
+            except Exception:
+                try:
+                    await searching_msg.delete()
+                except Exception:
+                    pass
+                try:
+                    await msg.reply_text(
+                        "⚠️ Movie search is temporarily unavailable because the configured movie database(s) could not be read. "
+                        "Existing movie data has not been deleted. Please try again shortly."
+                    )
+                except Exception:
+                    pass
+            return
+        try:
+            await searching_msg.delete()
+        except Exception:
+            pass
         if not files:
             if settings.get("spell_check", False):
                 ai_sts = await msg.reply_text("ᴄʜᴇᴄᴋɪɴɢ ʏᴏᴜʀ sᴘᴇʟʟɪɴɢ...")
