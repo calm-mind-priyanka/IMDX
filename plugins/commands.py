@@ -289,6 +289,7 @@ async def _verification_recovery_worker(client):
                     else "VERIFICATION_REMINDER_MIDFLOW"
                 )
 
+                sent = None
                 try:
                     # The second reminder replaces the first reminder for the
                     # same verification attempt. It keeps the same shortlink,
@@ -324,6 +325,15 @@ async def _verification_recovery_worker(client):
                     )
                     asyncio.create_task(_delete_recovery_message_later(client, user_id, sent.id, delete_after))
                 except Exception:
+                    # A failed Telegram send must not permanently consume the
+                    # one-time reminder marker. Release it only if no message
+                    # was sent; if a message was sent but a later DB/log step
+                    # failed, keep the claim to avoid duplicate reminders.
+                    if sent is None:
+                        try:
+                            await db.release_verification_recovery_claim(record["_id"], stage=stage)
+                        except Exception:
+                            logger.exception("Could not release failed verification reminder claim for %s", user_id)
                     logger.exception("Could not send verification recovery message to %s", user_id)
         except asyncio.CancelledError:
             raise
