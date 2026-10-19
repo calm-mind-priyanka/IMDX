@@ -266,13 +266,23 @@ async def get_title_candidates(query, limit=240):
 
 
 async def _read_model(model, mongo_filter, limit, offset=0, count=False):
-    """Read one store independently so an outage in one does not hide the other."""
+    """Read one store independently; never let an optional count block movie reads.
+
+    Atlas quota errors commonly block writes/index creation, but count/index or
+    transient command failures must not silently suppress a readable collection.
+    Fetch the actual matching documents first. Counting is best-effort only.
+    """
     try:
-        total = await model.count_documents(mongo_filter) if count else None
         rows = await model.find(mongo_filter).sort("$natural", -1).skip(offset).limit(limit).to_list(length=limit)
-        return rows, total, None
     except Exception as exc:
         return [], None, exc
+    total = None
+    if count:
+        try:
+            total = await model.count_documents(mongo_filter)
+        except Exception as exc:
+            print(f"Movie database count failed ({type(exc).__name__}); using bounded search results")
+    return rows, total, None
 
 
 def _dedupe_media(rows):
@@ -297,13 +307,18 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None, ch
     max_results = max(1, int(max_results or MAX_BTN))
     models = [Media, Media2] if MULTIPLE_DB and DATABASE_URI2 else [Media]
     fetch_limit = max_results + offset + 1
-    results = await asyncio.gather(*[_read_model(m, mongo_filter, fetch_limit, 0, True) for m in models])
-    rows, known_counts = [], []
-    for found, count, error in results:
+    results = await asyncio.gather(*[_read_model(m, mongo_filter, fetch_limit, 0, False) for m in models])
+    rows, read_errors, successful_stores = [], [], 0
+    for found, _count, error in results:
         if error is None:
+            successful_stores += 1
             rows.extend(found)
-            if count is not None:
-                known_counts.append(count)
+        else:
+            read_errors.append(f"{type(error).__name__}: {str(error)[:180]}")
+            print(f"Movie search database read failed ({type(error).__name__}): {str(error)[:180]}")
+    if successful_stores == 0:
+        # Do not turn an actual DB outage into an ordinary 'no results' response.
+        raise RuntimeError("All configured movie databases failed to read: " + "; ".join(read_errors))
     rows = _dedupe_media(rows)
     # A bounded result window can undercount very large overlapping datasets;
     # never claim a sum of per-database counts because copies may overlap.
