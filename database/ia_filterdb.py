@@ -285,12 +285,37 @@ async def _read_model(model, mongo_filter, limit, offset=0, count=False):
     return rows, total, None
 
 
+def _media_value(row, field, default=None):
+    """Read a field from either a Mongo mapping or a umongo Document.
+
+    Motor/umongo queries return Document instances, not plain dictionaries.
+    Keep mapping support for callers/tests that provide raw Mongo documents.
+    """
+    if isinstance(row, dict):
+        return row.get(field, default)
+    try:
+        value = getattr(row, field)
+    except (AttributeError, KeyError, TypeError):
+        value = default
+    return default if value is None else value
+
+
 def _dedupe_media(rows):
+    """Deduplicate raw Mongo dictionaries and umongo Media documents safely."""
     result, seen = [], set()
     for row in rows:
-        key = str(row.get("file_unique_id") or row.get("file_id") or row.get("_id") or "")
+        key_value = (
+            _media_value(row, "file_unique_id")
+            or _media_value(row, "file_id")
+            or _media_value(row, "_id")
+        )
+        key = str(key_value or "")
         if not key:
-            key = str(row.get("file_name", "")) + "|" + str(row.get("file_size", ""))
+            key = (
+                str(_media_value(row, "file_name", "") or "")
+                + "|"
+                + str(_media_value(row, "file_size", "") or "")
+            )
         if key not in seen:
             seen.add(key)
             result.append(row)
