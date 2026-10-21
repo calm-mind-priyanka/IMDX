@@ -704,20 +704,34 @@ class Database:
         newer non-pending order, do not fall back to an older pending copy.
         """
         query = {"user_id": int(user_id)}
-        order = await self.premium_orders.find_one(query)
-        if order is not None:
-            return order if order.get("payment_status") == "waiting_for_payment" else None
-
+        candidates = []
+        primary = getattr(self.premium_orders, "primary", self.premium_orders)
         secondary = getattr(self.premium_orders, "secondary", None)
-        if secondary is not None:
-            secondary_order = await secondary.find_one(query)
-            if secondary_order and secondary_order.get("payment_status") == "waiting_for_payment":
-                logging.warning(
-                    "Pending Premium order for user %s was found only in the secondary database.",
-                    int(user_id),
-                )
-                return secondary_order
-        return None
+        for label, collection in (("primary", primary), ("secondary", secondary)):
+            if collection is None:
+                continue
+            try:
+                order = await collection.find_one(query)
+                if order:
+                    candidates.append((label, order))
+            except Exception as exc:
+                logging.warning("Could not read %s Premium order for user %s (%s)", label, int(user_id), type(exc).__name__)
+        if not candidates:
+            return None
+
+        # Failover writes can leave a newer order only on the secondary. Choose
+        # the newest copy instead of letting an older primary record hide it.
+        def order_time(item):
+            value = item[1].get("order_created_at")
+            if isinstance(value, datetime.datetime):
+                if value.tzinfo is not None:
+                    value = value.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+                return value
+            return datetime.datetime.min
+        label, order = max(candidates, key=order_time)
+        if label == "secondary":
+            logging.warning("Using newest Premium order for user %s from secondary database.", int(user_id))
+        return order if order.get("payment_status") == "waiting_for_payment" else None
 
     async def record_payment_submission(self, data):
         """Record one Telegram screenshot message exactly once across failover DBs.
