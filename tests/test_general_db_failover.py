@@ -116,6 +116,16 @@ class GeneralFailoverTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, "primary-write")
         self.assertEqual(secondary.writes, 1)
 
+    async def test_successful_fallback_switches_future_operations_to_secondary(self):
+        primary = _FakeCollection(fail=True, source="primary")
+        secondary = _FakeCollection(source="secondary")
+        collection = _FailoverCollection(primary, secondary, "test")
+        await collection.update_one({"_id": "x"}, {"$set": {"x": 1}})
+        primary.fail = False
+        result = await collection.find_one({"_id": "x"})
+        self.assertEqual(result["source"], "secondary")
+        self.assertTrue(collection._using_secondary)
+
     async def test_cursor_to_list_falls_back(self):
         primary = _FakeCollection(fail=True)
         secondary = _FakeCollection(rows=[{"_id": "secondary"}])
