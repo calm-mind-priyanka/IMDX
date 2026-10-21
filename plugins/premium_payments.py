@@ -102,6 +102,59 @@ def _admins():
     return set(ADMINS) | set(PAYMENT_ADMIN_IDS)
 
 
+_AUTO_PAYMENT_MODE_ID = "global_auto_payment_mode"
+
+
+async def get_auto_payment_enabled():
+    """Read the globally-scoped auto-payment switch from both general DBs."""
+    candidates = []
+    primary = getattr(db.misc, "primary", db.misc)
+    secondary = getattr(db.misc, "secondary", None)
+    for collection in (primary, secondary):
+        if collection is None:
+            continue
+        try:
+            doc = await collection.find_one({"_id": _AUTO_PAYMENT_MODE_ID})
+            if doc is not None:
+                candidates.append(doc)
+        except Exception as exc:
+            LOGGER.warning("Could not read global auto-payment setting (%s)", type(exc).__name__)
+    if not candidates:
+        # Preserve existing behaviour on first deployment: auto-payment ON.
+        return True
+    def _updated_at(doc):
+        value = doc.get("updated_at")
+        if not isinstance(value, datetime.datetime):
+            return datetime.datetime.min
+        if value.tzinfo is not None:
+            return value.astimezone(UTC).replace(tzinfo=None)
+        return value
+    latest = max(candidates, key=_updated_at)
+    return bool(latest.get("enabled", True))
+
+
+async def set_auto_payment_enabled(enabled):
+    """Persist the global switch to both configured general-data databases."""
+    now = datetime.datetime.utcnow()
+    document = {"_id": _AUTO_PAYMENT_MODE_ID, "enabled": bool(enabled), "updated_at": now}
+    primary = getattr(db.misc, "primary", db.misc)
+    secondary = getattr(db.misc, "secondary", None)
+    successes = 0
+    errors = []
+    for label, collection in (("primary", primary), ("secondary", secondary)):
+        if collection is None:
+            continue
+        try:
+            await collection.update_one({"_id": _AUTO_PAYMENT_MODE_ID}, {"$set": document}, upsert=True)
+            successes += 1
+        except Exception as exc:
+            errors.append(f"{label}:{type(exc).__name__}")
+            LOGGER.warning("Could not save global auto-payment setting to %s (%s)", label, type(exc).__name__)
+    if not successes:
+        raise RuntimeError("Could not save global auto-payment setting: " + ", ".join(errors))
+    return bool(enabled)
+
+
 LANGUAGES = dict(GLOBAL_LANGUAGES)
 
 LANGUAGE_ALIASES = {
@@ -1196,8 +1249,21 @@ async def process_payment_submission(payment_client, message):
                 _schedule_temp_delete(admin_screenshot, 10)
             except Exception as exc:
                 LOGGER.warning("Could not send unmatched payment to admin %s: %s", admin_id, exc)
-        # An unmatched screenshot is an admin-side event only. Do not send
-        # the old "No Premium order" notice to the user.
+        # Tell the sender why nothing started. This is especially important
+        # when a previous DB failover left the selected order in the secondary.
+        try:
+            lang = await _user_language(user_id, sender)
+            notice = await payment_client.send_message(
+                user_id,
+                "⚠️ <b>No pending Premium order was found.</b>\n\n"
+                "Please return to the main bot, select your Premium plan first, "
+                "then send the screenshot to this payment bot. If you already "
+                "selected a plan, please retry once or contact the owner.",
+                parse_mode=enums.ParseMode.HTML,
+            )
+            _schedule_temp_delete(notice, 30)
+        except Exception as exc:
+            LOGGER.warning("Could not explain unmatched payment screenshot to %s (%s)", user_id, type(exc).__name__)
         _schedule_temp_delete(message, TEMP_MESSAGE_DELETE_SECONDS)
         return
 
@@ -1484,12 +1550,21 @@ async def select_premium_plan(client, query):
         plan["price"],
     )
 
+    auto_payment_enabled = await get_auto_payment_enabled()
     buttons = []
-    if PAYMENT_BOT_USERNAME:
+    if auto_payment_enabled and PAYMENT_BOT_USERNAME:
         buttons.append([
             InlineKeyboardButton(
                 "📸 SEND PAYMENT SCREENSHOT",
                 url=f"https://t.me/{PAYMENT_BOT_USERNAME}",
+            )
+        ])
+    elif not auto_payment_enabled and OWNER_USERNAME:
+        owner_username = str(OWNER_USERNAME).strip().lstrip("@")
+        buttons.append([
+            InlineKeyboardButton(
+                "📩 SEND PAYMENT SCREENSHOT TO OWNER",
+                url=f"https://t.me/{owner_username}",
             )
         ])
     buttons.append([
@@ -1505,7 +1580,7 @@ async def select_premium_plan(client, query):
         f"💰 {_premium_flow_text(lang, 'price_label')}: <b>{escape(str(plan['price']))}</b>\n"
         f"🆔 {_premium_flow_text(lang, 'user_id_label')}: <code>{user.id}</code>\n"
         f"🟡 {_premium_flow_text(lang, 'payment_status_label')}: <code>waiting_for_payment</code>\n\n"
-        f"{_premium_flow_text(lang, 'send_payment_help')}\n\n"
+        f"{('Complete the payment, then send the screenshot to the dedicated payment bot.' if auto_payment_enabled else 'Auto-payment is OFF. Send your payment screenshot directly to the owner for manual verification.')}\n\n"
         f"⚠️ {_premium_flow_text(lang, 'submission_note')}"
     )
     try:
@@ -1704,6 +1779,37 @@ async def manual_renew(client, message):
     )
 
 
+async def _claim_legacy_expiry_notice(user_id, expiry):
+    """Deduplicate legacy-expiry notices across both configured general DBs."""
+    stamp = _naive_utc(expiry)
+    stamp_key = stamp.isoformat() if isinstance(stamp, datetime.datetime) else "unknown"
+    marker_id = f"legacy_premium_expired:{int(user_id)}:{stamp_key}"
+    primary = getattr(db.misc, "primary", db.misc)
+    secondary = getattr(db.misc, "secondary", None)
+    collections = [c for c in (primary, secondary) if c is not None]
+    for collection in collections:
+        try:
+            if await collection.find_one({"_id": marker_id}):
+                return False
+        except Exception as exc:
+            LOGGER.warning("Could not check Premium expiry marker (%s)", type(exc).__name__)
+    marker = {
+        "_id": marker_id,
+        "user_id": int(user_id),
+        "expiry_time": stamp,
+        "notice_attempted_at": datetime.datetime.utcnow(),
+    }
+    successes = 0
+    for collection in collections:
+        try:
+            await collection.update_one({"_id": marker_id}, {"$setOnInsert": marker}, upsert=True)
+            successes += 1
+        except Exception as exc:
+            LOGGER.warning("Could not save Premium expiry marker (%s)", type(exc).__name__)
+    # If neither store can persist a marker, do not pretend deduplication worked.
+    return successes > 0
+
+
 async def run_expiry_check(client, notify=True):
     now = _now()
 
@@ -1771,6 +1877,12 @@ async def run_expiry_check(client, notify=True):
         expiry = _naive_utc(user.get("expiry_time"))
         await db.remove_premium_access(user_id)
         if notify:
+            # A primary write can fail while the secondary accepts the update,
+            # leaving an old expired row readable from the primary. Persist a
+            # per-user/per-expiry marker in both stores so the 10-second worker
+            # cannot spam the user or LOG_CHANNEL on every scan.
+            if not await _claim_legacy_expiry_notice(user_id, expiry):
+                continue
             try:
                 target = await client.get_users(user_id)
                 await client.send_message(
@@ -1998,11 +2110,22 @@ def register_payment_bot_handlers(payment_client):
             return
         try:
             await process_payment_submission(client, message)
-        except Exception:
-            # Never send a second hard-coded English message from the outer
-            # screenshot handler. User-facing payment notices are localized
-            # and owned by the main payment flow.
+        except Exception as exc:
             LOGGER.exception("Payment screenshot processing failed.")
+            # If the order lookup/database/OCR path raises before it can send a
+            # status, do not leave regular users with a silent screenshot.
+            try:
+                if message.from_user:
+                    error_notice = await client.send_message(
+                        message.from_user.id,
+                        "⚠️ <b>We couldn't process this screenshot right now.</b>\n\n"
+                        "Your screenshot was received, but a temporary processing or database error occurred. "
+                        "Please try again shortly or contact the owner if it keeps happening.",
+                        parse_mode=enums.ParseMode.HTML,
+                    )
+                    _schedule_temp_delete(error_notice, 30)
+            except Exception as notify_exc:
+                LOGGER.warning("Could not send screenshot error notice (%s)", type(notify_exc).__name__)
         finally:
             # Keep the original screenshot in the payment bot chat for only
             # the requested 10-second retention window.

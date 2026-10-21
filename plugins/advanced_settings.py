@@ -216,6 +216,16 @@ def _main_settings_buttons(settings, grp_id, include_premium=False):
 # GROUP LIST & SETTINGS
 # ============================================================
 
+async def _global_payment_mode_button(group_id=None):
+    from plugins.premium_payments import get_auto_payment_enabled
+    enabled = await get_auto_payment_enabled()
+    state = "ON ✅" if enabled else "OFF ❌"
+    callback = "global_payment_mode#toggle"
+    if group_id is not None:
+        callback += f"#{int(group_id)}"
+    return InlineKeyboardButton(f"💳 GLOBAL AUTO PAYMENT: {state}", callback_data=callback)
+
+
 async def show_group_list(client, target, direct_group_id=None):
     user_id = target.from_user.id
     groups = []
@@ -243,8 +253,12 @@ async def show_group_list(client, target, direct_group_id=None):
 
     if not groups:
         if _is_bot_owner(user_id):
-            markup = InlineKeyboardMarkup([[InlineKeyboardButton("💎 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ sᴇᴛᴛɪɴɢs", callback_data="premium_settings#0")]])
-            text = "❌ <b>ɴᴏ ɢʀᴏᴜᴘs ᴀᴠᴀɪʟᴀʙʟᴇ.</b>\n\nᴏʀ ᴍᴀɴᴀɢᴇ ɢʟᴏʙᴀʟ ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴs ʙᴇʟᴏᴡ."
+            payment_button = await _global_payment_mode_button()
+            markup = InlineKeyboardMarkup([
+                [payment_button],
+                [InlineKeyboardButton("💎 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ sᴇᴛᴛɪɴɢs", callback_data="premium_settings#0")],
+            ])
+            text = "❌ <b>ɴᴏ ɢʀᴏᴜᴘs ᴀᴠᴀɪʟᴀʙʟᴇ.</b>\n\nᴍᴀɴᴀɢᴇ ɢʟᴏʙᴀʟ ᴀᴜᴛᴏ-ᴘᴀʏᴍᴇɴᴛ ᴀɴᴅ ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴs ʙᴇʟᴏᴡ."
             if target.chat.type == enums.ChatType.PRIVATE:
                 return await target.reply_text(text, reply_markup=markup, parse_mode=enums.ParseMode.HTML)
             return await target.message.reply_text(text, reply_markup=markup, parse_mode=enums.ParseMode.HTML)
@@ -259,6 +273,7 @@ async def show_group_list(client, target, direct_group_id=None):
     ]
     if _is_bot_owner(user_id):
         buttons.insert(0, [InlineKeyboardButton("💎 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ sᴇᴛᴛɪɴɢs", callback_data="premium_settings#0")])
+        buttons.insert(0, [await _global_payment_mode_button()])
     markup = InlineKeyboardMarkup(buttons)
     text = "⚙️ <b>ꜱᴇʟᴇᴄᴛ ᴛʜᴇ ɢʀᴏᴜᴘ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴍᴀɴᴀɢᴇ:</b>"
 
@@ -284,7 +299,10 @@ async def show_group_settings(client, target, grp_id):
         "sᴇʟᴇᴄᴛ ᴏɴᴇ ᴏꜰ ᴛʜᴇ sᴇᴛᴛɪɴɢs ᴛʜᴀᴛ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴄʜᴀɴɢᴇ "
         "ᴀᴄᴄᴏʀᴅɪɴɢ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ..."
     )
-    markup = InlineKeyboardMarkup(_main_settings_buttons(settings, int(grp_id), include_premium=_is_bot_owner(user_id)))
+    setting_buttons = _main_settings_buttons(settings, int(grp_id), include_premium=_is_bot_owner(user_id))
+    if _is_bot_owner(user_id):
+        setting_buttons.insert(0, [await _global_payment_mode_button(int(grp_id))])
+    markup = InlineKeyboardMarkup(setting_buttons)
 
     if hasattr(target, "message"):
         await target.message.edit_text(text, reply_markup=markup, parse_mode=enums.ParseMode.HTML)
@@ -857,6 +875,36 @@ async def premium_settings_callback(client, query):
             return await query.answer("💔 sᴏᴍᴇᴛʜɪɴɢ ᴡᴇɴᴛ ᴡʀᴏɴɢ...", show_alert=True)
         except Exception:
             return
+
+@Client.on_callback_query(filters.regex(r"^global_payment_mode#toggle(?:#-?\d+)?$"))
+async def global_payment_mode_callback(client, query):
+    if not _is_bot_owner(query.from_user.id):
+        return await query.answer("Only the bot owner can change global auto-payment mode.", show_alert=True)
+    try:
+        from plugins.premium_payments import get_auto_payment_enabled, set_auto_payment_enabled
+        current = await get_auto_payment_enabled()
+        updated = await set_auto_payment_enabled(not current)
+        state = "ON ✅ — users will see the payment-bot button only." if updated else "OFF ❌ — users will see the owner button only."
+        await query.answer(f"Auto-payment is now {'ON' if updated else 'OFF'}.", show_alert=True)
+        parts = query.data.split("#")
+        group_id = int(parts[2]) if len(parts) > 2 else None
+        if group_id is not None and group_id != 0:
+            return await show_group_settings(client, query, group_id)
+        try:
+            await query.message.edit_text(
+                f"💳 <b>GLOBAL AUTO-PAYMENT SETTING</b>\n\n{state}\n\nThis setting applies globally to every group.",
+                reply_markup=InlineKeyboardMarkup([
+                    [await _global_payment_mode_button()],
+                    [InlineKeyboardButton("↩️ BACK TO SETTINGS", callback_data="advanced_settings")],
+                ]),
+                parse_mode=enums.ParseMode.HTML,
+            )
+        except Exception:
+            pass
+    except Exception as exc:
+        print(f"global auto-payment setting error: {type(exc).__name__}: {exc}")
+        return await query.answer("Could not save global auto-payment setting. Check MongoDB logs.", show_alert=True)
+
 
 @Client.on_callback_query(filters.regex(r"^(set_|advanced_settings)"))
 async def settings_callback(client, query):

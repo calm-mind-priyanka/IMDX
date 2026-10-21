@@ -1,4 +1,5 @@
 import os
+import html
 import requests
 import logging
 import random
@@ -48,6 +49,44 @@ from info import *
 VERIFY_RECOVERY_DELAY = int(os.environ.get("VERIFY_RECOVERY_DELAY", "30"))
 VERIFY_MIDFLOW_DELAY = int(os.environ.get("VERIFY_MIDFLOW_DELAY", "120"))
 VERIFY_RECOVERY_DELETE = int(os.environ.get("VERIFY_RECOVERY_DELETE", "300"))
+
+
+async def _build_fsub_caption(client, settings, channel_ids):
+    """Add readable channel names and IDs to the force-subscription caption."""
+    lines = []
+    details = settings.get("fsub_channel_details") or {}
+    seen = set()
+    for raw_id in channel_ids:
+        try:
+            channel_id = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if channel_id in seen:
+            continue
+        seen.add(channel_id)
+        detail = details.get(str(channel_id), {}) if isinstance(details, dict) else {}
+        title = str(detail.get("title") or "").strip()
+        username = str(detail.get("username") or "").strip().lstrip("@")
+        if not title:
+            try:
+                chat = await client.get_chat(channel_id)
+                title = str(getattr(chat, "title", None) or getattr(chat, "first_name", None) or "Channel")
+                username = str(getattr(chat, "username", None) or username).strip().lstrip("@")
+            except Exception:
+                title = "Channel title unavailable"
+        title_html = html.escape(title)
+        username_text = f" (@{html.escape(username)})" if username else ""
+        line = f"• <b>{title_html}</b>{username_text} — <code>{channel_id}</code>"
+        # Telegram photo captions have a 1024-character limit. Keep the static
+        # instructions and add as many required channels as safely fit.
+        candidate = "\n".join(lines + [line])
+        if len(script.FORCESUB_TEXT) + len("\n\n<b>Required channels:</b>\n") + len(candidate) > 1000:
+            lines.append("• Additional required channels are shown in the Join buttons.")
+            break
+        lines.append(line)
+    if not lines:
+        return script.FORCESUB_TEXT
+    return script.FORCESUB_TEXT + "\n\n<b>Required channels:</b>\n" + "\n".join(lines)
 HOME_AUTO_DELETE = max(60, int(os.environ.get("HOME_AUTO_DELETE", "600")))
 
 
@@ -1144,13 +1183,15 @@ async def start(client: Client, message):
                 btn = [[InlineKeyboardButton(str(label)[:64], url=invite_link.invite_link)]]
                 if message.command[1] != "subscribe":
                     btn.append([[InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", url=f"https://t.me/{temp.U_NAME}?start={message.command[1]}")]][0])
+                fsub_caption = await _build_fsub_caption(client, settings, [AUTH_REQ_CHANNEL])
                 await client.send_photo(
-                    chat_id=message.from_user.id, photo=FORCESUB_IMG, caption=script.FORCESUB_TEXT,
+                    chat_id=message.from_user.id, photo=FORCESUB_IMG, caption=fsub_caption,
                     reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML,
                 )
                 return
         else:
             btn = []
+            required_channel_ids = []
             missing_custom = False
             for channel in fsub_channels:
                 if channel == int(AUTH_CHANNEL):
@@ -1161,6 +1202,7 @@ async def start(client: Client, message):
                     subscribed = False
                 if not subscribed:
                     missing_custom = True
+                    required_channel_ids.append(channel)
                     try:
                         invite = await client.create_chat_invite_link(channel)
                         label = (settings.get("fsub_button_labels") or {}).get(str(channel), "⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️")
@@ -1170,6 +1212,7 @@ async def start(client: Client, message):
 
             default_missing = not await is_req_subscribed(client, message)
             if default_missing:
+                required_channel_ids.append(int(AUTH_CHANNEL))
                 try:
                     invite_link_default = await client.create_chat_invite_link(int(AUTH_CHANNEL), creates_join_request=True)
                     label = (settings.get("fsub_button_labels") or {}).get(str(int(AUTH_CHANNEL)), "⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️")
@@ -1180,8 +1223,9 @@ async def start(client: Client, message):
             if message.command[1] != "subscribe" and (missing_custom or default_missing):
                 btn.append([InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", url=f"https://t.me/{temp.U_NAME}?start={message.command[1]}")])
             if btn:
+                fsub_caption = await _build_fsub_caption(client, settings, required_channel_ids)
                 await client.send_photo(
-                    chat_id=message.from_user.id, photo=FORCESUB_IMG, caption=script.FORCESUB_TEXT,
+                    chat_id=message.from_user.id, photo=FORCESUB_IMG, caption=fsub_caption,
                     reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML,
                 )
                 return
