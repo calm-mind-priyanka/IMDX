@@ -113,11 +113,38 @@ class Database:
         )
 
     async def get_settings(self, group_id):
-        chat = await self.grp.find_one({"id": int(group_id)})
-        if chat and "settings" in chat:
-            return chat["settings"]
-        else:
-            return self.default.copy()
+        """Load group settings with restart-safe recovery from the general secondary.
+
+        The primary may remain readable while Atlas blocks its writes at quota.
+        In that case a group document can exist in both databases but the
+        secondary may contain settings saved during failover. Recover keys that
+        are absent/empty in primary without replacing valid primary values.
+        """
+        group_id = int(group_id)
+        primary_chat = None
+        secondary_chat = None
+        try:
+            primary_chat = await mydb["groups"].find_one({"id": group_id})
+        except Exception as exc:
+            logging.warning("Primary group settings read failed for %s (%s)", group_id, type(exc).__name__)
+        if general_db2 is not None:
+            try:
+                secondary_chat = await general_db2["groups"].find_one({"id": group_id})
+            except Exception as exc:
+                logging.warning("Secondary group settings recovery read failed for %s (%s)", group_id, type(exc).__name__)
+        primary_settings = (primary_chat or {}).get("settings") or {}
+        secondary_settings = (secondary_chat or {}).get("settings") or {}
+        merged = self.default.copy()
+        merged.update(primary_settings)
+        recovered = []
+        for key, value in secondary_settings.items():
+            if key not in merged or merged.get(key) in (None, "", [], {}):
+                if value not in (None, "", [], {}):
+                    merged[key] = value
+                    recovered.append(key)
+        if recovered:
+            logging.warning("Recovered %d missing/empty settings for group %s from secondary MongoDB", len(recovered), group_id)
+        return merged
 
     async def get_owner_shortener_pairs(self):
         """Return only shortener slots registered to the current BOT OWNER_ID."""
@@ -244,6 +271,21 @@ class Database:
         )
         if not getattr(result, "acknowledged", False):
             raise RuntimeError("General-data MongoDB did not acknowledge group settings write")
+        # Mirror group settings to the configured general-data secondary. This
+        # is an idempotent $set of the complete settings document, so it is safe
+        # to retry and means a successful primary write is also available after
+        # a later failover/redeploy. If primary is quota-blocked, the failover
+        # facade above writes to secondary and this mirror remains harmless.
+        if general_db2 is not None:
+            try:
+                await general_db2["groups"].update_one(
+                    {"id": int(id)},
+                    {"$set": {"settings": settings}, "$setOnInsert": {"id": int(id), "title": str(id),
+                     "chat_status": {"is_disabled": False, "reason": ""}}},
+                    upsert=True,
+                )
+            except Exception as exc:
+                logging.warning("Could not mirror group settings to secondary MongoDB for %s (%s)", id, type(exc).__name__)
         return True
 
     async def total_chat_count(self):
