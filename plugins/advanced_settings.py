@@ -367,16 +367,24 @@ def _page_text(key, settings):
                 + "\nGlobal AUTH_CHANNEL/AUTH_REQ_CHANNEL remains enforced for compatibility.\n\n"
                 + ("\n".join(channel_lines) or "No group-specific channels configured."))
     if key == "new_shortener":
-        def ns_value(name):
-            return html.escape(str(settings.get(name) or "Not configured"))
-        return ("<b>🔗 NEW THREE-STEP SHORTENER</b>\n\n" +
-                f"Status: <b>{'ON ✅' if settings.get('new_shortener_enabled') else 'OFF ❌'}</b>\n\n" +
-                f"<b>STEP 1</b>\nURL: <code>{ns_value('new_shortener_step1_url')}</code>\nAPI: <code>{ns_value('new_shortener_api1')}</code>\nTutorial: {ns_value('new_shortener_tutorial1')}\n\n" +
-                f"<b>STEP 2</b>\nURL: <code>{ns_value('new_shortener_step2_url')}</code>\nAPI: <code>{ns_value('new_shortener_api2')}</code>\nTutorial: {ns_value('new_shortener_tutorial2')}\n\n" +
-                f"<b>STEP 3</b>\nURL: <code>{ns_value('new_shortener_step3_url')}</code>\nAPI: <code>{ns_value('new_shortener_api3')}</code>\nTutorial: {ns_value('new_shortener_tutorial3')}\n\n" +
-                f"Step 1 gap: <code>{settings.get('new_shortener_gap1', THREE_VERIFY_GAP)}</code> sec\n" +
-                f"Step 2 gap: <code>{settings.get('new_shortener_gap2', THREE_VERIFY_GAP)}</code> sec\n\n" +
-                "Configure all three URLs and API keys before turning this feature ON. Settings are saved per group.")
+        return ("<b>🔗 ɴᴇᴡ 3-sᴛᴇᴘ ꜱʜᴏʀᴛᴇɴᴇʀ</b>\n\n"
+                f"Status: <b>{'ᴏɴ ✅' if settings.get('new_shortener_enabled') else 'ᴏꜰꜰ ❌'}</b>\n\n"
+                "Select a section below to configure its URL, API key, tutorial, or timing.")
+    if key in {"new_shortener_step1", "new_shortener_step2", "new_shortener_step3"}:
+        number = int(key[-1])
+        def shown(k):
+            return html.escape(str(settings.get(k) or "ɴᴏᴛ ꜱᴇᴛ"))
+        suffix = {1: "sᴛ", 2: "ɴᴅ", 3: "ʀᴅ"}[number]
+        return (f"<b>🔗 {number}{suffix} ꜱʜᴏʀᴛʟɪɴᴋ ꜱᴇᴛᴛɪɴɢs</b>\n\n"
+                f"🌐 ᴡᴇʙsɪᴛᴇ: <code>{shown(f'new_shortener_step{number}_url')}</code>\n"
+                f"🔑 ᴀᴘɪ ᴋᴇʏ: <code>{shown(f'new_shortener_api{number}')}</code>\n"
+                f"📚 ᴛᴜᴛᴏʀɪᴀʟ: {shown(f'new_shortener_tutorial{number}')}")
+    if key == "new_shortener_tutorials":
+        return "<b>📚 ɴᴇᴡ 3-sᴛᴇᴘ ᴛᴜᴛᴏʀɪᴀʟs</b>\n\nConfigure a separate tutorial for each step."
+    if key == "new_shortener_gaps":
+        return ("<b>⏱️ ɴᴇᴡ 3-sᴛᴇᴘ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ɢᴀᴘs</b>\n\n"
+                f"Step 1 gap: <code>{settings.get('new_shortener_gap1', THREE_VERIFY_GAP)}</code> sec\n"
+                f"Step 2 gap: <code>{settings.get('new_shortener_gap2', THREE_VERIFY_GAP)}</code> sec")
     if key == "max_results":
         return f"<b>🔢 SET MAX RESULTS</b>\n\nCurrent: <code>{settings.get('max_results', MAX_BTN)}</code>\nAllowed: 1–20"
     if key == "details":
@@ -585,21 +593,25 @@ def _page_buttons(key, settings, grp_id):
              InlineKeyboardButton("ʀᴇsᴇᴛ ʟᴀʙᴇʟ", callback_data=f"set_input#fsub_label_reset#{grp_id}")],
         ]
     elif key == "new_shortener":
-        toggle_label = "🔴 TURN OFF NEW 3-STEP" if settings.get("new_shortener_enabled") else "🟢 TURN ON NEW 3-STEP"
+        toggle_label = "🔴 ᴛᴜʀɴ ᴏꜰꜰ ɴᴇᴡ 3-sᴛᴇᴘ" if settings.get("new_shortener_enabled") else "🟢 ᴛᴜʀɴ ᴏɴ ɴᴇᴡ 3-sᴛᴇᴘ"
         b = [
             [InlineKeyboardButton(toggle_label, callback_data=f"set_toggle#new_shortener_enabled#{grp_id}#new_shortener")],
-            [InlineKeyboardButton("SET STEP 1 URL", callback_data=f"set_input#new_shortener_step1_url#{grp_id}")],
-            [InlineKeyboardButton("SET STEP 2 URL", callback_data=f"set_input#new_shortener_step2_url#{grp_id}")],
-            [InlineKeyboardButton("SET STEP 3 URL", callback_data=f"set_input#new_shortener_step3_url#{grp_id}")],
-            [InlineKeyboardButton("SET STEP 1 API", callback_data=f"set_input#new_shortener_api1#{grp_id}")],
-            [InlineKeyboardButton("SET STEP 2 API", callback_data=f"set_input#new_shortener_api2#{grp_id}")],
-            [InlineKeyboardButton("SET STEP 3 API", callback_data=f"set_input#new_shortener_api3#{grp_id}")],
-            [InlineKeyboardButton("SET TUTORIAL 1", callback_data=f"set_input#new_shortener_tutorial1#{grp_id}"),
-             InlineKeyboardButton("SET TUTORIAL 2", callback_data=f"set_input#new_shortener_tutorial2#{grp_id}")],
-            [InlineKeyboardButton("SET TUTORIAL 3", callback_data=f"set_input#new_shortener_tutorial3#{grp_id}")],
-            [InlineKeyboardButton("SET GAP 1", callback_data=f"set_input#new_shortener_gap1#{grp_id}"),
-             InlineKeyboardButton("SET GAP 2", callback_data=f"set_input#new_shortener_gap2#{grp_id}")],
+            [InlineKeyboardButton("1ꜱᴛ ꜱʜᴏʀᴛʟɪɴᴋ", callback_data=f"set_page#new_shortener_step1#{grp_id}"), InlineKeyboardButton("2ɴᴅ ꜱʜᴏʀᴛʟɪɴᴋ", callback_data=f"set_page#new_shortener_step2#{grp_id}")],
+            [InlineKeyboardButton("3ʀᴅ ꜱʜᴏʀᴛʟɪɴᴋ", callback_data=f"set_page#new_shortener_step3#{grp_id}")],
+            [InlineKeyboardButton("📚 ᴛᴜᴛᴏʀɪᴀʟ sᴇᴛᴛɪɴɢs", callback_data=f"set_page#new_shortener_tutorials#{grp_id}"), InlineKeyboardButton("⏱️ ɢᴀᴘ sᴇᴛᴛɪɴɢs", callback_data=f"set_page#new_shortener_gaps#{grp_id}")],
         ]
+    elif key in {"new_shortener_step1", "new_shortener_step2", "new_shortener_step3"}:
+        number = int(key[-1])
+        b = [
+            [InlineKeyboardButton("🌐 ꜱᴇᴛ ᴡᴇʙsɪᴛᴇ ᴜʀʟ", callback_data=f"set_input#new_shortener_step{number}_url#{grp_id}")],
+            [InlineKeyboardButton("🔑 ꜱᴇᴛ ᴀᴘɪ ᴋᴇʏ", callback_data=f"set_input#new_shortener_api{number}#{grp_id}")],
+            [InlineKeyboardButton("📚 ꜱᴇᴛ ᴛᴜᴛᴏʀɪᴀʟ", callback_data=f"set_input#new_shortener_tutorial{number}#{grp_id}")],
+            _back(grp_id, "new_shortener"),
+        ]
+    elif key == "new_shortener_tutorials":
+        b = [[InlineKeyboardButton("sᴇᴛ ᴛᴜᴛᴏʀɪᴀʟ 1", callback_data=f"set_input#new_shortener_tutorial1#{grp_id}"), InlineKeyboardButton("sᴇᴛ ᴛᴜᴛᴏʀɪᴀʟ 2", callback_data=f"set_input#new_shortener_tutorial2#{grp_id}")], [InlineKeyboardButton("sᴇᴛ ᴛᴜᴛᴏʀɪᴀʟ 3", callback_data=f"set_input#new_shortener_tutorial3#{grp_id}"),], _back(grp_id, "new_shortener")]
+    elif key == "new_shortener_gaps":
+        b = [[InlineKeyboardButton("sᴇᴛ ɢᴀᴘ 1", callback_data=f"set_input#new_shortener_gap1#{grp_id}"), InlineKeyboardButton("sᴇᴛ ɢᴀᴘ 2", callback_data=f"set_input#new_shortener_gap2#{grp_id}")], _back(grp_id, "new_shortener")]
     elif key == "max_results":
         b = [[
             InlineKeyboardButton("sᴇᴛ ᴍᴀx ʀᴇsᴜʟᴛ", callback_data=f"set_input#max_results#{grp_id}"),
@@ -1020,7 +1032,10 @@ async def settings_callback(client, query):
                 "new_shortener_gap1", "new_shortener_gap2",
             }
             origin_page = (
-                "new_shortener" if key in new_shortener_keys
+                ("new_shortener_step" + key[-1] if key.startswith("new_shortener_api") else
+                 "new_shortener_step" + key[len("new_shortener_step")] if key.startswith("new_shortener_step") and key.endswith("_url") else
+                 "new_shortener_tutorials" if key.startswith("new_shortener_tutorial") else
+                 "new_shortener_gaps" if key.startswith("new_shortener_gap") else "new_shortener") if key in new_shortener_keys
                 else "shortlink_list" if key in {"shortner", "shortner_two", "shortner_three"}
                 else "verification_gap" if key in {"verify_time", "third_verify_time"}
                 else "tutorial" if key in {"tutorial", "tutorial_2", "tutorial_3"}
