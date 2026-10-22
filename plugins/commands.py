@@ -684,10 +684,11 @@ async def clean_home_callback(client, query):
 
 
 async def _new_shortener_make_url(domain, api, target):
-    """Create a URL for the independent group-specific three-step shortener.
+    """Create a URL for the group-specific three-step shortener.
 
-    Shortzy expects its base_site as a hostname, not a full URL. Normalize
-    admin input such as https://example.com/ to example.com before calling it.
+    LinkCut (linkcut.org) has its own GET API and JSON schema; it is not
+    compatible with assuming every provider follows Shortzy's API format.
+    Other providers continue to use the existing Shortzy integration.
     """
     if not domain or not api or not target:
         return None
@@ -697,9 +698,56 @@ async def _new_shortener_make_url(domain, api, target):
     normalized_domain = raw_domain.rstrip("/")
     if normalized_domain.startswith(("http://", "https://")):
         normalized_domain = normalized_domain.split("://", 1)[1]
-    normalized_domain = normalized_domain.split("/", 1)[0].strip().rstrip("/")
+    normalized_domain = normalized_domain.split("/", 1)[0].strip().rstrip(".").lower()
+    if normalized_domain.startswith("www."):
+        normalized_domain = normalized_domain[4:]
     if not normalized_domain:
         return None
+
+    if normalized_domain == "linkcut.org":
+        import aiohttp
+        endpoint = "https://linkcut.org/api"
+        timeout = aiohttp.ClientTimeout(total=20, connect=8, sock_read=12)
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(
+                    endpoint,
+                    params={"api": str(api).strip(), "url": str(target)},
+                    headers={"Accept": "application/json", "User-Agent": "IMDXBot/1.0"},
+                ) as response:
+                    body = await response.text()
+                    if response.status != 200:
+                        logger.warning(
+                            "LinkCut API returned HTTP %s (response starts: %r)",
+                            response.status, body[:180],
+                        )
+                        return None
+                    try:
+                        payload = await response.json(content_type=None)
+                    except (ValueError, aiohttp.ContentTypeError):
+                        logger.warning("LinkCut API returned non-JSON response (starts: %r)", body[:180])
+                        return None
+                    if not isinstance(payload, dict):
+                        logger.warning("LinkCut API returned unexpected JSON type: %s", type(payload).__name__)
+                        return None
+                    status = str(payload.get("status", "")).lower()
+                    short_url = payload.get("shortenedUrl")
+                    if status == "success" and isinstance(short_url, str):
+                        short_url = short_url.strip()
+                        if short_url.startswith(("https://", "http://")):
+                            return short_url
+                    logger.warning(
+                        "LinkCut API reported failure: status=%r message=%r",
+                        payload.get("status"), payload.get("message"),
+                    )
+                    return None
+        except asyncio.TimeoutError:
+            logger.warning("LinkCut API request timed out")
+            return None
+        except Exception:
+            logger.exception("LinkCut API request failed")
+            return None
+
     shortener = Shortzy(str(api).strip(), normalized_domain)
     try:
         result = await shortener.convert(target)
