@@ -179,16 +179,10 @@ def _main_settings_buttons(settings, grp_id, include_premium=False):
                 callback_data=f"set_page#details#{grp_id}"
             )
         ],
-        [
-            InlineKeyboardButton(
-                f"📣 ɢʀᴏᴜᴘ ꜰsᴜʙ: {'ON ✅' if settings.get('fsub_enabled') else 'OFF ❌'}",
-                callback_data=f"set_toggle#fsub_enabled#{grp_id}"
-            ),
-            InlineKeyboardButton(
-                f"🔗 ɴᴇᴡ 3-sᴛᴇᴘ: {'ON ✅' if settings.get('new_shortener_enabled') else 'OFF ❌'}",
-                callback_data=f"set_toggle#new_shortener_enabled#{grp_id}"
-            )
-        ],
+        [InlineKeyboardButton(
+            f"📣 ɢʀᴏᴜᴘ ꜰsᴜʙ: {'ON ✅' if settings.get('fsub_enabled') else 'OFF ❌'}",
+            callback_data=f"set_toggle#fsub_enabled#{grp_id}"
+        )],
         [InlineKeyboardButton("⚙️ NEW 3-STEP SETTINGS", callback_data=f"set_page#new_shortener#{grp_id}")],
         [
             InlineKeyboardButton(
@@ -373,12 +367,16 @@ def _page_text(key, settings):
                 + "\nGlobal AUTH_CHANNEL/AUTH_REQ_CHANNEL remains enforced for compatibility.\n\n"
                 + ("\n".join(channel_lines) or "No group-specific channels configured."))
     if key == "new_shortener":
+        def ns_value(name):
+            return html.escape(str(settings.get(name) or "Not configured"))
         return ("<b>🔗 NEW THREE-STEP SHORTENER</b>\n\n" +
-                f"Enabled for this group: {'ON ✅' if settings.get('new_shortener_enabled') else 'OFF ❌'}\n" +
-                f"Step 1 URL: <code>{settings.get('new_shortener_step1_url') or 'Not configured'}</code>\n" +
-                f"Step 2 URL: <code>{settings.get('new_shortener_step2_url') or 'Not configured'}</code>\n" +
-                f"Step 3 URL: <code>{settings.get('new_shortener_step3_url') or 'Not configured'}</code>\n\n" +
-                "This setting is stored independently per group. URL/API input and runtime verification integration must be configured before enabling.")
+                f"Status: <b>{'ON ✅' if settings.get('new_shortener_enabled') else 'OFF ❌'}</b>\n\n" +
+                f"<b>STEP 1</b>\nURL: <code>{ns_value('new_shortener_step1_url')}</code>\nAPI: <code>{ns_value('new_shortener_api1')}</code>\nTutorial: {ns_value('new_shortener_tutorial1')}\n\n" +
+                f"<b>STEP 2</b>\nURL: <code>{ns_value('new_shortener_step2_url')}</code>\nAPI: <code>{ns_value('new_shortener_api2')}</code>\nTutorial: {ns_value('new_shortener_tutorial2')}\n\n" +
+                f"<b>STEP 3</b>\nURL: <code>{ns_value('new_shortener_step3_url')}</code>\nAPI: <code>{ns_value('new_shortener_api3')}</code>\nTutorial: {ns_value('new_shortener_tutorial3')}\n\n" +
+                f"Step 1 gap: <code>{settings.get('new_shortener_gap1', THREE_VERIFY_GAP)}</code> sec\n" +
+                f"Step 2 gap: <code>{settings.get('new_shortener_gap2', THREE_VERIFY_GAP)}</code> sec\n\n" +
+                "Configure all three URLs and API keys before turning this feature ON. Settings are saved per group.")
     if key == "max_results":
         return f"<b>🔢 SET MAX RESULTS</b>\n\nCurrent: <code>{settings.get('max_results', MAX_BTN)}</code>\nAllowed: 1–20"
     if key == "details":
@@ -587,7 +585,9 @@ def _page_buttons(key, settings, grp_id):
              InlineKeyboardButton("ʀᴇsᴇᴛ ʟᴀʙᴇʟ", callback_data=f"set_input#fsub_label_reset#{grp_id}")],
         ]
     elif key == "new_shortener":
+        toggle_label = "🔴 TURN OFF NEW 3-STEP" if settings.get("new_shortener_enabled") else "🟢 TURN ON NEW 3-STEP"
         b = [
+            [InlineKeyboardButton(toggle_label, callback_data=f"set_toggle#new_shortener_enabled#{grp_id}#new_shortener")],
             [InlineKeyboardButton("SET STEP 1 URL", callback_data=f"set_input#new_shortener_step1_url#{grp_id}")],
             [InlineKeyboardButton("SET STEP 2 URL", callback_data=f"set_input#new_shortener_step2_url#{grp_id}")],
             [InlineKeyboardButton("SET STEP 3 URL", callback_data=f"set_input#new_shortener_step3_url#{grp_id}")],
@@ -985,8 +985,8 @@ async def settings_callback(client, query):
             value = not bool(settings.get(key))
             await save_group_settings(gid, key, value)
             _invalidate_settings_cache(gid)
-            if len(parts) > 3 and parts[3] == "shortlink":
-                return await show_page(client, query, "shortlink", gid)
+            if len(parts) > 3 and parts[3] in {"shortlink", "new_shortener"}:
+                return await show_page(client, query, parts[3], gid)
             return await show_page(client, query, key, gid)
 
         if action == "set_default":

@@ -684,10 +684,23 @@ async def clean_home_callback(client, query):
 
 
 async def _new_shortener_make_url(domain, api, target):
-    """Create a URL for the independent group-specific three-step shortener."""
+    """Create a URL for the independent group-specific three-step shortener.
+
+    Shortzy expects its base_site as a hostname, not a full URL. Normalize
+    admin input such as https://example.com/ to example.com before calling it.
+    """
     if not domain or not api or not target:
         return None
-    shortener = Shortzy(str(api).strip(), str(domain).strip())
+    raw_domain = str(domain).strip()
+    if not raw_domain:
+        return None
+    normalized_domain = raw_domain.rstrip("/")
+    if normalized_domain.startswith(("http://", "https://")):
+        normalized_domain = normalized_domain.split("://", 1)[1]
+    normalized_domain = normalized_domain.split("/", 1)[0].strip().rstrip("/")
+    if not normalized_domain:
+        return None
+    shortener = Shortzy(str(api).strip(), normalized_domain)
     try:
         result = await shortener.convert(target)
         if result:
