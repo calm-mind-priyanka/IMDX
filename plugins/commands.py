@@ -825,17 +825,53 @@ async def _new_shortener_send_step(client, message, user_id, group_id, delivery_
     if tutorial:
         buttons[0].append(InlineKeyboardButton(tutorial_label, url=str(tutorial)))
     buttons.append([InlineKeyboardButton(premium_label, callback_data="getpremium")])
-    await message.reply_text(
+    sent_shortener_message = await message.reply_text(
         caption,
         reply_markup=InlineKeyboardMarkup(buttons),
         parse_mode=enums.ParseMode.HTML,
         protect_content=True,
     )
+    # Follow the group's existing auto-delete setting and delay for shortlink
+    # prompts too. Run deletion in the background so verification can continue.
+    if settings.get("auto_delete", False):
+        try:
+            delete_delay = max(1, int(settings.get("delete_time", FILE_AUTO_DEL_TIMER)))
+        except (TypeError, ValueError):
+            delete_delay = max(1, int(FILE_AUTO_DEL_TIMER))
+
+        async def _delete_shortener_prompt_after_delay(sent_message, delay):
+            await asyncio.sleep(delay)
+            try:
+                await sent_message.delete()
+            except Exception:
+                logger.debug("Could not auto-delete shortener prompt", exc_info=True)
+
+        asyncio.create_task(_delete_shortener_prompt_after_delay(sent_shortener_message, delete_delay))
     return True
 
 
+def _new_shortener_gap_active(state, settings):
+    """Whether the user is still inside the configured file-access gap after step 1 or 2."""
+    completed_step = int(state.get("completed_step", 0) or 0)
+    if completed_step not in (1, 2):
+        return False
+    completed_at = state.get("last_completed_at")
+    if not completed_at:
+        return False
+    try:
+        if completed_at.tzinfo is None:
+            completed_at = pytz.UTC.localize(completed_at)
+        completed_at = completed_at.astimezone(pytz.timezone("Asia/Kolkata"))
+        gap_key = "new_shortener_gap1" if completed_step == 1 else "new_shortener_gap2"
+        gap_seconds = max(0, int(settings.get(gap_key, 0) or 0))
+        elapsed = (datetime.now(pytz.timezone("Asia/Kolkata")) - completed_at).total_seconds()
+        return elapsed < gap_seconds
+    except (TypeError, ValueError):
+        return False
+
+
 async def _new_shortener_return(client, message, token):
-    """Validate a shortener return, progress the ordered steps, then deliver."""
+    """Validate a shortener return, grant the configured gap, then progress."""
     from database.new_shortener import consume_attempt, accept_step, get_attempt
     attempt = await get_attempt(token)
     if not attempt or int(attempt.get("user_id", 0)) != int(message.from_user.id):
@@ -854,13 +890,22 @@ async def _new_shortener_return(client, message, token):
         return True
     delivery_key = str(attempt.get("delivery_key") or "")
     mode = str(attempt.get("mode") or "file")
+    payload_prefix = "allfilesmode" if mode == "allfiles" else "filemode"
+    payload = f"{payload_prefix}_{group_id}_{delivery_key}"
     if step < 3:
-        await _new_shortener_send_step(
-            client, message, user_id, group_id, delivery_key, mode, step + 1
+        # Legacy behavior: completing a step grants access to files during the
+        # configured gap. The next shortener is required only after that gap.
+        gap_key = "new_shortener_gap1" if step == 1 else "new_shortener_gap2"
+        try:
+            gap_seconds = max(0, int(settings.get(gap_key, 0) or 0))
+        except (TypeError, ValueError):
+            gap_seconds = 0
+        await message.reply_text(
+            f"✅ <b>Step {step}/3 verified.</b> You can access files for {gap_seconds} seconds before the next verification step.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📥 GET FILE", url=f"https://t.me/{temp.U_NAME}?start={payload}")]]),
+            parse_mode=enums.ParseMode.HTML,
         )
     else:
-        payload_prefix = "allfilesmode" if mode == "allfiles" else "filemode"
-        payload = f"{payload_prefix}_{group_id}_{delivery_key}"
         await message.reply_text(
             "✅ <b>Verification completed.</b> Tap below to receive your requested file.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📥 GET FILE", url=f"https://t.me/{temp.U_NAME}?start={payload}")]]),
@@ -1338,7 +1383,7 @@ async def start(client: Client, message):
         if settings.get("new_shortener_enabled", False) and not file_mode_completed:
             from database.new_shortener import get_state
             new_state = await get_state(user_id, grp_id)
-            if not new_state.get("completed", False):
+            if not new_state.get("completed", False) and not _new_shortener_gap_active(new_state, settings):
                 next_step = int(new_state.get("completed_step", 0)) + 1
                 if next_step in (1, 2, 3):
                     await _new_shortener_send_step(
