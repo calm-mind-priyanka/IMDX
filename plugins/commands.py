@@ -771,6 +771,11 @@ async def _new_shortener_send_step(client, message, user_id, group_id, delivery_
     domain = settings.get(f"new_shortener_step{suffix}_url")
     api = settings.get(f"new_shortener_api{suffix}")
     tutorial = settings.get(f"new_shortener_tutorial{suffix}")
+    if not tutorial:
+        tutorial = settings.get(
+            {1: "tutorial", 2: "tutorial_2", 3: "tutorial_3"}.get(step, "tutorial"),
+            {1: TUTORIAL, 2: TUTORIAL_2, 3: TUTORIAL_3}.get(step, TUTORIAL),
+        )
     if not domain or not api:
         await message.reply_text(
             f"⚠️ The group administrator has not configured New Shortener Step {step}. Please contact the group admin."
@@ -790,12 +795,41 @@ async def _new_shortener_send_step(client, message, user_id, group_id, delivery_
     if not short_url:
         await message.reply_text("⚠️ Shortener service is temporarily unavailable. Please try again later.")
         return False
-    buttons = [[InlineKeyboardButton(f"🔗 VERIFY STEP {step}/3", url=short_url)]]
+    # Match the legacy setshortlink presentation only. Keep the new short URL,
+    # token, attempt, and three-step verification logic above/below unchanged.
+    ui_lang = await get_user_language(user_id, message.from_user)
+    short_file = (await get_file_details(delivery_key) or [None])[0]
+    file_name = formate_file_name(short_file.file_name) if short_file else "File"
+    file_size = get_size(short_file.file_size) if short_file else "N/A"
+    caption = verify_tr(
+        ui_lang, f"short{step}", mention=message.from_user.mention,
+        status=get_status(), greeting=_file_mode_greeting(),
+        name=file_name, size=file_size,
+    )
+    verify_label = {"hi": "शॉर्टलिंक", "ta": "SHORTLINK", "te": "SHORTLINK",
+                    "kn": "SHORTLINK", "ml": "SHORTLINK", "bn": "SHORTLINK",
+                    "mr": "SHORTLINK", "gu": "SHORTLINK", "pa": "SHORTLINK",
+                    "ur": "SHORTLINK", "as": "SHORTLINK", "ne": "SHORTLINK",
+                    "hinglish": "SHORTLINK"}.get(ui_lang, "SHORTLINK")
+    tutorial_label = {"hi": "कैसे डाउनलोड करें", "hinglish": "DOWNLOAD KAISE KARE",
+                      "as": "ডাউনলোড কেনেকৈ কৰিব", "bn": "কীভাবে ডাউনলোড করবেন"}.get(
+                          ui_lang, "VERIFY HOW TO DOWNLOAD")
+    premium_label = {"hi": "Premium खरीदें", "ta": "Premium வாங்க",
+                     "te": "Premium కొనండి", "kn": "Premium ಖರೀದಿಸಿ",
+                     "ml": "Premium വാങ്ങുക", "bn": "Premium কিনুন",
+                     "mr": "Premium घ्या", "gu": "Premium ખરીદો",
+                     "pa": "Premium ਲਵੋ", "ur": "Premium خریدیں",
+                     "as": "Premium ক্ৰয় কৰক", "ne": "Premium किन्नुहोस्",
+                     "hinglish": "PREMIUM LO"}.get(ui_lang, "BUY PREMIUM")
+    buttons = [[InlineKeyboardButton(f"🔗 {verify_label} {step}/3 🔗", url=short_url)]]
     if tutorial:
-        buttons.append([InlineKeyboardButton("📘 Tutorial", url=str(tutorial))])
+        buttons[0].append(InlineKeyboardButton(tutorial_label, url=str(tutorial)))
+    buttons.append([InlineKeyboardButton(premium_label, callback_data="getpremium")])
     await message.reply_text(
-        f"<b>🔐 New link verification — Step {step}/3</b>\nComplete this step to continue. Progress resets at midnight IST.",
-        reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML,
+        caption,
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode=enums.ParseMode.HTML,
+        protect_content=True,
     )
     return True
 
