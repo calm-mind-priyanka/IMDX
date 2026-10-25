@@ -12,6 +12,7 @@ from utils import (
     is_check_admin,
     get_readable_time,
     save_default_settings,
+    create_shortlink,
 )
 from database.users_chats_db import db
 from database.config_db import mdb
@@ -1277,14 +1278,20 @@ async def advanced_input(client, message):
         number = state["number"]
         domain = state["domain"]
         try:
-            response = requests.get(f"https://{domain}/api?api={value}&url=https://t.me/", timeout=10)
-            payload = response.json()
-            if payload.get("status") not in {"success", True}:
-                raise RuntimeError(payload.get("message") or "ɪɴᴠᴀʟɪᴅ ꜱʜᴏʀᴛᴇɴᴇʀ ᴏʀ ᴀᴘɪ")
+            # Use the same provider-aware URL generator as the original
+            # shortlink flow. This avoids blindly calling response.json()
+            # against providers (including LinkCut) that may return non-JSON
+            # errors, and ensures the saved settings are actually testable.
+            test_url = await create_shortlink("https://t.me/", value, domain)
+            if not test_url:
+                raise RuntimeError(
+                    "Shortener API test failed. Check the domain/API key and "
+                    "see Koyeb logs for the provider response."
+                )
         except Exception as exc:
             return await _edit_prompt(
                 client, state,
-                f"<b>💔 sᴏᴍᴇᴛʜɪɴɢ ᴡᴇɴᴛ ᴡʀᴏɴɢ...</b>\n<code>{exc}</code>",
+                f"<b>💔 sᴏᴍᴇᴛʜɪɴɢ ᴡᴇɴᴛ ᴡʀᴏɴɢ...</b>\n<code>{html.escape(str(exc))}</code>",
                 InlineKeyboardMarkup([_back(gid, "shortlink_list")])
             )
 
