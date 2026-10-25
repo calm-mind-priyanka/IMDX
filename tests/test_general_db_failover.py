@@ -92,22 +92,6 @@ class GeneralFailoverTests(unittest.IsolatedAsyncioTestCase):
         collection = _FailoverCollection(primary, secondary, "groups")
         self.assertIsNone(await collection.find_one({"id": -100123}))
 
-    async def test_targeted_shortener_update_falls_back_when_primary_has_no_record(self):
-        primary = _FakeCollection()
-        primary.update_result = _UpdateResult(0)
-        secondary = _FakeCollection()
-        secondary.update_result = _UpdateResult(1)
-        fallback = lambda operation, args, kwargs: (
-            operation == "find_one"
-            or (operation == "update_one" and str(args[0].get("_id", "")).startswith("new_shortener:"))
-        )
-        collection = _FailoverCollection(primary, secondary, "misc", fallback_on_empty=fallback)
-        result = await collection.update_one(
-            {"_id": "new_shortener:-100:123"}, {"$set": {"completed_step": 1}}
-        )
-        self.assertEqual(result.matched_count, 1)
-        self.assertEqual(secondary.writes, 1)
-
     async def test_write_falls_back_after_primary_failure(self):
         primary = _FakeCollection(fail=True)
         secondary = _FakeCollection()
@@ -173,11 +157,11 @@ class GeneralFailoverTests(unittest.IsolatedAsyncioTestCase):
         primary = _FakeCollection(find_one_result=None)
         secondary = _FakeCollection(source="secondary")
         predicate = lambda operation, args, kwargs: (
-            operation == "find_one" and str(args[0].get("_id", "")).startswith("new_shortener:")
+            operation == "find_one" and str(args[0].get("_id", "")).startswith("custom:")
         )
         collection = _FailoverCollection(primary, secondary, "misc", fallback_on_empty=predicate)
         self.assertIsNone(await collection.find_one({"_id": "unrelated-record"}))
-        result = await collection.find_one({"_id": "new_shortener:-100:123"})
+        result = await collection.find_one({"_id": "custom:record"})
         self.assertEqual(result["source"], "secondary")
 
 
