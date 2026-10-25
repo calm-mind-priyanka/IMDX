@@ -55,6 +55,14 @@ class Database:
                                     ("new_shortener:", "new_shortener_attempt:")
                                 )
                                 or (args[0] if args else kwargs.get("filter", {})).get("_id") == "owner_shorteners"
+                                # PM recovery queries identify new-shortener state by user_id
+                                # because _id is a regex across unknown originating groups.
+                                or (
+                                    isinstance((args[0] if args else kwargs.get("filter", {})), dict)
+                                    and "user_id" in (args[0] if args else kwargs.get("filter", {}))
+                                    and any(k in (args[0] if args else kwargs.get("filter", {}))
+                                            for k in ("completed_step", "gap_expires_at", "last_completed_at", "used"))
+                                )
                             )
                         )) if attribute == "misc" else False
                     ),

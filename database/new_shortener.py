@@ -32,7 +32,8 @@ async def get_state(user_id, group_id, now=None):
         # works after downtime/redeployments and does not depend on a timer.
         fresh = {"_id": key, "user_id": int(user_id), "group_id": int(group_id),
                  "ist_date": today, "completed_step": 0, "attempt_token": None,
-                 "attempt_step": None, "completed": False}
+                 "attempt_step": None, "completed": False, "last_completed_at": None,
+                 "gap_expires_at": None}
         await db.misc.update_one(
             {"_id": key}, {"$set": {k: v for k, v in fresh.items() if k != "_id"}},
             upsert=True,
@@ -155,6 +156,7 @@ async def find_active_gap_for_user(user_id, now=None):
         current = current.astimezone(IST)
     return await db.misc.find_one({
         "_id": {"$regex": rf"^new_shortener:-?\d+:{int(user_id)}$"},
+        "user_id": int(user_id),
         "ist_date": today,
         "completed_step": {"$in": [1, 2]},
         "completed": False,
@@ -173,6 +175,7 @@ async def find_latest_state_for_user(user_id, now=None):
     today = current_ist_date(now)
     return await db.misc.find_one(
         {"_id": {"$regex": rf"^new_shortener:-?\d+:{int(user_id)}$"},
+         "user_id": int(user_id),
          "ist_date": today,
          "completed_step": {"$in": [1, 2, 3]},
          "last_completed_at": {"$exists": True}},
