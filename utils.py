@@ -6,20 +6,20 @@ from pyrogram.errors import (
     UserIsBlocked,
     PeerIdInvalid,
 )
-from info import AUTH_CHANNEL, LONG_IMDB_DESCRIPTION, START_IMG, PREMIUM_PLANS, TMDB_API_KEY
+from info import AUTH_CHANNEL, LONG_IMDB_DESCRIPTION, START_IMG
 from imdb import Cinemagoer
 import asyncio
 import aiohttp
-from pyrogram.types import Message, InlineKeyboardButton
+from pyrogram.types import Message
 from pyrogram import enums
 import pytz
 import re
 import os
+from urllib.parse import urlparse
 from shortzy import Shortzy
 from datetime import datetime
 from typing import Any
 from database.users_chats_db import db
-from language import small_caps
 
 
 logger = logging.getLogger(__name__)
@@ -27,156 +27,6 @@ logger.setLevel(logging.INFO)
 
 BANNED = {}
 imdb = Cinemagoer()
-_SETTINGS_CACHE = {}
-
-# TMDB is an optional primary poster source. IMDb/Cinemagoer remains the
-# fallback, so existing IMDX behaviour is preserved when no TMDB key is set.
-_TMDB_BASE_URL = "https://api.themoviedb.org/3"
-_TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w1280"
-_TMDB_CACHE = {}
-_TMDB_CACHE_TTL = 30 * 60
-_TMDB_TIMEOUT = aiohttp.ClientTimeout(total=4.0, connect=1.5, sock_read=3.0)
-_TMDB_SESSION = None
-
-
-async def _tmdb_session():
-    global _TMDB_SESSION
-    if _TMDB_SESSION is None or _TMDB_SESSION.closed:
-        _TMDB_SESSION = aiohttp.ClientSession(timeout=_TMDB_TIMEOUT)
-    return _TMDB_SESSION
-
-
-def _tmdb_cache_get(key):
-    item = _TMDB_CACHE.get(key)
-    if not item:
-        return None
-    if asyncio.get_running_loop().time() - item[0] >= _TMDB_CACHE_TTL:
-        _TMDB_CACHE.pop(key, None)
-        return None
-    return item[1]
-
-
-def _tmdb_cache_put(key, value):
-    _TMDB_CACHE[key] = (asyncio.get_running_loop().time(), value)
-
-
-def _empty_poster_details():
-    return {
-        "title": None, "votes": None, "aka": "", "seasons": None,
-        "box_office": None, "localized_title": None, "kind": None,
-        "imdb_id": None, "cast": "", "runtime": "", "countries": "",
-        "certificates": "", "languages": "", "director": "",
-        "writer": "", "producer": "", "composer": "",
-        "cinematographer": "", "music_team": "", "distributors": "",
-        "release_date": None, "year": None, "genres": "",
-        "poster": None, "plot": "", "rating": "", "url": "",
-    }
-
-
-async def _tmdb_get_poster(query, year=None, imdb_id=None):
-    """Fast TMDB poster lookup used before the existing IMDb fallback."""
-    if not TMDB_API_KEY:
-        return None
-
-    cache_key = f"id:{imdb_id}" if imdb_id else f"q:{str(query).strip().lower()}:{year or ''}"
-    cached = _tmdb_cache_get(cache_key)
-    if cached is not None:
-        return cached
-
-    try:
-        session = await _tmdb_session()
-        headers = {"Accept": "application/json"}
-        if imdb_id:
-            endpoint = f"{_TMDB_BASE_URL}/find/{imdb_id}"
-            params = {"api_key": TMDB_API_KEY, "external_source": "imdb_id"}
-            async with session.get(endpoint, params=params, headers=headers, ssl=False) as resp:
-                if resp.status != 200:
-                    return None
-                data = await resp.json()
-            results = (data.get("movie_results") or []) + (data.get("tv_results") or [])
-        else:
-            endpoint = f"{_TMDB_BASE_URL}/search/multi"
-            params = {"api_key": TMDB_API_KEY, "query": str(query).strip(), "include_adult": "false"}
-            if year:
-                params["year"] = int(year)
-            async with session.get(endpoint, params=params, headers=headers, ssl=False) as resp:
-                if resp.status != 200:
-                    return None
-                data = await resp.json()
-            results = [r for r in data.get("results", []) if r.get("media_type") in ("movie", "tv")]
-
-        if not results:
-            return None
-
-        # Prefer a result with a poster and matching year; otherwise use the
-        # first relevant result returned by TMDB.
-        def score(r):
-            score = 0
-            if r.get("poster_path"):
-                score += 100
-            title = (r.get("title") or r.get("name") or "").lower()
-            q = str(query or "").lower().strip()
-            if q and title == q:
-                score += 80
-            if year:
-                date = r.get("release_date") or r.get("first_air_date") or ""
-                if date.startswith(str(year)):
-                    score += 50
-            score += min(float(r.get("popularity") or 0), 20)
-            return score
-
-        result = max(results, key=score)
-        poster_path = result.get("poster_path")
-        if not poster_path:
-            return None
-
-        details = _empty_poster_details()
-        title = result.get("title") or result.get("name")
-        release = result.get("release_date") or result.get("first_air_date")
-        details.update({
-            "title": title,
-            "localized_title": title,
-            "year": int(release[:4]) if release and release[:4].isdigit() else year,
-            "release_date": release,
-            "rating": str(result.get("vote_average") or ""),
-            "votes": result.get("vote_count"),
-            "plot": result.get("overview") or "",
-            "poster": f"{_TMDB_IMAGE_BASE_URL}{poster_path}",
-            "url": f"https://www.themoviedb.org/{result.get('media_type', 'movie')}/{result.get('id')}",
-            "kind": "tv series" if result.get("media_type") == "tv" else "movie",
-        })
-        _tmdb_cache_put(cache_key, details)
-        return details
-    except Exception as e:
-        logger.debug("TMDB poster lookup failed: %s", e)
-        return None
-
-
-def premium_plan_buttons(lang="en"):
-    """Build Premium plan buttons from the single PREMIUM_PLANS source.
-
-    Button labels follow the user's existing global language preference.
-    """
-    rows = []
-    items = list(PREMIUM_PLANS.items())
-    for i in range(0, len(items), 2):
-        row = []
-        for key, plan in items[i:i + 2]:
-            icon = "💎" if key == "lifetime" else "💳"
-            row.append(InlineKeyboardButton(
-                f"{icon} {small_caps(plan['name'])} {plan['price']}",
-                callback_data=f"buyplan_{key}",
-            ))
-        rows.append(row)
-    custom_labels = {
-        "en":"💎 ᴄᴜsᴛᴏᴍ ᴘʟᴀɴ 💎", "hi":"💎 ᴄᴜsᴛᴏᴍ ᴘʟᴀɴ 💎", "ta":"💎 ᴄᴜsᴛᴏᴍ ᴘʟᴀɴ 💎",
-        "te":"💎 ᴄᴜsᴛᴏᴍ ᴘʟᴀɴ 💎", "kn":"💎 ᴄᴜsᴛᴏᴍ ᴘʟᴀɴ 💎", "ml":"💎 ᴄᴜsᴛᴏᴍ ᴘʟᴀɴ 💎",
-        "bn":"💎 কাস্টম প্ল্যান 💎", "mr":"💎 कस्टम प्लॅन 💎", "gu":"💎 કસ્ટમ પ્લાન 💎",
-        "pa":"💎 ਕਸਟਮ ਪਲਾਨ 💎", "ur":"💎 کسٹم پلان 💎", "as":"💎 কাষ্টম প্লেন 💎",
-        "ne":"💎 कस्टम प्लान 💎", "hinglish":"💎 Custom Plan 💎",
-    }
-    rows.append([InlineKeyboardButton(small_caps(custom_labels.get(lang, custom_labels["en"])), callback_data="other")])
-    return rows
 
 
 class temp(object):
@@ -235,7 +85,7 @@ async def is_subscribed(bot, user_id, channel_id):
     return False
 
 
-async def _get_imdb_poster(query, bulk=False, id=False, file=None):
+async def get_poster(query, bulk=False, id=False, file=None):
     if not id:
         query = (query.strip()).lower()
         title = query
@@ -316,43 +166,6 @@ async def _get_imdb_poster(query, bulk=False, id=False, file=None):
     }
 
 
-async def get_poster(query, bulk=False, id=False, file=None):
-    """Return poster/details using TMDB first, then the existing IMDb path.
-
-    The returned dictionary keeps the exact IMDX keys expected by pm_filter.py.
-    Bulk IMDb candidate searches are intentionally left untouched.
-    """
-    if not bulk:
-        year = None
-        if not id:
-            text_query = str(query or "").strip()
-            match = re.search(r"(?:^|\s)([12]\d{3})$", text_query)
-            if match:
-                year = int(match.group(1))
-                text_query = text_query[:match.start()].strip()
-            elif file:
-                match = re.search(r"[12]\d{3}", str(file))
-                if match:
-                    year = int(match.group(0))
-        else:
-            text_query = str(query or "").strip()
-            if not text_query.startswith("tt"):
-                text_query = f"tt{text_query}"
-            tmdb_details = await _tmdb_get_poster(text_query, imdb_id=text_query)
-            if tmdb_details:
-                return tmdb_details
-            return await _get_imdb_poster(query, bulk=bulk, id=id, file=file)
-
-        tmdb_details = await _tmdb_get_poster(text_query, year=year)
-        if tmdb_details:
-            # TMDB is the primary configured metadata/poster source. Do not
-            # make a successful TMDB lookup wait on Cinemagoer: metadata is
-            # optional enrichment and database file results are already safe.
-            return tmdb_details
-
-    return await _get_imdb_poster(query, bulk=bulk, id=id, file=file)
-
-
 async def users_broadcast(user_id, message, is_pin):
     try:
         m = await message.copy(chat_id=user_id)
@@ -398,23 +211,14 @@ async def groups_broadcast(chat_id, message, is_pin):
 
 
 async def get_settings(group_id):
-    group_id = int(group_id)
-    cached = _SETTINGS_CACHE.get(group_id)
-    if cached is not None:
-        return cached.copy()
-    settings = await db.get_settings(group_id)
-    _SETTINGS_CACHE[group_id] = settings.copy()
-    return settings.copy()
+    settings = await db.get_settings(int(group_id))
+    return settings
 
 
 async def save_group_settings(group_id, key, value):
-    group_id = int(group_id)
     current = await get_settings(group_id)
     current[key] = value
-    # Do not mutate the cache until MongoDB confirms the persistent write.
     await db.update_settings(group_id, current)
-    _SETTINGS_CACHE[group_id] = current.copy()
-    return True
 
 
 def get_size(size):
@@ -466,6 +270,7 @@ async def create_shortlink(link, api, site):
                        bool(domain), bool(api), bool(link))
         return None
 
+    logger.info("Shortener provider selected: %s", domain)
     if domain == "linkcut.org":
         timeout = aiohttp.ClientTimeout(total=20, connect=8, sock_read=12)
         try:
@@ -476,15 +281,20 @@ async def create_shortlink(link, api, site):
                     headers={"Accept": "application/json", "User-Agent": "IMDXBot/1.0"},
                 ) as response:
                     body = await response.text()
-                    safe_body = body.replace(api, "[REDACTED]") if api else body
-                    if response.status != 200:
-                        logger.warning("LinkCut API returned HTTP %s (response starts: %r)",
-                                       response.status, safe_body[:180])
+                    content_type = str(response.headers.get("Content-Type", "")).lower()
+                    if response.status < 200 or response.status >= 300:
+                        logger.warning("LinkCut API HTTP failure: status=%s content_type=%s",
+                                       response.status, content_type)
+                        return None
+                    if not body.strip():
+                        logger.warning("LinkCut API returned an empty response: status=%s content_type=%s",
+                                       response.status, content_type)
                         return None
                     try:
                         payload = await response.json(content_type=None)
                     except (ValueError, aiohttp.ContentTypeError):
-                        logger.warning("LinkCut API returned non-JSON response (starts: %r)", safe_body[:180])
+                        logger.warning("LinkCut API returned invalid JSON: status=%s content_type=%s",
+                                       response.status, content_type)
                         return None
                     if not isinstance(payload, dict):
                         logger.warning("LinkCut API returned unexpected JSON type: %s", type(payload).__name__)
@@ -492,16 +302,20 @@ async def create_shortlink(link, api, site):
                     short_url = payload.get("shortenedUrl")
                     if str(payload.get("status", "")).lower() == "success" and isinstance(short_url, str):
                         short_url = short_url.strip()
-                        if short_url.startswith(("https://", "http://")):
+                        parsed = urlparse(short_url)
+                        if parsed.scheme in {"https", "http"} and parsed.netloc:
                             return short_url
-                    logger.warning("LinkCut API reported failure: status=%r message=%r",
-                                   payload.get("status"), payload.get("message"))
+                        logger.warning("LinkCut API success response had an invalid shortenedUrl")
+                        return None
+                    logger.warning("LinkCut API reported failure: status=%r", payload.get("status"))
+                    if not short_url:
+                        logger.warning("LinkCut API response did not include shortenedUrl")
                     return None
         except asyncio.TimeoutError:
             logger.warning("LinkCut API request timed out")
             return None
-        except Exception:
-            logger.exception("LinkCut API request failed")
+        except Exception as exc:
+            logger.warning("LinkCut API request failed: error_type=%s", type(exc).__name__)
             return None
 
     # Preserve the exact configured provider value for legacy Shortzy providers.
@@ -510,13 +324,13 @@ async def create_shortlink(link, api, site):
         result = await shortzy.convert(link)
         if result:
             return str(result)
-    except Exception:
-        logger.exception("Shortener conversion failed for provider %s", domain)
+    except Exception as exc:
+        logger.warning("Shortener conversion failed for provider %s: error_type=%s", domain, type(exc).__name__)
     try:
         result = await shortzy.get_quick_link(link)
         return str(result) if result else None
-    except Exception:
-        logger.exception("Shortener quick-link fallback failed for provider %s", domain)
+    except Exception as exc:
+        logger.warning("Shortener quick-link fallback failed for provider %s: error_type=%s", domain, type(exc).__name__)
         return None
 
 
