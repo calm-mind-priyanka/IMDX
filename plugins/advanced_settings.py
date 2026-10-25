@@ -1,7 +1,7 @@
 import asyncio
 import html
-import logging
 import re
+import requests
 from pyrogram import Client, filters, enums, ContinuePropagation
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -1278,19 +1278,20 @@ async def advanced_input(client, message):
         number = state["number"]
         domain = state["domain"]
         try:
-            # Validate with the same provider-aware implementation used by file delivery.
-            # Never interpolate API keys into exception text shown to administrators.
+            # Use the same provider-aware URL generator as the original
+            # shortlink flow. This avoids blindly calling response.json()
+            # against providers (including LinkCut) that may return non-JSON
+            # errors, and ensures the saved settings are actually testable.
             test_url = await create_shortlink("https://t.me/", value, domain)
             if not test_url:
                 raise RuntimeError(
-                    "Shortener API validation failed. Check the provider/domain and API key; "
-                    "the diagnostic log contains the HTTP/API failure without credentials."
+                    "Shortener API test failed. Check the domain/API key and "
+                    "see Koyeb logs for the provider response."
                 )
         except Exception as exc:
-            logger.warning("Shortener settings validation failed for provider=%s error_type=%s", domain, type(exc).__name__)
             return await _edit_prompt(
                 client, state,
-                "<b>❌ Shortener validation failed.</b>\nPlease check the provider settings and Koyeb logs.",
+                f"<b>💔 sᴏᴍᴇᴛʜɪɴɢ ᴡᴇɴᴛ ᴡʀᴏɴɢ...</b>\n<code>{html.escape(str(exc))}</code>",
                 InlineKeyboardMarkup([_back(gid, "shortlink_list")])
             )
 
