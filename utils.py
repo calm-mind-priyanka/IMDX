@@ -441,25 +441,96 @@ def list_to_str(k):
         return ", ".join(str(item) for item in k)
 
 
+def normalize_shortener_domain(site):
+    """Normalize a configured shortener URL/domain for provider matching."""
+    value = str(site or "").strip().rstrip("/")
+    value = re.sub(r"^https?://", "", value, flags=re.IGNORECASE)
+    value = value.split("/", 1)[0].strip().rstrip(".").lower()
+    if value.startswith("www."):
+        value = value[4:]
+    return value
+
+
+async def create_shortlink(link, api, site):
+    """Create a short URL using provider-specific APIs where required.
+
+    LinkCut has a dedicated GET endpoint and JSON response schema. Other
+    providers continue to use the existing Shortzy conversion and quick-link
+    fallback paths.
+    """
+    raw_site = str(site or "").strip()
+    domain = normalize_shortener_domain(raw_site)
+    api = str(api or "").strip()
+    if not domain or not api or not link:
+        logger.warning("Shortener not configured: domain_present=%s api_present=%s link_present=%s",
+                       bool(domain), bool(api), bool(link))
+        return None
+
+    if domain == "linkcut.org":
+        timeout = aiohttp.ClientTimeout(total=20, connect=8, sock_read=12)
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(
+                    "https://linkcut.org/api",
+                    params={"api": api, "url": str(link)},
+                    headers={"Accept": "application/json", "User-Agent": "IMDXBot/1.0"},
+                ) as response:
+                    body = await response.text()
+                    safe_body = body.replace(api, "[REDACTED]") if api else body
+                    if response.status != 200:
+                        logger.warning("LinkCut API returned HTTP %s (response starts: %r)",
+                                       response.status, safe_body[:180])
+                        return None
+                    try:
+                        payload = await response.json(content_type=None)
+                    except (ValueError, aiohttp.ContentTypeError):
+                        logger.warning("LinkCut API returned non-JSON response (starts: %r)", safe_body[:180])
+                        return None
+                    if not isinstance(payload, dict):
+                        logger.warning("LinkCut API returned unexpected JSON type: %s", type(payload).__name__)
+                        return None
+                    short_url = payload.get("shortenedUrl")
+                    if str(payload.get("status", "")).lower() == "success" and isinstance(short_url, str):
+                        short_url = short_url.strip()
+                        if short_url.startswith(("https://", "http://")):
+                            return short_url
+                    logger.warning("LinkCut API reported failure: status=%r message=%r",
+                                   payload.get("status"), payload.get("message"))
+                    return None
+        except asyncio.TimeoutError:
+            logger.warning("LinkCut API request timed out")
+            return None
+        except Exception:
+            logger.exception("LinkCut API request failed")
+            return None
+
+    # Preserve the exact configured provider value for legacy Shortzy providers.
+    shortzy = Shortzy(api, raw_site)
+    try:
+        result = await shortzy.convert(link)
+        if result:
+            return str(result)
+    except Exception:
+        logger.exception("Shortener conversion failed for provider %s", domain)
+    try:
+        result = await shortzy.get_quick_link(link)
+        return str(result) if result else None
+    except Exception:
+        logger.exception("Shortener quick-link fallback failed for provider %s", domain)
+        return None
+
+
 async def get_shortlink(
     link, grp_id, is_second_shortener=False, is_third_shortener=False
 ):
     settings = await get_settings(grp_id)
     if is_third_shortener:
         api, site = settings["api_three"], settings["shortner_three"]
+    elif is_second_shortener:
+        api, site = settings["api_two"], settings["shortner_two"]
     else:
-        if is_second_shortener:
-            api, site = settings["api_two"], settings["shortner_two"]
-        else:
-            api, site = settings["api"], settings["shortner"]
-    shortzy = Shortzy(api, site)
-    try:
-        return await shortzy.convert(link)
-    except Exception:
-        try:
-            return await shortzy.get_quick_link(link)
-        except Exception:
-            return None
+        api, site = settings["api"], settings["shortner"]
+    return await create_shortlink(link, api, site)
 
 
 def get_file_id(message: "Message") -> Any:

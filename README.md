@@ -204,28 +204,23 @@ Movie indexing now attempts the primary movie database first and, when configure
 
 ### Group-specific settings
 
-The group settings document supports `fsub_enabled`, `fsub_channels`, `fsub_button_labels`, and `new_shortener_enabled`, with independent values stored in each group's existing settings document. The legacy global `AUTH_CHANNEL` and `AUTH_REQ_CHANNEL` checks remain for backward compatibility. Group FSUB channel enforcement is only enabled when `fsub_enabled` is true. Existing inline settings now expose group FSUB and new-shortener enable/disable toggles.
-
-### New shortener calendar-state helper
-
-`database/new_shortener.py` provides a separate user/group-keyed state model in the existing general-data `misc` collection. Its date calculation uses `Asia/Kolkata`; state from a previous IST date is treated as expired on read, including after restart. The helper validates ordered steps and date-bound attempt tokens. **This helper is not yet wired into the live movie-request/shortener callback workflow, and the new shortener URL/API settings are not fully exposed as editable inline inputs.** The original shortener workflow was not intentionally changed to midnight expiration.
+The group settings document supports `fsub_enabled`, `fsub_channels`, and `fsub_button_labels`, with independent values stored in each group's existing settings document. The legacy global `AUTH_CHANNEL` and `AUTH_REQ_CHANNEL` checks remain for backward compatibility. Group FSUB channel enforcement is only enabled when `fsub_enabled` is true.
 
 ### Tests and verification
 
-Run `python -m unittest discover -s tests -v` for the included mocked/pure calendar-date tests. They verify IST date conversion and the midnight boundary only; they are not live MongoDB or Telegram integration tests. Run `python -m compileall -q .` for syntax compilation. Live database failover, Telegram membership checks, shortener API returns, and the original shortener's end-to-end regression still require integration testing.
+Run `python -m unittest discover -s tests -v` for the included mocked database failover tests. Run `python -m compileall -q .` for syntax compilation. Live database failover, Telegram membership checks, shortener API returns, and end-to-end delivery still require integration testing.
 
 ### Known limitations
 
-This change is not a declaration of production readiness. General-data secondary failover, fully consistent cross-store update/delete/count handling, complete group-specific FSUB custom button-label management, and end-to-end activation of the separate three-step shortener remain to be implemented and tested before all requirements in the supplied specification can be accepted.
+This change is not a declaration of production readiness. General-data secondary failover and fully consistent cross-store update/delete/count handling have operational limitations; live Telegram and provider integration tests are still required.
 
 ## General-data MongoDB failover
 
 The existing general-data store continues to use `DATABASE_URI` and `DATABASE_NAME`. An optional independent secondary endpoint can be configured with `GENERAL_DATABASE_URI2`. When set, the bot retries general-data collection operations against that secondary if the primary operation fails. Normal operations remain primary-first; writes are sent to the secondary only after a primary error to avoid double-applying non-idempotent operations such as `$inc`. This is operational failover, not a MongoDB replica set or automatic background reconciliation: for high availability and automatic consistency, configure MongoDB replica sets/Atlas replication at the database layer. `DATABASE_URI2` remains the optional movie-index secondary controlled by `MULTIPLE_DB=True`.
 
-## Independent group three-step shortener
-
-The Advanced Settings menu contains a separate `NEW 3-STEP SETTINGS` page. Configure each step's domain, API key, and optional tutorial URL, then enable `New 3-step` for that group. It is independent of the legacy verification shortener settings and is only applied to file-delivery deep links for that group. Verification progress and opaque return attempts are stored in the existing general-data `misc` collection, scoped by Telegram user and group. Progress is tied to the Asia/Kolkata calendar date and expires logically at midnight IST; no scheduler or extra database is required. A completed sequence leads to the existing file-delivery path rather than changing file IDs or media storage. Keep the bot's general MongoDB credentials private and grant the bot only the permissions it needs.
-
 ## Automated checks
 
 Run `python -m unittest discover -s tests -v` and `python -m compileall -q database plugins`. These are local unit/syntax checks. They do not validate live Telegram delivery, real shortener-provider APIs, or failover against production MongoDB instances; those require staging credentials and controlled integration tests.
+
+
+The original inline Set Shortlink settings remain the only shortener configuration workflow. The shared shortlink generator uses LinkCut's dedicated API (`https://linkcut.org/api`, `api` and `url` parameters, `status`/`shortenedUrl` JSON response) when the configured provider is `linkcut.org`; all other providers retain the existing Shortzy convert and quick-link fallback. The provider logs contain diagnostic response details but never log the API key.
