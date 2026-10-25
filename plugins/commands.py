@@ -863,13 +863,24 @@ async def _new_shortener_send_step(client, message, user_id, group_id, delivery_
     return True
 
 
-def _new_shortener_gap_active(state, settings):
-    """Whether the user is still inside the configured file-access gap after step 1 or 2."""
+def _new_shortener_gap_active(state, settings=None):
+    """Use the persisted expiry so PM/group requests share one authoritative gap."""
     completed_step = int(state.get("completed_step", 0) or 0)
     if completed_step not in (1, 2):
         return False
+    expires_at = state.get("gap_expires_at")
+    if expires_at is not None:
+        try:
+            if expires_at.tzinfo is None:
+                expires_at = pytz.UTC.localize(expires_at)
+            expires_at = expires_at.astimezone(pytz.timezone("Asia/Kolkata"))
+            return datetime.now(pytz.timezone("Asia/Kolkata")) < expires_at
+        except (TypeError, ValueError, AttributeError):
+            logger.warning("Invalid new-shortener gap expiry in stored state: %r", expires_at)
+            return False
+    # Backward compatibility for state records created before gap_expires_at existed.
     completed_at = state.get("last_completed_at")
-    if not completed_at:
+    if not completed_at or not settings:
         return False
     try:
         if completed_at.tzinfo is None:
@@ -877,9 +888,8 @@ def _new_shortener_gap_active(state, settings):
         completed_at = completed_at.astimezone(pytz.timezone("Asia/Kolkata"))
         gap_key = "new_shortener_gap1" if completed_step == 1 else "new_shortener_gap2"
         gap_seconds = max(0, int(settings.get(gap_key, 0) or 0))
-        elapsed = (datetime.now(pytz.timezone("Asia/Kolkata")) - completed_at).total_seconds()
-        return elapsed < gap_seconds
-    except (TypeError, ValueError):
+        return datetime.now(pytz.timezone("Asia/Kolkata")) < completed_at + timedelta(seconds=gap_seconds)
+    except (TypeError, ValueError, AttributeError):
         return False
 
 
@@ -1418,6 +1428,11 @@ async def start(client: Client, message):
                 from database.new_shortener import find_latest_state_for_user
                 pm_state = await find_latest_state_for_user(user_id)
                 if pm_state:
+                    logger.debug(
+                        "New shortener PM state found: user=%s group=%s date=%s completed_step=%s completed=%s",
+                        user_id, pm_state.get("group_id"), pm_state.get("ist_date"),
+                        pm_state.get("completed_step"), pm_state.get("completed"),
+                    )
                     pm_group_id = int(pm_state.get("group_id", 0) or 0)
                     pm_settings = await get_settings(pm_group_id)
                     if pm_settings.get("new_shortener_enabled", False):
@@ -1425,6 +1440,11 @@ async def start(client: Client, message):
                             new_shortener_gap_access = True
                         else:
                             new_shortener_gap_access = _new_shortener_gap_active(pm_state, pm_settings)
+                            logger.debug(
+                                "New shortener PM gap decision: user=%s group=%s active=%s expiry=%s",
+                                user_id, pm_group_id, new_shortener_gap_access,
+                                pm_state.get("gap_expires_at"),
+                            )
                             if not new_shortener_gap_access:
                                 next_step = int(pm_state.get("completed_step", 0)) + 1
                                 if next_step in (2, 3):
@@ -1434,7 +1454,7 @@ async def start(client: Client, message):
                                     )
                                     return
             except Exception:
-                logger.exception("Could not continue new-shortener verification from PM")
+                logger.exception("Could not continue new-shortener verification from PM: user=%s", user_id)
         if settings.get("new_shortener_enabled", False) and not file_mode_completed and not new_shortener_gap_access:
             from database.new_shortener import get_state
             new_state = await get_state(user_id, grp_id)
@@ -1481,7 +1501,7 @@ async def start(client: Client, message):
         if is_third_shortener and not (settings.get("shortner_three") and settings.get("api_three")):
             is_third_shortener = False
 
-        if (not settings.get("new_shortener_enabled", False)) and (not new_shortener_gap_access) and (not file_mode_completed) and verification_enabled and primary_shortener_available and ((not user_verified) or is_second_shortener or is_third_shortener):
+        if (not new_shortener_gap_access) and (not file_mode_completed) and verification_enabled and primary_shortener_available and ((not user_verified) or is_second_shortener or is_third_shortener):
             verify_id = "".join(random.choices(string.ascii_uppercase + string.digits, k=7))
             step = 3 if is_third_shortener else (2 if is_second_shortener else 1)
             if is_third_shortener:
