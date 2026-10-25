@@ -51,18 +51,7 @@ class Database:
                             operation in {"find_one", "update_one"}
                             and isinstance(args[0] if args else kwargs.get("filter"), dict)
                             and (
-                                str((args[0] if args else kwargs.get("filter", {})).get("_id", "")).startswith(
-                                    ("new_shortener:", "new_shortener_attempt:")
-                                )
-                                or (args[0] if args else kwargs.get("filter", {})).get("_id") == "owner_shorteners"
-                                # PM recovery queries identify new-shortener state by user_id
-                                # because _id is a regex across unknown originating groups.
-                                or (
-                                    isinstance((args[0] if args else kwargs.get("filter", {})), dict)
-                                    and "user_id" in (args[0] if args else kwargs.get("filter", {}))
-                                    and any(k in (args[0] if args else kwargs.get("filter", {}))
-                                            for k in ("completed_step", "gap_expires_at", "last_completed_at", "used"))
-                                )
+                                (args[0] if args else kwargs.get("filter", {})).get("_id") == "owner_shorteners"
                             )
                         )) if attribute == "misc" else False
                     ),
@@ -101,18 +90,6 @@ class Database:
         "fsub_channels": [],
         "fsub_enabled": False,
         "fsub_button_labels": {},
-        "new_shortener_enabled": False,
-        "new_shortener_step1_url": "",
-        "new_shortener_step2_url": "",
-        "new_shortener_step3_url": "",
-        "new_shortener_api1": "",
-        "new_shortener_api2": "",
-        "new_shortener_api3": "",
-        "new_shortener_tutorial1": "",
-        "new_shortener_tutorial2": "",
-        "new_shortener_tutorial3": "",
-        "new_shortener_gap1": THREE_VERIFY_GAP,
-        "new_shortener_gap2": THREE_VERIFY_GAP,
     }
 
     def new_user(self, id, name):
