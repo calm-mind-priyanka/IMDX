@@ -1481,7 +1481,7 @@ async def start(client: Client, message):
         if is_third_shortener and not (settings.get("shortner_three") and settings.get("api_three")):
             is_third_shortener = False
 
-        if (not new_shortener_gap_access) and (not file_mode_completed) and verification_enabled and primary_shortener_available and ((not user_verified) or is_second_shortener or is_third_shortener):
+        if (not settings.get("new_shortener_enabled", False)) and (not new_shortener_gap_access) and (not file_mode_completed) and verification_enabled and primary_shortener_available and ((not user_verified) or is_second_shortener or is_third_shortener):
             verify_id = "".join(random.choices(string.ascii_uppercase + string.digits, k=7))
             step = 3 if is_third_shortener else (2 if is_second_shortener else 1)
             if is_third_shortener:
