@@ -1,62 +1,33 @@
 import logging
-import os
 import datetime
 import pytz
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import ReturnDocument
-from pymongo.errors import DuplicateKeyError
 
 # from info import SETTINGS, IS_PM_SEARCH, IS_SEND_MOVIE_UPDATE, PREMIUM_POINT,REF_PREMIUM,IS_VERIFY, SHORTENER_WEBSITE3, SHORTENER_API3, THREE_VERIFY_GAP, LINK_MODE, FILE_CAPTION, TUTORIAL, DATABASE_NAME, DATABASE_URI, IMDB, IMDB_TEMPLATE, PROTECT_CONTENT, AUTO_DELETE, SPELL_CHECK, AUTO_FILTER, LOG_VR_CHANNEL, SHORTENER_WEBSITE, SHORTENER_API, SHORTENER_WEBSITE2, SHORTENER_API2, TWO_VERIFY_GAP
 # from utils import get_seconds
 from info import *
 
-# Optional secondary for the general-data system. This is deliberately separate
-# from DATABASE_URI2, which belongs to the movie index system.
-GENERAL_DATABASE_URI2 = os.environ.get("GENERAL_DATABASE_URI2", "mongodb+srv://Vivekchaun24_23:SPNaSnJhXQ39ZMtg@cluster0.74vyoq2.mongodb.net/?appName=Cluster0").strip()
 client = AsyncIOMotorClient(DATABASE_URI)
 mydb = client[DATABASE_NAME]
-if GENERAL_DATABASE_URI2 and GENERAL_DATABASE_URI2 != DATABASE_URI:
-    general_client2 = AsyncIOMotorClient(GENERAL_DATABASE_URI2)
-    general_db2 = general_client2[DATABASE_NAME]
-else:
-    general_client2 = None
-    general_db2 = None
-
-
-from database.failover import _FailoverCollection
 
 
 class Database:
     def __init__(self):
-        collection_map = {
-            "col": "users", "grp": "groups", "misc": "misc", "verify_id": "verify_id",
-            "users": "uersz", "req": "requests", "mGrp": "mGrp", "pmMode": "pmMode",
-            "jisshu_ads_link": "jisshu_ads_link", "movies_update_channel": "movies_update_channel",
-            "botcol": "botcol", "premium_orders": "premium_orders",
-            "payment_submissions": "payment_submissions", "support_feedback": "support_feedback",
-        }
-        for attribute, collection_name in collection_map.items():
-            primary_collection = mydb[collection_name]
-            secondary_collection = general_db2[collection_name] if general_db2 is not None else None
-            setattr(
-                self,
-                attribute,
-                _FailoverCollection(
-                    primary_collection,
-                    secondary_collection,
-                    collection_name,
-                    fallback_on_empty=(
-                        True if attribute == "verify_id" else
-                        (lambda operation, args, kwargs: (
-                            operation in {"find_one", "update_one"}
-                            and isinstance(args[0] if args else kwargs.get("filter"), dict)
-                            and (
-                                (args[0] if args else kwargs.get("filter", {})).get("_id") == "owner_shorteners"
-                            )
-                        )) if attribute == "misc" else False
-                    ),
-                ),
-            )
+        # Preserve Devil's original single general-data MongoDB connection.
+        self.col = mydb.users
+        self.grp = mydb.groups
+        self.misc = mydb.misc
+        self.verify_id = mydb.verify_id
+        self.users = mydb.uersz
+        self.req = mydb.requests
+        self.mGrp = mydb.mGrp
+        self.pmMode = mydb.pmMode
+        self.jisshu_ads_link = mydb.jisshu_ads_link
+        self.movies_update_channel = mydb.movies_update_channel
+        self.botcol = mydb.botcol
+        self.premium_orders = mydb.premium_orders
+        self.payment_submissions = mydb.payment_submissions
 
     default = {
         "spell_check": SPELL_CHECK,
@@ -98,38 +69,11 @@ class Database:
         )
 
     async def get_settings(self, group_id):
-        """Load group settings with restart-safe recovery from the general secondary.
-
-        The primary may remain readable while Atlas blocks its writes at quota.
-        In that case a group document can exist in both databases but the
-        secondary may contain settings saved during failover. Recover keys that
-        are absent/empty in primary without replacing valid primary values.
-        """
         group_id = int(group_id)
-        primary_chat = None
-        secondary_chat = None
-        try:
-            primary_chat = await mydb["groups"].find_one({"id": group_id})
-        except Exception as exc:
-            logging.warning("Primary group settings read failed for %s (%s)", group_id, type(exc).__name__)
-        if general_db2 is not None:
-            try:
-                secondary_chat = await general_db2["groups"].find_one({"id": group_id})
-            except Exception as exc:
-                logging.warning("Secondary group settings recovery read failed for %s (%s)", group_id, type(exc).__name__)
-        primary_settings = (primary_chat or {}).get("settings") or {}
-        secondary_settings = (secondary_chat or {}).get("settings") or {}
-        merged = self.default.copy()
-        merged.update(primary_settings)
-        recovered = []
-        for key, value in secondary_settings.items():
-            if key not in merged or merged.get(key) in (None, "", [], {}):
-                if value not in (None, "", [], {}):
-                    merged[key] = value
-                    recovered.append(key)
-        if recovered:
-            logging.warning("Recovered %d missing/empty settings for group %s from secondary MongoDB", len(recovered), group_id)
-        return merged
+        chat = await self.grp.find_one({"id": group_id})
+        settings = self.default.copy()
+        settings.update((chat or {}).get("settings") or {})
+        return settings
 
     async def get_owner_shortener_pairs(self):
         """Return only shortener slots registered to the current BOT OWNER_ID."""
@@ -256,21 +200,6 @@ class Database:
         )
         if not getattr(result, "acknowledged", False):
             raise RuntimeError("General-data MongoDB did not acknowledge group settings write")
-        # Mirror group settings to the configured general-data secondary. This
-        # is an idempotent $set of the complete settings document, so it is safe
-        # to retry and means a successful primary write is also available after
-        # a later failover/redeploy. If primary is quota-blocked, the failover
-        # facade above writes to secondary and this mirror remains harmless.
-        if general_db2 is not None:
-            try:
-                await general_db2["groups"].update_one(
-                    {"id": int(id)},
-                    {"$set": {"settings": settings}, "$setOnInsert": {"id": int(id), "title": str(id),
-                     "chat_status": {"is_disabled": False, "reason": ""}}},
-                    upsert=True,
-                )
-            except Exception as exc:
-                logging.warning("Could not mirror group settings to secondary MongoDB for %s (%s)", id, type(exc).__name__)
         return True
 
     async def total_chat_count(self):
@@ -436,72 +365,6 @@ class Database:
         }
         return await self.verify_id.insert_one(res)
 
-    async def get_pending_verification_recovery(self, cutoff, stage="generated"):
-        base_query = {
-            "verified": False,
-            "superseded_at": {"$exists": False},
-            "shortlink": {"$exists": True, "$ne": ""},
-        }
-        if stage == "midflow":
-            base_query.update({
-                "shortlink_clicked_at": {"$exists": True, "$lte": cutoff},
-                "midflow_recovery_sent_at": {"$exists": False},
-            })
-        else:
-            base_query.update({
-                "shortlink_created_at": {"$exists": True, "$lte": cutoff},
-                "shortlink_clicked_at": {"$exists": False},
-                "recovery_sent_at": {"$exists": False},
-            })
-        cursor = self.verify_id.find(base_query).sort("shortlink_created_at", -1).limit(200)
-        return await cursor.to_list(length=200)
-
-    async def claim_verification_recovery(self, record_id, now, stage="generated"):
-        field = "recovery_sent_at" if stage == "generated" else "midflow_recovery_sent_at"
-        query = {
-            "_id": record_id,
-            "verified": False,
-            "superseded_at": {"$exists": False},
-            field: {"$exists": False},
-        }
-        if stage == "midflow":
-            query["shortlink_clicked_at"] = {"$exists": True}
-        else:
-            query["shortlink_clicked_at"] = {"$exists": False}
-        return await self.verify_id.find_one_and_update(
-            query,
-            {"$set": {field: now}},
-            return_document=ReturnDocument.AFTER,
-        )
-
-    async def release_verification_recovery_claim(self, record_id, stage="generated"):
-        """Release a reminder claim only when sending the Telegram message failed."""
-        field = "recovery_sent_at" if stage == "generated" else "midflow_recovery_sent_at"
-        return await self.verify_id.update_one(
-            {"_id": record_id},
-            {"$unset": {field: ""}},
-        )
-
-    async def get_verify_id_by_hash_for_recovery(self, hash):
-        return await self.verify_id.find_one({"hash": str(hash)})
-
-    async def create_support_feedback_session(self, user_id, verify_id, group_id, step, log_chat):
-        return await self.support_feedback.update_one(
-            {"user_id": int(user_id)},
-            {"$set": {
-                "user_id": int(user_id), "verify_id": str(verify_id),
-                "group_id": int(group_id), "step": int(step),
-                "log_chat": int(log_chat), "created_at": datetime.datetime.now(pytz.timezone("Asia/Kolkata")),
-            }},
-            upsert=True,
-        )
-
-    async def get_support_feedback_session(self, user_id):
-        return await self.support_feedback.find_one({"user_id": int(user_id)})
-
-    async def clear_support_feedback_session(self, user_id):
-        return await self.support_feedback.delete_one({"user_id": int(user_id)})
-
     async def get_latest_verification_for_delivery(self, user_id: int, group_id: int, delivery_key: str):
         """Return the newest verification record for this user/file delivery."""
         return await self.verify_id.find_one(
@@ -640,7 +503,7 @@ class Database:
     # Premium payment / subscription helpers
     # ------------------------------------------------------------------
     async def ensure_verification_indexes(self):
-        """Create safe non-unique indexes used by verification tracking/recovery."""
+        """Create safe non-unique indexes used by verification tracking."""
         indexes = [
             [("return_token", 1)],
             [("hash", 1)],
@@ -666,28 +529,6 @@ class Database:
         await self.payment_submissions.create_index("user_id")
         await self.payment_submissions.create_index("file_sha256")
 
-        # Failover writes may land in the secondary while the primary is down.
-        # Keep the same idempotency/index contract there without making a
-        # secondary index failure prevent the bot from starting.
-        secondary_orders = getattr(self.premium_orders, "secondary", None)
-        secondary_submissions = getattr(self.payment_submissions, "secondary", None)
-        if secondary_orders is not None:
-            try:
-                await secondary_orders.create_index("user_id", unique=True)
-                await secondary_orders.create_index([
-                    ("payment_status", 1), ("premium_status", 1), ("expires_at", 1)
-                ])
-            except Exception:
-                logging.exception("Could not ensure secondary Premium order indexes.")
-        if secondary_submissions is not None:
-            try:
-                await secondary_submissions.create_index(
-                    [("payment_chat_id", 1), ("payment_bot_message_id", 1)], unique=True
-                )
-                await secondary_submissions.create_index("user_id")
-                await secondary_submissions.create_index("file_sha256")
-            except Exception:
-                logging.exception("Could not ensure secondary payment submission indexes.")
 
     async def create_or_update_premium_order(self, user_id, username, plan,
                                              plan_duration, plan_price):
@@ -723,72 +564,25 @@ class Database:
         return await self.premium_orders.find_one({"user_id": int(user_id)})
 
     async def get_pending_premium_order(self, user_id):
-        """Find the user's current pending order without reviving stale orders.
-
-        If the primary has no order document, a pending order may have been
-        written to the secondary during a primary outage. Check that secondary
-        only when the primary has no document at all. If the primary contains a
-        newer non-pending order, do not fall back to an older pending copy.
-        """
-        query = {"user_id": int(user_id)}
-        candidates = []
-        primary = getattr(self.premium_orders, "primary", self.premium_orders)
-        secondary = getattr(self.premium_orders, "secondary", None)
-        for label, collection in (("primary", primary), ("secondary", secondary)):
-            if collection is None:
-                continue
-            try:
-                order = await collection.find_one(query)
-                if order:
-                    candidates.append((label, order))
-            except Exception as exc:
-                logging.warning("Could not read %s Premium order for user %s (%s)", label, int(user_id), type(exc).__name__)
-        if not candidates:
-            return None
-
-        # Failover writes can leave a newer order only on the secondary. Choose
-        # the newest copy instead of letting an older primary record hide it.
-        def order_time(item):
-            value = item[1].get("order_created_at")
-            if isinstance(value, datetime.datetime):
-                if value.tzinfo is not None:
-                    value = value.astimezone(datetime.timezone.utc).replace(tzinfo=None)
-                return value
-            return datetime.datetime.min
-        label, order = max(candidates, key=order_time)
-        if label == "secondary":
-            logging.warning("Using newest Premium order for user %s from secondary database.", int(user_id))
-        return order if order.get("payment_status") == "waiting_for_payment" else None
+        order = await self.premium_orders.find_one({"user_id": int(user_id)})
+        return order if order and order.get("payment_status") == "waiting_for_payment" else None
 
     async def record_payment_submission(self, data):
-        """Record one Telegram screenshot message exactly once across failover DBs.
-
-        The same Telegram update can be dispatched more than once. Also, a
-        previous insert may exist only in the secondary after a primary outage.
-        Check both locations before inserting, then rely on the primary unique
-        index to close the normal duplicate-delivery race. Duplicate-key errors
-        are an idempotency result, not a reason to insert into another database.
-        """
+        """Record a Telegram screenshot message once in Devil's original database."""
         query = {
             "payment_chat_id": int(data["payment_chat_id"]),
             "payment_bot_message_id": int(data["payment_bot_message_id"]),
         }
-        existing = await self.payment_submissions.find_one(query)
-        if existing:
+        if await self.payment_submissions.find_one(query):
             return False
-
-        secondary = getattr(self.payment_submissions, "secondary", None)
-        if secondary is not None:
-            secondary_existing = await secondary.find_one(query)
-            if secondary_existing:
-                return False
-
         try:
             await self.payment_submissions.insert_one(data)
             return True
-        except DuplicateKeyError:
-            return False
-
+        except Exception as exc:
+            # Duplicate-key is an idempotency result; avoid importing another DB layer.
+            if "duplicate key" in str(exc).lower() or getattr(exc, "code", None) == 11000:
+                return False
+            raise
 
     async def update_payment_submission(self, user_id, message_id, data):
         return await self.payment_submissions.update_one(
