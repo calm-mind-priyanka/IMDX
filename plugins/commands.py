@@ -2,6 +2,7 @@ import os
 import html
 import requests
 import logging
+from functools import wraps
 import random
 import asyncio
 import string
@@ -42,13 +43,43 @@ from utils import (
 )
 import re
 import base64
-from shortzy import Shortzy
 from info import *
+from language import (
+    language_markup, has_saved_language, get_user_language, tr,
+    core_tr, home_tr, verify_tr, small_caps,
+)
 
-# Verification recovery/customer-care settings. Defaults are intentionally conservative.
-VERIFY_RECOVERY_DELAY = int(os.environ.get("VERIFY_RECOVERY_DELAY", "30"))
-VERIFY_MIDFLOW_DELAY = int(os.environ.get("VERIFY_MIDFLOW_DELAY", "120"))
-VERIFY_RECOVERY_DELETE = int(os.environ.get("VERIFY_RECOVERY_DELETE", "300"))
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+
+def _debug_handler(func):
+    """Log entry, completion and full traceback for commands/callbacks."""
+    @wraps(func)
+    async def _wrapped(client, event, *args, **kwargs):
+        is_callback = hasattr(event, "data") and hasattr(event, "answer")
+        user = getattr(getattr(event, "from_user", None), "id", None)
+        chat = getattr(getattr(event, "chat", None), "id", None)
+        if chat is None:
+            chat = getattr(getattr(getattr(event, "message", None), "chat", None), "id", None)
+        payload = getattr(event, "data", None) if is_callback else getattr(event, "text", None)
+        logger.info("HANDLER_ENTER module=%s handler=%s kind=%s user=%s chat=%s payload=%r", __name__, func.__name__, "callback" if is_callback else "message", user, chat, payload)
+        try:
+            result = await func(client, event, *args, **kwargs)
+            logger.info("HANDLER_OK module=%s handler=%s user=%s", __name__, func.__name__, user)
+            return result
+        except StopPropagation:
+            logger.info("HANDLER_STOP_PROPAGATION module=%s handler=%s user=%s", __name__, func.__name__, user)
+            raise
+        except Exception as exc:
+            logger.exception("HANDLER_FAILED module=%s handler=%s kind=%s user=%s chat=%s payload=%r error_type=%s error=%s", __name__, func.__name__, "callback" if is_callback else "message", user, chat, payload, type(exc).__name__, exc)
+            if is_callback:
+                try:
+                    await event.answer("This button failed. The error was logged; please try again later.", show_alert=True)
+                except Exception:
+                    logger.exception("Could not show failure alert for handler=%s user=%s", func.__name__, user)
+            raise
+    return _wrapped
 
 
 async def _build_fsub_caption(client, settings, channel_ids):
@@ -217,7 +248,7 @@ async def _mark_get_file_click(client, user, group_id, delivery_key):
         settings = await get_settings(group_id)
         step = int(record.get("step") or record.get("verification_step") or 1)
         await _shortener_log(
-            client, LINK_TRACK_CHANNEL, "GET_FILE_CLICKED", user, step,
+            client, (LINK_TRACK_CHANNEL or LOG_VR_CHANNEL), "GET_FILE_CLICKED", user, step,
             Group=group_id, Mode=record.get("mode", "file"),
             Domain=record.get("shortener_domain", "unknown"),
             VerifyID=record.get("hash", ""), Delivery=delivery_key,
@@ -225,354 +256,6 @@ async def _mark_get_file_click(client, user, group_id, delivery_key):
         )
     except Exception:
         logger.exception("Could not record Get File click")
-
-
-async def _verification_recovery_worker(client):
-    """Send separate reminders for unclicked links and abandoned mid-flow returns."""
-    delay = max(30, int(globals().get("VERIFY_RECOVERY_DELAY", 30)))
-    midflow_delay = max(60, int(globals().get("VERIFY_MIDFLOW_DELAY", 120)))
-    delete_after = max(60, int(globals().get("VERIFY_RECOVERY_DELETE", 300)))
-    owner_name = str(globals().get("OWNER_USERNAME", "") or "").lstrip("@").strip()
-    owner_url = f"https://t.me/{owner_name}" if owner_name else None
-
-    while True:
-        try:
-            now = _ist_now()
-            generated_cutoff = now - timedelta(seconds=delay)
-            midflow_cutoff = now - timedelta(seconds=midflow_delay)
-
-            generated = await db.get_pending_verification_recovery(generated_cutoff, stage="generated")
-            midflow = await db.get_pending_verification_recovery(midflow_cutoff, stage="midflow")
-
-            candidates = []
-            for record in generated:
-                candidates.append(("generated", record))
-            for record in midflow:
-                candidates.append(("midflow", record))
-
-            latest = {}
-            for stage, record in candidates:
-                key = (int(record.get("user_id", 0)), int(record.get("group_id", 0)))
-                previous = latest.get(key)
-                if previous is None or record.get("created_at") > previous[1].get("created_at"):
-                    latest[key] = (stage, record)
-
-            for stage, record in latest.values():
-                user_id = int(record.get("user_id"))
-                group_id = int(record.get("group_id") or 0)
-                verify_id = str(record.get("hash") or "")
-                if not verify_id or not _is_owner_tracking_record(record):
-                    continue
-
-                claimed = await db.claim_verification_recovery(record["_id"], now, stage=stage)
-                if not claimed:
-                    continue
-
-                settings = await get_settings(group_id)
-                tutorial_key = {
-                    1: "tutorial",
-                    2: "tutorial_2",
-                    3: "tutorial_3",
-                }.get(int(record.get("step") or record.get("verification_step") or 1), "tutorial")
-                tutorial = settings.get(tutorial_key) or globals().get(
-                    {"tutorial": "TUTORIAL", "tutorial_2": "TUTORIAL_2", "tutorial_3": "TUTORIAL_3"}[tutorial_key]
-                )
-                shortlink = record.get("shortlink")
-                ui_lang = await get_user_language(user_id)
-                bot_username = str(temp.U_NAME or "bot").lstrip("@")
-                greeting = _file_mode_greeting()
-                buttons = []
-
-                # Keep the SAME shortlink/verification attempt. A reminder must
-                # never create a new shortener URL.
-                if shortlink:
-                    buttons.append([InlineKeyboardButton(
-                        care_tr(ui_lang, "continue"), url=str(shortlink)
-                    )])
-
-                # Keep the original verification behavior: How to Verify
-                # opens the configured tutorial URL directly.
-                if tutorial:
-                    buttons.append([InlineKeyboardButton(
-                        care_reminder_button_tr(ui_lang, "how_to_verify"),
-                        url=str(tutorial),
-                    )])
-
-                buttons.append([
-                    InlineKeyboardButton(
-                        care_reminder_button_tr(ui_lang, "premium"),
-                        callback_data="getpremium",
-                    ),
-                    InlineKeyboardButton(
-                        care_reminder_button_tr(ui_lang, "sos"),
-                        callback_data=f"verify_feedback_menu:{verify_id}",
-                    ),
-                ])
-                if owner_url:
-                    buttons.append([InlineKeyboardButton(
-                        care_reminder_button_tr(ui_lang, "contact_owner"), url=owner_url
-                    )])
-
-                user = await client.get_users(user_id)
-
-                title = care_reminder_tr(
-                    ui_lang, "title", mention=user.mention,
-                    bot_username=bot_username
-                )
-                body = care_reminder_tr(
-                    ui_lang, "body", mention=user.mention,
-                    bot_username=bot_username, greeting=greeting
-                )
-                event = (
-                    "VERIFICATION_REMINDER_UNCLICKED"
-                    if stage == "generated"
-                    else "VERIFICATION_REMINDER_MIDFLOW"
-                )
-
-                sent = None
-                try:
-                    # The second reminder replaces the first reminder for the
-                    # same verification attempt. It keeps the same shortlink,
-                    # verify-id and verification state, so no old link is lost.
-                    old_ids = []
-                    if stage == "midflow":
-                        old_ids = [record.get("recovery_message_id")]
-                    elif record.get("midflow_recovery_message_id"):
-                        old_ids = [record.get("midflow_recovery_message_id")]
-                    for old_id in old_ids:
-                        if old_id:
-                            try:
-                                await client.delete_messages(user_id, int(old_id))
-                            except Exception:
-                                pass
-
-                    sent = await client.send_message(
-                        user_id, title + "\n\n" + body,
-                        reply_markup=InlineKeyboardMarkup(buttons),
-                        parse_mode=enums.ParseMode.HTML,
-                    )
-                    field = "recovery_message_id" if stage == "generated" else "midflow_recovery_message_id"
-                    await db.update_verify_id_info(
-                        user_id, verify_id,
-                        {field: sent.id, "recovery_message_sent_at": now},
-                    )
-                    await _shortener_log(
-                        client, LOG_VR_CHANNEL, event, user,
-                        int(record.get("step") or record.get("verification_step") or 1),
-                        Group=group_id, Mode=record.get("mode", "file"),
-                        Domain=record.get("shortener_domain", "unknown"),
-                        VerifyID=verify_id, ShortURL=str(shortlink or "")[:700],
-                    )
-                    asyncio.create_task(_delete_recovery_message_later(client, user_id, sent.id, delete_after))
-                except Exception:
-                    # A failed Telegram send must not permanently consume the
-                    # one-time reminder marker. Release it only if no message
-                    # was sent; if a message was sent but a later DB/log step
-                    # failed, keep the claim to avoid duplicate reminders.
-                    if sent is None:
-                        try:
-                            await db.release_verification_recovery_claim(record["_id"], stage=stage)
-                        except Exception:
-                            logger.exception("Could not release failed verification reminder claim for %s", user_id)
-                    logger.exception("Could not send verification recovery message to %s", user_id)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("Verification recovery worker failed")
-        await asyncio.sleep(30)
-
-
-async def _delete_recovery_message_later(client, user_id, message_id, delay):
-    try:
-        await asyncio.sleep(delay)
-        await client.delete_messages(user_id, message_id)
-    except Exception:
-        pass
-
-
-@Client.on_callback_query(filters.regex(r"^verify_feedback_menu:"), group=-1)
-async def verification_feedback_menu(client, query):
-    """Show optional one-tap reasons without changing verification state."""
-    verify_id = query.data.split(":", 1)[1].strip()
-    record = await db.get_verify_id_info(query.from_user.id, verify_id)
-    if not record or record.get("verified"):
-        ui_lang = await get_user_language(query.from_user.id, query.from_user)
-        await query.answer(care_tr(ui_lang, "expired"), show_alert=True)
-        return
-
-    ui_lang = await get_user_language(query.from_user.id, query.from_user)
-    rows = [
-        [InlineKeyboardButton(care_feedback_reason_tr(ui_lang, "confused"), callback_data=f"verify_feedback:{verify_id}:confused")],
-        [InlineKeyboardButton(care_feedback_reason_tr(ui_lang, "ads"), callback_data=f"verify_feedback:{verify_id}:ads")],
-        [InlineKeyboardButton(care_feedback_reason_tr(ui_lang, "link"), callback_data=f"verify_feedback:{verify_id}:link")],
-        [InlineKeyboardButton(care_feedback_reason_tr(ui_lang, "stuck"), callback_data=f"verify_feedback:{verify_id}:stuck")],
-        [InlineKeyboardButton(care_feedback_reason_tr(ui_lang, "completed_no_file"), callback_data=f"verify_feedback:{verify_id}:completed_no_file")],
-    ]
-    # Keep SOS inside the same reminder message so the user always has a
-    # clear route back to the verification reminder.
-    rows.append([InlineKeyboardButton(
-        care_reminder_button_tr(ui_lang, "back_to_reminder"),
-        callback_data=f"verify_help_back:{verify_id}",
-    )])
-    await query.answer()
-    await query.message.edit_text(
-        care_tr(ui_lang, "feedback_title") + "\n\n" + care_tr(ui_lang, "feedback_body"),
-        reply_markup=InlineKeyboardMarkup(rows),
-        parse_mode=enums.ParseMode.HTML,
-    )
-    raise StopPropagation
-
-
-@Client.on_callback_query(filters.regex(r"^verify_feedback:"), group=-1)
-async def verification_feedback_callback(client, query):
-    """Store optional feedback separately from verification state."""
-    parts = query.data.split(":", 2)
-    if len(parts) != 3:
-        await query.answer("Invalid feedback.", show_alert=True)
-        return
-    verify_id, reason = parts[1].strip(), parts[2].strip()
-    record = await db.get_verify_id_info(query.from_user.id, verify_id)
-    ui_lang = await get_user_language(query.from_user.id, query.from_user)
-    if not record:
-        await query.answer(care_tr(ui_lang, "expired"), show_alert=True)
-        return
-
-    reason_text = care_feedback_reason_tr(ui_lang, reason)
-    now = _ist_now()
-    # Feedback is deliberately isolated: no verified/verification timestamps are
-    # touched, so selecting a reason cannot grant or remove access.
-    await db.update_verify_id_info(
-        query.from_user.id, verify_id,
-        {"feedback_reason": reason, "feedback_reason_text": reason_text, "feedback_at": now},
-    )
-
-    try:
-        if LOG_VR_CHANNEL:
-            await client.send_message(
-                LOG_VR_CHANNEL,
-                "\n".join([
-                    "<b>📝 VERIFICATION FEEDBACK</b>",
-                    f"👤 User: {query.from_user.mention} [ <code>{query.from_user.id}</code> ]",
-                    f"📊 Step: {int(record.get('step') or record.get('verification_step') or 1)}/3",
-                    f"🖱️ Shortener clicked: {'YES' if record.get('shortlink_clicked_at') else 'NO'}",
-                    f"🔗 Verify ID: <code>{verify_id}</code>",
-                    f"💬 Reason: {reason_text}",
-                    f"📆 Time: {now.strftime('%-d %B %Y %I:%M%p %A')}",
-                ]),
-                disable_web_page_preview=True,
-            )
-    except Exception:
-        logger.exception("Could not log verification feedback")
-
-    await query.answer(care_tr(ui_lang, "feedback_sent").replace("<b>", "").replace("</b>", ""), show_alert=True)
-    raise StopPropagation
-
-
-@Client.on_callback_query(filters.regex(r"^verify_help_page:"), group=-1)
-async def verification_help_page(client, query):
-    verify_id = query.data.split(":", 1)[1].strip()
-    record = await db.get_verify_id_info(query.from_user.id, verify_id)
-    ui_lang = await get_user_language(query.from_user.id, query.from_user)
-    if not record or record.get("verified") or record.get("superseded_at"):
-        await query.answer(care_tr(ui_lang, "expired"), show_alert=True)
-        return
-
-    settings = await get_settings(int(record.get("group_id") or 0))
-    step = int(record.get("step") or record.get("verification_step") or 1)
-    tutorial_key = {1: "tutorial", 2: "tutorial_2", 3: "tutorial_3"}.get(step, "tutorial")
-    tutorial = settings.get(tutorial_key) or globals().get(
-        {"tutorial": "TUTORIAL", "tutorial_2": "TUTORIAL_2", "tutorial_3": "TUTORIAL_3"}[tutorial_key]
-    )
-    rows = []
-    if tutorial:
-        rows.append([InlineKeyboardButton(
-            care_reminder_button_tr(ui_lang, "watch_guide"), url=str(tutorial)
-        )])
-    rows.append([InlineKeyboardButton(
-        care_reminder_button_tr(ui_lang, "back_to_reminder"),
-        callback_data=f"verify_help_back:{verify_id}",
-    )])
-    # These two strings are defined in CARE_REMINDER_BUTTONS, not
-    # CARE_REMINDER. Using the correct translator prevents a KeyError that
-    # made the How to Verify callback appear to do nothing.
-    text = care_reminder_button_tr(
-        ui_lang, "help_title",
-        bot_username=str(temp.U_NAME or "bot").lstrip("@"),
-    ) + "\n\n" + care_reminder_button_tr(ui_lang, "help_body")
-    await query.answer()
-    await query.message.edit_text(
-        text, reply_markup=InlineKeyboardMarkup(rows),
-        parse_mode=enums.ParseMode.HTML,
-    )
-    raise StopPropagation
-
-
-@Client.on_callback_query(filters.regex(r"^verify_help_back:"), group=-1)
-async def verification_help_back(client, query):
-    verify_id = query.data.split(":", 1)[1].strip()
-    record = await db.get_verify_id_info(query.from_user.id, verify_id)
-    ui_lang = await get_user_language(query.from_user.id, query.from_user)
-    if not record or record.get("verified") or record.get("superseded_at"):
-        await query.answer(care_tr(ui_lang, "expired"), show_alert=True)
-        return
-    shortlink = record.get("shortlink")
-    buttons = []
-    if shortlink:
-        buttons.append([InlineKeyboardButton(care_tr(ui_lang, "continue"), url=str(shortlink))])
-    buttons.append([InlineKeyboardButton(
-        care_reminder_button_tr(ui_lang, "how_to_verify"),
-        callback_data=f"verify_help_page:{verify_id}",
-    )])
-    buttons.append([
-        InlineKeyboardButton(care_reminder_button_tr(ui_lang, "premium"), callback_data="getpremium"),
-        InlineKeyboardButton(care_reminder_button_tr(ui_lang, "sos"), callback_data=f"verify_feedback_menu:{verify_id}"),
-    ])
-    owner_name = str(OWNER_USERNAME or "").lstrip("@").strip()
-    if owner_name:
-        buttons.append([InlineKeyboardButton(
-            care_reminder_button_tr(ui_lang, "contact_owner"),
-            url=f"https://t.me/{owner_name}",
-        )])
-    user = await client.get_users(query.from_user.id)
-    text = care_reminder_tr(
-        ui_lang, "title", mention=user.mention,
-        bot_username=str(temp.U_NAME or "bot").lstrip("@"),
-    ) + "\n\n" + care_reminder_tr(
-        ui_lang, "body", mention=user.mention,
-        bot_username=str(temp.U_NAME or "bot").lstrip("@"),
-        greeting=_file_mode_greeting(),
-    )
-    await query.answer()
-    await query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML)
-    raise StopPropagation
-
-
-@Client.on_callback_query(filters.regex(r"^verify_help:"), group=-1)
-async def verification_help_callback(client, query):
-    """Legacy callback compatibility: never enter a feedback-capture mode."""
-    owner_name = str(OWNER_USERNAME or "").lstrip("@").strip()
-    ui_lang = await get_user_language(query.from_user.id, query.from_user)
-    if owner_name:
-        await query.message.reply_text(
-            "<b>🆘 ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʜᴇʟᴘ</b>\n\n"
-            "ɪꜰ ʏᴏᴜ ᴀʀᴇ sᴛᴜᴄᴋ ᴅᴜʀɪɴɢ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ, "
-            "ᴄᴏɴᴛᴀᴄᴛ ᴛʜᴇ ᴏᴡɴᴇʀ ᴅɪʀᴇᴄᴛʟʏ.",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("👨‍💻 ᴄᴏɴᴛᴀᴄᴛ ᴏᴡɴᴇʀ", url=f"https://t.me/{owner_name}")
-            ]]),
-            parse_mode=enums.ParseMode.HTML,
-        )
-    else:
-        await query.answer(care_tr(ui_lang, "expired"), show_alert=True)
-    await query.answer()
-    raise StopPropagation
-
-
-from language import language_markup, has_saved_language, get_user_language, tr, core_tr, home_tr, verify_tr, care_tr, care_reminder_tr, care_feedback_reason_tr, care_reminder_button_tr, small_caps
-
-logger = logging.getLogger(__name__)
-movie_series_db = JsTopDB(DATABASE_URI)
-verification_ids = {}
 
 
 def _global_home_markup(lang):
@@ -624,34 +307,63 @@ def _file_mode_markup(settings, file_id):
 
 
 @Client.on_callback_query(filters.regex(r"^global_lang:"))
+@_debug_handler
 async def global_language_callback(client: Client, query):
     value = query.data.split(":", 1)[1]
+    logger.info("GLOBAL_LANG callback received: user=%s data=%r chat=%s message=%s", getattr(query.from_user, "id", None), query.data, getattr(getattr(query, "message", None), "chat", None) and query.message.chat.id, getattr(getattr(query, "message", None), "id", None))
     if value == "menu":
         lang = await get_user_language(query.from_user.id, query.from_user)
         await query.answer()
         text = tr(lang, "language_title") + "\n\n" + tr(lang, "language_body")
+        logger.info("GLOBAL_LANG showing picker: user=%s", query.from_user.id)
         return await _edit_language_message(query, text, language_markup())
     from language import LANGUAGES
     if value not in LANGUAGES:
         return await query.answer("Language unavailable.", show_alert=True)
-    await db.update_user({"id": int(query.from_user.id), "language": value, "language_code": value})
-    await query.answer(tr(value, "language_saved"), show_alert=True)
-    # Rebuild the normal home menu immediately; this makes the global language
-    # control usable from /start instead of leaving the user on the picker.
+    # Persist the language before changing the message. If MongoDB is down,
+    # keep the picker visible and tell the user instead of pretending it saved.
+    logger.info("GLOBAL_LANG saving selection: user=%s language=%s", query.from_user.id, value)
+    try:
+        await db.update_user({
+            "id": int(query.from_user.id),
+            "name": query.from_user.first_name or "User",
+            "language": value,
+            "language_code": value,
+        })
+    except Exception:
+        logger.exception("Could not save global language for user %s", query.from_user.id)
+        try:
+            await query.answer("Could not save your language right now. Please try again.", show_alert=True)
+        except Exception:
+            pass
+        return
+
+    try:
+        await query.answer(tr(value, "language_saved"), show_alert=True)
+    except Exception:
+        pass
+    logger.info("GLOBAL_LANG saved successfully: user=%s language=%s; refreshing home UI", query.from_user.id, value)
+    # Rebuild the normal home menu immediately after the language is persisted.
     markup = _global_home_markup(value)
     try:
-        if query.message and (query.message.photo or query.message.video or query.message.animation):
+        if query.message and (query.message.photo or query.message.video or query.message.animation or query.message.document):
             await query.message.edit_caption(
                 caption=core_tr(value, "start", mention=query.from_user.mention, status=get_status()),
                 reply_markup=markup, parse_mode=enums.ParseMode.HTML,
             )
-        else:
+        elif query.message:
             await query.message.edit_text(
                 core_tr(value, "start", mention=query.from_user.mention, status=get_status()),
                 reply_markup=markup, parse_mode=enums.ParseMode.HTML,
             )
-    except Exception:
-        logger.exception("Could not refresh home UI after global language change")
+        else:
+            logger.warning("GLOBAL_LANG selection saved but callback has no message to refresh: user=%s language=%s", query.from_user.id, value)
+    except Exception as exc:
+        from pyrogram.errors import MessageNotModified
+        if isinstance(exc, MessageNotModified):
+            logger.info("GLOBAL_LANG home UI already up to date: user=%s language=%s", query.from_user.id, value)
+        else:
+            logger.exception("GLOBAL_LANG failed refreshing home UI: user=%s language=%s", query.from_user.id, value)
 
 
 async def _edit_language_message(query, text, markup):
@@ -675,6 +387,7 @@ async def _delete_home_later(client, user_id, message_id, delay):
 
 
 @Client.on_callback_query(filters.regex(r"^clean_home$"), group=-1)
+@_debug_handler
 async def clean_home_callback(client, query):
     try:
         await query.message.delete()
@@ -684,9 +397,14 @@ async def clean_home_callback(client, query):
     raise StopPropagation
 
 
-@Client.on_message(filters.command("start") & filters.incoming)
 async def start(client: Client, message):
-    await message.react(emoji=random.choice(REACTIONS))
+    logger.info("START_HANDLER entered: chat_id=%s chat_type=%s message_id=%s from_user_id=%s text=%r", getattr(getattr(message, "chat", None), "id", None), getattr(getattr(message, "chat", None), "type", None), getattr(message, "id", None), getattr(getattr(message, "from_user", None), "id", None), (getattr(message, "text", None) or "")[:120])
+    # Reactions are cosmetic only. Some chats/bot API versions reject them;
+    # never let a failed reaction abort /start, file delivery, or verification.
+    try:
+        await message.react(emoji=random.choice(REACTIONS))
+    except Exception:
+        logger.debug("Could not react to /start; continuing normally", exc_info=True)
     m = message
     user_id = m.from_user.id
     # IMPORTANT: verification/shortlink deep-links are handled before the
@@ -716,7 +434,7 @@ async def start(client: Client, message):
     except Exception:
         start_payload = ""
 
-    logger.info("/start received: user=%s payload=%s", user_id, start_payload[:80])
+    logger.info("START_HANDLER parsed: user=%s payload=%s", user_id, start_payload[:80])
     if start_payload.startswith("vr_"):
         logger.info("Processing verification return token for user=%s", user_id)
         # New verification-return links carry only a short opaque token.
@@ -895,12 +613,17 @@ async def start(client: Client, message):
     # Normal private /start still requires a language selection. The verification
     # deep-link above is deliberately exempt so shortener returns always run.
     if message.chat.type == enums.ChatType.PRIVATE and not await has_saved_language(user_id):
-        await db.update_user({"id": int(user_id), "name": message.from_user.first_name})
+        logger.info("START_HANDLER showing first-time language picker: user=%s", user_id)
+        try:
+            await db.update_user({"id": int(user_id), "name": message.from_user.first_name})
+        except Exception:
+            logger.exception("Could not initialize user record before language selection; showing picker anyway")
         await message.reply_text(
             tr("en", "language_title") + "\n\n" + tr("en", "language_body"),
             reply_markup=language_markup(),
             parse_mode=enums.ParseMode.HTML,
         )
+        logger.info("START_HANDLER language picker sent successfully: user=%s", user_id)
         return
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
         status = get_status()
@@ -934,7 +657,9 @@ async def start(client: Client, message):
                 temp.B_LINK, message.from_user.id, message.from_user.mention
             ),
         )
+    logger.info("START_HANDLER user record ready: user=%s", user_id)
     lang = await get_user_language(message.from_user.id, message.from_user)
+    logger.info("START_HANDLER resolved language: user=%s language=%s command=%r", user_id, lang, getattr(message, "command", None))
     if len(message.command) != 2:
         lang = await get_user_language(message.from_user.id, message.from_user)
         reply_markup = _global_home_markup(lang)
@@ -943,6 +668,7 @@ async def start(client: Client, message):
         )
         await asyncio.sleep(1)
         await m.delete()
+        logger.info("START_HANDLER sending home photo: user=%s language=%s", user_id, lang)
         home_message = await message.reply_photo(
             photo=random.choice(START_IMG),
             caption=core_tr(lang, "start", mention=message.from_user.mention, status=get_status()),
@@ -954,6 +680,7 @@ async def start(client: Client, message):
         except Exception:
             pass
         asyncio.create_task(_delete_home_later(client, message.from_user.id, home_message.id, HOME_AUTO_DELETE))
+        logger.info("START_HANDLER completed successfully: user=%s home_message_id=%s", user_id, home_message.id)
         return
     if len(message.command) == 2 and message.command[1] in [
         "subscribe", "error", "okay", "help",
@@ -1220,14 +947,14 @@ async def start(client: Client, message):
                 verify = None
                 if owner_shortener:
                     await _shortener_log(
-                        client, LINK_TRACK_CHANNEL, "SHORTENER_API_ERROR", message.from_user, step,
+                        client, (LINK_TRACK_CHANNEL or LOG_VR_CHANNEL), "SHORTENER_API_ERROR", message.from_user, step,
                         Group=grp_id, Mode=delivery_mode, Domain=shortener_domain or "unknown",
                         VerifyID=verify_id, Error=str(exc)[:300],
                     )
             if not verify:
                 if owner_shortener:
                     await _shortener_log(
-                        client, LINK_TRACK_CHANNEL, "SHORTENER_API_ERROR", message.from_user, step,
+                        client, (LINK_TRACK_CHANNEL or LOG_VR_CHANNEL), "SHORTENER_API_ERROR", message.from_user, step,
                         Group=grp_id, Mode=delivery_mode, Domain=shortener_domain or "unknown",
                         VerifyID=verify_id, Error="shortener returned no URL",
                     )
@@ -1241,7 +968,7 @@ async def start(client: Client, message):
             await db.update_verify_id_info(user_id, verify_id, {"shortlink": verify, "shortlink_created_at": _ist_now()})
             if owner_shortener:
                 await _shortener_log(
-                    client, LINK_TRACK_CHANNEL, "SHORTLINK_CREATED", message.from_user, step,
+                    client, (LINK_TRACK_CHANNEL or LOG_VR_CHANNEL), "SHORTLINK_CREATED", message.from_user, step,
                     Group=grp_id, Mode=delivery_mode, Domain=shortener_domain or "unknown",
                     **{"Api key": shortener_api or ""}, VerifyID=verify_id, ShortURL=str(verify)[:700],
                 )
@@ -2196,6 +1923,7 @@ async def set_time_3(client, message):
 
 
 @Client.on_callback_query(filters.regex("mostsearch"))
+@_debug_handler
 async def most(client, callback_query):
     def is_alphanumeric(string):
         return bool(re.match("^[a-zA-Z0-9 ]*$", string))
@@ -2232,6 +1960,7 @@ async def most(client, callback_query):
 
 
 @Client.on_callback_query(filters.regex(r"^trending$"))
+@_debug_handler
 async def top(client, query):
     movie_series_names = await movie_series_db.get_movie_series_names(1)
     if not movie_series_names:
